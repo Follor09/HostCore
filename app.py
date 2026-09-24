@@ -12,7 +12,7 @@ import os
 import subprocess
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -123,9 +123,18 @@ def interpret_wmo_code(code: int) -> tuple[str, str]:
 @app.get("/")
 async def get_index():
     index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return JSONResponse({"status": "Dashboard frontend loading..."})
+    if not os.path.exists(index_path):
+        return JSONResponse({"status": "Dashboard frontend loading..."})
+
+    # Append each asset's mtime as ?v=... so browsers never mix a new page
+    # with a cached old style.css / app.js after an auto-update.
+    with open(index_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    for asset in ("style.css", "app.js"):
+        path = os.path.join(STATIC_DIR, asset)
+        if os.path.exists(path):
+            html = html.replace(f"/static/{asset}\"", f"/static/{asset}?v={int(os.path.getmtime(path))}\"")
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/system")
