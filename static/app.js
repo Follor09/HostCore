@@ -427,17 +427,18 @@
     }
 
     services.forEach(srv => {
+      const status = srv.status || (srv.running ? 'active' : 'inactive');
       const tile = document.createElement('div');
-      tile.className = `service-tile ${srv.running ? 'active' : ''}`;
+      tile.className = `service-tile ${status}`;
 
       tile.innerHTML = `
         <div class="service-info">
           <span class="service-name">${escapeHtml(srv.name)}</span>
-          <span class="service-port">Port :${srv.port}</span>
+          <span class="service-port">${escapeHtml(srv.detail || (srv.port ? `Port :${srv.port}` : ''))}</span>
         </div>
-        <div class="service-status-pill ${srv.running ? 'active' : 'inactive'}">
-          <span class="service-dot ${srv.running ? 'active' : 'inactive'}"></span>
-          <span>${srv.status_text}</span>
+        <div class="service-status-pill ${status}">
+          <span class="service-dot ${status}"></span>
+          <span>${escapeHtml(srv.status_text)}</span>
         </div>
       `;
 

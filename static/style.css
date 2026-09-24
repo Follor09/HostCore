@@ -795,9 +795,14 @@ body {
   border-color: rgba(0, 255, 163, 0.3);
 }
 
+.service-tile.error {
+  border-color: rgba(255, 42, 95, 0.35);
+}
+
 .service-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .service-name {
@@ -810,9 +815,14 @@ body {
   font-family: var(--font-mono);
   font-size: 0.68rem;
   color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .service-status-pill {
+  flex-shrink: 0;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -835,6 +845,12 @@ body {
   border: 1px solid var(--border-subtle);
 }
 
+.service-status-pill.error {
+  background: rgba(255, 42, 95, 0.12);
+  color: var(--accent-rose);
+  border: 1px solid rgba(255, 42, 95, 0.3);
+}
+
 .service-dot {
   width: 6px;
   height: 6px;
@@ -849,6 +865,11 @@ body {
 
 .service-dot.inactive {
   background: var(--text-dim);
+}
+
+.service-dot.error {
+  background: var(--accent-rose);
+  box-shadow: 0 0 6px var(--accent-rose);
 }
 
 /* ==========================================================================

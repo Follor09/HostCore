@@ -11,15 +11,21 @@ import subprocess
 import psutil
 from typing import Dict, Any, List
 
-# Common homelab / Raspberry Pi services to monitor
+# Homelab services to monitor. A service counts as running if any of its
+# systemd units is active or its TCP port is listening.
 TRACKED_SERVICES = [
-    {"id": "ssh", "name": "SSH Server", "port": 22, "service": "ssh"},
-    {"id": "docker", "name": "Docker Engine", "port": 2375, "service": "docker"},
-    {"id": "web", "name": "Webserver (HTTP)", "port": 80, "service": "nginx"},
-    {"id": "pihole", "name": "DNS / Pi-hole", "port": 53, "service": "pihole-FTL"},
-    {"id": "samba", "name": "Samba Shares", "port": 445, "service": "smbd"},
-    {"id": "tailscale", "name": "Tailscale VPN", "port": 41641, "service": "tailscaled"}
+    {"id": "ssh", "name": "SSH Server", "port": 22, "units": ["ssh", "sshd"]},
+    {"id": "docker", "name": "Docker Engine", "port": None, "units": ["docker"]},
+    {"id": "web", "name": "Webserver (HTTP)", "port": 80, "units": ["nginx", "apache2", "caddy"]},
+    {"id": "netbird", "name": "NetBird VPN", "port": None, "units": ["netbird"], "interface": "wt0"},
+    {"id": "kubernetes", "name": "Kubernetes", "port": 6443,
+     "units": ["k3s", "k3s-agent", "rke2-server", "rke2-agent", "kubelet", "snap.microk8s.daemon-kubelite"]},
 ]
+
+UPDATER_TIMER = "pi-dashboard-update.timer"
+UPDATER_SERVICE = "pi-dashboard-update.service"
+
+STATUS_TEXT = {"active": "Aktiv", "inactive": "Inaktiv", "error": "Fehler"}
 
 
 def check_port_open(port: int, host: str = "127.0.0.1") -> bool:
@@ -33,40 +39,98 @@ def check_port_open(port: int, host: str = "127.0.0.1") -> bool:
         return False
 
 
-def check_systemd_service(service_name: str) -> bool:
-    """Check if a systemd unit is active."""
-    if platform.system() != "Linux":
-        return False
+def get_unit_states(units: List[str]) -> Dict[str, Dict[str, str]]:
+    """Fetch ActiveState/Result of many systemd units with a single systemctl call."""
+    if platform.system() != "Linux" or not units:
+        return {}
     try:
         res = subprocess.run(
-            ["systemctl", "is-active", "--quiet", service_name],
-            capture_output=True,
-            timeout=1
+            ["systemctl", "show", "--property=Id,ActiveState,Result", "--", *units],
+            capture_output=True, text=True, timeout=2
         )
-        return res.returncode == 0
     except Exception:
-        return False
+        return {}
+
+    states, current = {}, {}
+    for line in res.stdout.splitlines() + [""]:
+        if not line.strip():
+            if current.get("Id"):
+                states[current["Id"]] = current
+            current = {}
+            continue
+        key, _, value = line.partition("=")
+        current[key] = value
+    return states
+
+
+def _units_status(unit_names: List[str], states: Dict[str, Dict[str, str]]) -> tuple[str, str]:
+    """Combine several candidate units into one status; returns (status, active unit name)."""
+    failed = False
+    for name in unit_names:
+        st = states.get(f"{name}.service", {})
+        if st.get("ActiveState") in ("active", "reloading", "activating"):
+            return "active", name
+        if st.get("ActiveState") == "failed":
+            failed = True
+    return ("error" if failed else "inactive"), ""
+
+
+def _interface_ip(name: str) -> str:
+    for addr in psutil.net_if_addrs().get(name, []):
+        if addr.family == socket.AF_INET:
+            return addr.address
+    return ""
+
+
+def _updater_status(states: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
+    """Auto-updater: inactive if the timer is off, error if the last pull/restart failed."""
+    import updater  # local import: updater is optional for this module
+
+    timer = states.get(UPDATER_TIMER, {})
+    run = states.get(UPDATER_SERVICE, {})
+    commit = updater.update_state.get("current_commit", "")
+
+    if timer.get("ActiveState") != "active":
+        status, detail = "inactive", "Timer aus"
+    elif run.get("ActiveState") == "failed" or run.get("Result", "success") != "success":
+        status, detail = "error", "Letztes Update fehlgeschlagen"
+    else:
+        status, detail = "active", f"Commit {commit}" if commit and " " not in commit else "GitHub · jede Minute"
+
+    return {"id": "updater", "name": "Auto-Updater", "status": status, "detail": detail}
 
 
 def get_services_status() -> List[Dict[str, Any]]:
     """Return status list of tracked homelab services."""
+    all_units = [f"{u}.service" for s in TRACKED_SERVICES for u in s["units"]]
+    states = get_unit_states(all_units + [UPDATER_TIMER, UPDATER_SERVICE])
+
     results = []
-    is_linux = platform.system() == "Linux"
-
     for s in TRACKED_SERVICES:
-        port_open = check_port_open(s["port"])
-        service_active = check_systemd_service(s["service"]) if is_linux else False
+        status, active_unit = _units_status(s["units"], states)
+        if status != "active" and s["port"] and check_port_open(s["port"]):
+            status = "active"
 
-        is_running = port_open or service_active
+        ip = _interface_ip(s["interface"]) if s.get("interface") else ""
+        if status != "active" and ip:
+            status = "active"  # interface up counts even without the systemd unit
 
-        results.append({
-            "id": s["id"],
-            "name": s["name"],
-            "port": s["port"],
-            "running": is_running,
-            "status_text": "Aktiv" if is_running else "Inaktiv"
-        })
+        if ip:
+            detail = f"{s['interface']} · {ip}"
+        elif s["id"] == "kubernetes" and active_unit:
+            detail = f"{active_unit.replace('snap.microk8s.daemon-kubelite', 'microk8s')} · :{s['port']}"
+        elif s["port"]:
+            detail = f"Port :{s['port']}"
+        else:
+            detail = f"{active_unit or s['units'][0]}.service"
 
+        results.append({"id": s["id"], "name": s["name"], "status": status, "detail": detail})
+
+    results.append(_updater_status(states))
+
+    for r in results:
+        r["running"] = r["status"] == "active"
+        r["status_text"] = STATUS_TEXT[r["status"]]
     return results
 
 

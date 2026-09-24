@@ -17,7 +17,7 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
   - **Arbeitsspeicher (RAM) & SWAP:** Belegt / Frei / Gesamt mit MB-Genauigkeit.
   - **Netzwerk & Durchsatz:** Live Download- und Upload-Rate (KB/s bzw. MB/s) mit Datentraffic.
 - **Server-Dienste & Homelab-Ports:**
-  - Automatische Überwachung von: **SSH** (:22), **Docker** (:2375), **Webserver** (:80), **Pi-hole / DNS** (:53), **Samba** (:445) und **Tailscale VPN**.
+  - Automatische Überwachung von: **SSH** (:22), **Docker**, **Webserver** (:80), **NetBird VPN** (wt0), **Kubernetes** (k3s / k8s / microk8s, :6443) und dem **Auto-Updater** – jeweils mit Status *Aktiv*, *Inaktiv* oder *Fehler*.
 - **Laufwerke & Speicher-Explorer:**
   - Übersicht über alle eingehängten Datenträger (SD-Karte, NVMe-SSDs, externe USB-Festplatten unter `/media` und Dateisysteme).
 - **System-Journal & Diagnose:**
