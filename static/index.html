@@ -403,6 +403,47 @@
       </div>
     </section>
 
+    <!-- Metrics History (24h / 7 Tage) -->
+    <section class="glass-card history-card" id="history-card">
+      <div class="history-head">
+        <div class="card-title-group">
+          <div class="card-icon-pill icon-violet">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 14l4-4 4 4 5-6"></path></svg>
+          </div>
+          <div>
+            <h3>Verlauf</h3>
+            <p class="card-subtitle" id="history-subtitle">Messwerte der letzten 24 Stunden</p>
+          </div>
+        </div>
+        <div class="history-controls">
+          <div class="segmented" id="history-range" role="tablist" aria-label="Zeitraum">
+            <button class="active" data-range="24h">24h</button>
+            <button data-range="7d">7 Tage</button>
+          </div>
+          <div class="segmented" id="history-metric" role="tablist" aria-label="Messwert">
+            <button class="active" data-metric="cpu">CPU</button>
+            <button data-metric="temp">Temperatur</button>
+            <button data-metric="ram">RAM</button>
+            <button data-metric="net">Netzwerk</button>
+            <button data-metric="fan">Lüfter</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-stats" id="history-stats"></div>
+
+      <div class="history-chart" id="history-chart">
+        <svg id="history-svg" role="img" aria-label="Verlaufsdiagramm"></svg>
+        <div class="history-tooltip" id="history-tooltip" hidden></div>
+        <div class="history-empty" id="history-empty" hidden>Noch keine Daten – der erste Messpunkt wird nach einer Minute gespeichert.</div>
+      </div>
+
+      <details class="history-table-wrap" id="history-table-wrap">
+        <summary>Als Tabelle anzeigen</summary>
+        <div class="history-table-scroll"><table id="history-table"></table></div>
+      </details>
+    </section>
+
     <!-- Lower Section: Storage Explorer & System Journal Logs + Diagnostics/Processes -->
     <section class="bottom-tools-grid">
 

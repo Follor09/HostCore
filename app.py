@@ -20,6 +20,7 @@ import httpx
 import system_info
 import services_manager
 import updater
+import history
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -30,9 +31,11 @@ async def lifespan(app: FastAPI):
     # Startup: Initial git check & background poller
     updater.refresh_git_info()
     poller_task = asyncio.create_task(updater.background_update_poller())
+    history_task = asyncio.create_task(history.background_sampler())
     yield
     # Shutdown
     poller_task.cancel()
+    history_task.cancel()
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
@@ -147,6 +150,12 @@ async def api_system():
 async def api_processes(limit: int = 8):
     """Return top active processes."""
     return {"processes": system_info.get_top_processes(limit=limit)}
+
+
+@app.get("/api/history")
+async def api_history(range: str = "24h"):
+    """Downsampled metrics history: range=24h or 7d."""
+    return await asyncio.to_thread(history.get_history, range)
 
 
 @app.get("/api/services")

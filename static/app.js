@@ -1093,6 +1093,367 @@
   // ---------------------------------------------------------------------------
   // App Bootstrapper
   // ---------------------------------------------------------------------------
+  // Metrics History Chart (24h / 7 Tage)
+  // ---------------------------------------------------------------------------
+  const HISTORY_METRICS = {
+    cpu:  { title: 'CPU-Auslastung', unit: '%', max: 100, series: [{ key: 'cpu', label: 'CPU', color: 'var(--accent-cyan)', area: true }], peak: 'cpu_max' },
+    temp: { title: 'CPU-Temperatur', unit: '°C', series: [{ key: 'temp', label: 'Temperatur', color: 'var(--accent-amber)', area: true }], peak: 'temp_max' },
+    ram:  { title: 'Arbeitsspeicher', unit: '%', max: 100, series: [{ key: 'ram', label: 'RAM', color: 'var(--accent-violet)', area: true }] },
+    net:  { title: 'Netzwerk', unit: 'rate', series: [
+      { key: 'net_down', label: 'Download', color: 'var(--chart-down)' },
+      { key: 'net_up', label: 'Upload', color: 'var(--chart-up)', dashed: true }
+    ] },
+    fan:  { title: 'Lüfterstufe', unit: 'level', max: 4, series: [{ key: 'fan', label: 'Lüfter', color: 'var(--accent-emerald)', area: true }], peak: 'fan_max' }
+  };
+
+  const historyState = { range: '24h', metric: 'cpu', data: null, layout: null };
+  const hEls = {};
+
+  function fmtRate(kb) {
+    if (kb == null) return '–';
+    return kb >= 1024 ? `${(kb / 1024).toFixed(kb >= 10240 ? 0 : 1)} MB/s` : `${kb.toFixed(kb >= 100 ? 0 : 1)} KB/s`;
+  }
+
+  function fmtValue(metric, v) {
+    if (v == null) return '–';
+    const unit = HISTORY_METRICS[metric].unit;
+    if (unit === 'rate') return fmtRate(v);
+    if (unit === 'level') return v < 0.05 ? 'Aus' : `Stufe ${v.toFixed(1).replace('.0', '')}`;
+    return `${v.toFixed(1)}${unit === '%' ? '%' : ' °C'}`;
+  }
+
+  function fmtTime(ts, withDay) {
+    const d = new Date(ts * 1000);
+    const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return withDay ? `${d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })} ${time}` : time;
+  }
+
+  // Round axis ticks: step is 1, 2 or 5 x 10^n, axis snaps to whole steps
+  function niceTicks(lo, hi, count = 4) {
+    const raw = Math.max(hi - lo, 1e-9) / count;
+    const exp = Math.pow(10, Math.floor(Math.log10(raw)));
+    const f = raw / exp;
+    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
+    const min = Math.floor(lo / step) * step;
+    const max = Math.ceil(hi / step) * step;
+    const ticks = [];
+    for (let t = min; t <= max + step / 2; t += step) ticks.push(+t.toFixed(6));
+    return { min, max, ticks };
+  }
+
+  const svgEl = (tag, attrs) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  };
+
+  function renderHistoryStats(points) {
+    const cfg = HISTORY_METRICS[historyState.metric];
+    hEls.stats.innerHTML = '';
+    const add = (label, value, s) => {
+      const div = document.createElement('div');
+      div.className = 'history-stat';
+      const l = document.createElement('span');
+      l.className = 'label';
+      if (s) {
+        const key = document.createElement('span');
+        key.className = `line-key ${s.dashed ? 'dashed' : ''}`;
+        key.style.setProperty('--key-color', s.color);
+        l.appendChild(key);
+      }
+      l.appendChild(document.createTextNode(label));
+      const v = document.createElement('span');
+      v.className = 'value';
+      v.textContent = value;
+      div.append(l, v);
+      hEls.stats.appendChild(div);
+    };
+
+    cfg.series.forEach(s => {
+      const vals = points.map(p => p[s.key]).filter(v => v != null);
+      if (!vals.length) return;
+      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const prefix = cfg.series.length > 1 ? `${s.label} ` : '';
+      add(`${prefix}Ø`, fmtValue(historyState.metric, avg), cfg.series.length > 1 ? s : null);
+      const peaks = cfg.peak ? points.map(p => p[cfg.peak]).filter(v => v != null) : vals;
+      add(`${prefix}Spitze`, fmtValue(historyState.metric, Math.max(...peaks)));
+      if (cfg.series.length === 1) add('Minimum', fmtValue(historyState.metric, Math.min(...vals)));
+    });
+  }
+
+  function renderHistoryChart() {
+    const data = historyState.data;
+    if (!data) return;
+    const cfg = HISTORY_METRICS[historyState.metric];
+    const points = data.points;
+    const svg = hEls.svg;
+    svg.innerHTML = '';
+    hEls.tooltip.hidden = true;
+
+    const hasData = points.some(p => cfg.series.some(s => p[s.key] != null));
+    hEls.empty.hidden = hasData;
+    renderHistoryStats(hasData ? points : []);
+    if (!hasData) { historyState.layout = null; return; }
+
+    const W = hEls.chart.clientWidth, H = hEls.chart.clientHeight;
+    const pad = { l: 58, r: cfg.series.length > 1 ? 74 : 12, t: 10, b: 24 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+    const now = Math.floor(Date.now() / 1000);
+    const span = data.range === '7d' ? 7 * 86400 : 86400;
+    const x0 = now - span;
+    const x = ts => pad.l + (ts - x0) / span * iw;
+
+    const vals = points.flatMap(p => cfg.series.map(s => p[s.key])).filter(v => v != null);
+    const dataMax = Math.max(...vals);
+
+    // Y scale. Network ticks are computed in the unit shown (KB/s or MB/s) so labels stay round.
+    let yMin = 0, yMax, ticks, tickLabel;
+    if (cfg.unit === 'level') {
+      yMax = 4; ticks = [0, 1, 2, 3, 4];
+      tickLabel = t => (t === 0 ? 'Aus' : String(t));
+    } else if (cfg.unit === 'rate') {
+      const div = dataMax >= 1024 ? 1024 : 1;
+      const nt = niceTicks(0, Math.max(dataMax / div, div === 1 ? 10 : 1));
+      yMax = nt.max * div; ticks = nt.ticks.map(t => t * div);
+      tickLabel = t => (t === 0 ? '0' : `${+(t / div).toFixed(2)} ${div === 1 ? 'KB/s' : 'MB/s'}`);
+    } else if (cfg.unit === '%') {
+      yMax = 100; ticks = [0, 25, 50, 75, 100];
+      tickLabel = t => `${t}%`;
+    } else {
+      const nt = niceTicks(Math.max(0, Math.min(...vals) - 5), dataMax + 5);
+      yMin = nt.min; yMax = nt.max; ticks = nt.ticks;
+      tickLabel = t => `${t}°`;
+    }
+    const y = v => pad.t + ih - (v - yMin) / (yMax - yMin) * ih;
+
+    // Grid + y labels (recessive)
+    ticks.forEach(t => {
+      svg.appendChild(svgEl('line', { x1: pad.l, x2: pad.l + iw, y1: y(t), y2: y(t), class: 'grid-line' }));
+      const label = svgEl('text', { x: pad.l - 8, y: y(t) + 3, 'text-anchor': 'end', class: 'axis-label' });
+      label.textContent = tickLabel(t);
+      svg.appendChild(label);
+    });
+
+    // X labels: every 3h (24h) or at each midnight (7d)
+    const xTicks = [];
+    if (data.range === '7d') {
+      const d = new Date(x0 * 1000); d.setHours(24, 0, 0, 0);
+      for (let t = d.getTime() / 1000; t < now; t += 86400) xTicks.push([t, new Date(t * 1000).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric' })]);
+    } else {
+      const d = new Date(x0 * 1000); d.setMinutes(0, 0, 0); d.setHours(Math.ceil((d.getHours() + 1) / 3) * 3);
+      for (let t = d.getTime() / 1000; t < now; t += 3 * 3600) xTicks.push([t, fmtTime(t)]);
+    }
+    xTicks.forEach(([t, text]) => {
+      const lbl = svgEl('text', { x: x(t), y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });
+      lbl.textContent = text;
+      svg.appendChild(lbl);
+    });
+
+    // Series: break the line where values are missing or the server was off
+    const gapLimit = data.bucket_seconds * 2.5;
+    cfg.series.forEach(s => {
+      const segments = [];
+      let seg = [];
+      points.forEach((p, i) => {
+        const v = p[s.key];
+        const broken = i > 0 && p.ts - points[i - 1].ts > gapLimit;
+        if (v == null || broken) { if (seg.length) segments.push(seg); seg = []; }
+        if (v != null) seg.push([x(p.ts + data.bucket_seconds / 2), y(Math.min(v, yMax))]);
+      });
+      if (seg.length) segments.push(seg);
+
+      segments.forEach(pts => {
+        if (pts.length === 1) pts.push([pts[0][0] + 2, pts[0][1]]);
+        const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+        if (s.area) {
+          const area = svgEl('path', { d: `${d}L${pts[pts.length - 1][0].toFixed(1)},${y(yMin)}L${pts[0][0].toFixed(1)},${y(yMin)}Z`, fill: s.color, 'fill-opacity': 0.1 });
+          svg.appendChild(area);
+        }
+        svg.appendChild(svgEl('path', {
+          d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+          ...(s.dashed ? { 'stroke-dasharray': '5 4' } : {})
+        }));
+      });
+
+      // Direct label at the line end when there are several series
+      if (cfg.series.length > 1 && segments.length) {
+        const last = segments[segments.length - 1].slice(-1)[0];
+        const lbl = svgEl('text', { x: last[0] + 8, y: last[1] + 4, class: 'series-label' });
+        lbl.textContent = s.label;
+        svg.appendChild(lbl);
+      }
+    });
+
+    // De-overlap the two end labels
+    const labels = svg.querySelectorAll('.series-label');
+    if (labels.length === 2) {
+      const [a, b] = [...labels];
+      const ya = +a.getAttribute('y'), yb = +b.getAttribute('y');
+      if (Math.abs(ya - yb) < 14) {
+        const mid = (ya + yb) / 2;
+        a.setAttribute('y', ya <= yb ? mid - 7 : mid + 7);
+        b.setAttribute('y', ya <= yb ? mid + 7 : mid - 7);
+      }
+    }
+
+    // Hover layer
+    const hover = svgEl('g', { visibility: 'hidden' });
+    hover.appendChild(svgEl('line', { y1: pad.t, y2: pad.t + ih, class: 'crosshair' }));
+    cfg.series.forEach(s => hover.appendChild(svgEl('circle', { r: 4, fill: s.color, class: 'hover-dot' })));
+    svg.appendChild(hover);
+    const hit = svgEl('rect', { x: pad.l, y: pad.t, width: iw, height: ih, fill: 'transparent' });
+    svg.appendChild(hit);
+
+    historyState.layout = { x, y, yMax, pad, iw, hover, points, cfg };
+  }
+
+  function onHistoryHover(evt) {
+    const L = historyState.layout;
+    if (!L) return;
+    const rect = hEls.svg.getBoundingClientRect();
+    const px = evt.clientX - rect.left;
+    if (px < L.pad.l || px > L.pad.l + L.iw) return hideHistoryHover();
+
+    const half = historyState.data.bucket_seconds / 2;
+    let best = null, bestDist = Infinity;
+    L.points.forEach(p => {
+      const d = Math.abs(L.x(p.ts + half) - px);
+      if (d < bestDist) { bestDist = d; best = p; }
+    });
+    if (!best || bestDist > 30) return hideHistoryHover();
+
+    const cx = L.x(best.ts + half);
+    const [line, ...dots] = L.hover.children;
+    line.setAttribute('x1', cx); line.setAttribute('x2', cx);
+    L.cfg.series.forEach((s, i) => {
+      const v = best[s.key];
+      dots[i].setAttribute('visibility', v == null ? 'hidden' : 'visible');
+      if (v != null) { dots[i].setAttribute('cx', cx); dots[i].setAttribute('cy', L.y(Math.min(v, L.yMax))); }
+    });
+    L.hover.setAttribute('visibility', 'visible');
+
+    // Tooltip: value first (strong), label second, keyed by a line swatch
+    const tt = hEls.tooltip;
+    tt.innerHTML = '';
+    const time = document.createElement('div');
+    time.className = 'tt-time';
+    time.textContent = fmtTime(best.ts, historyState.range === '7d');
+    tt.appendChild(time);
+    const row = (value, label, s) => {
+      const r = document.createElement('div');
+      r.className = 'tt-row';
+      const key = document.createElement('span');
+      key.className = `line-key ${s && s.dashed ? 'dashed' : ''}`;
+      key.style.setProperty('--key-color', s ? s.color : 'transparent');
+      const b = document.createElement('b');
+      b.textContent = value;
+      r.append(key, b, document.createTextNode(label));
+      tt.appendChild(r);
+    };
+    L.cfg.series.forEach(s => row(fmtValue(historyState.metric, best[s.key]), s.label, s));
+    if (L.cfg.peak && best[L.cfg.peak] != null) row(fmtValue(historyState.metric, best[L.cfg.peak]), 'Spitze', null);
+
+    tt.hidden = false;
+    const left = cx + 14 + tt.offsetWidth > hEls.chart.clientWidth ? cx - 14 - tt.offsetWidth : cx + 14;
+    tt.style.left = `${left}px`;
+  }
+
+  function hideHistoryHover() {
+    if (historyState.layout) historyState.layout.hover.setAttribute('visibility', 'hidden');
+    hEls.tooltip.hidden = true;
+  }
+
+  function renderHistoryTable() {
+    const data = historyState.data;
+    if (!data || !hEls.tableWrap.open) return;
+    const cfg = HISTORY_METRICS[historyState.metric];
+    const table = hEls.table;
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Zeit', ...cfg.series.map(s => s.label), ...(cfg.peak ? ['Spitze'] : [])].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      head.appendChild(th);
+    });
+    const body = table.createTBody();
+    [...data.points].reverse().forEach(p => {
+      const tr = body.insertRow();
+      [fmtTime(p.ts, historyState.range === '7d'), ...cfg.series.map(s => fmtValue(historyState.metric, p[s.key])),
+       ...(cfg.peak ? [fmtValue(historyState.metric, p[cfg.peak])] : [])].forEach(v => { tr.insertCell().textContent = v; });
+    });
+  }
+
+  function renderHistory() {
+    const cfg = HISTORY_METRICS[historyState.metric];
+    hEls.subtitle.textContent = `${cfg.title} · ${historyState.range === '7d' ? 'letzte 7 Tage' : 'letzte 24 Stunden'}`;
+    hEls.svg.setAttribute('aria-label', `Verlaufsdiagramm ${cfg.title}`);
+    renderHistoryChart();
+    renderHistoryTable();
+  }
+
+  async function loadHistory() {
+    hEls.chart.classList.add('loading');  // keep the previous render while fetching
+    try {
+      const res = await fetch(`/api/history?range=${historyState.range}`);
+      if (res.ok) historyState.data = await res.json();
+    } catch (e) {
+      console.warn('History fetch failed:', e);
+    } finally {
+      hEls.chart.classList.remove('loading');
+      renderHistory();
+    }
+  }
+
+  function initHistory() {
+    Object.assign(hEls, {
+      chart: document.getElementById('history-chart'),
+      svg: document.getElementById('history-svg'),
+      tooltip: document.getElementById('history-tooltip'),
+      empty: document.getElementById('history-empty'),
+      stats: document.getElementById('history-stats'),
+      subtitle: document.getElementById('history-subtitle'),
+      table: document.getElementById('history-table'),
+      tableWrap: document.getElementById('history-table-wrap')
+    });
+    if (!hEls.chart) return;
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('historyView') || '{}');
+      if (HISTORY_METRICS[saved.metric]) historyState.metric = saved.metric;
+      if (saved.range === '24h' || saved.range === '7d') historyState.range = saved.range;
+    } catch (e) { /* storage unavailable */ }
+
+    const bindSegmented = (id, attr, onSelect) => {
+      const group = document.getElementById(id);
+      const buttons = group.querySelectorAll('button');
+      const sync = () => buttons.forEach(b => {
+        const active = b.dataset[attr] === historyState[attr];
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active);
+      });
+      buttons.forEach(b => b.addEventListener('click', () => {
+        historyState[attr] = b.dataset[attr];
+        sync();
+        try { localStorage.setItem('historyView', JSON.stringify({ metric: historyState.metric, range: historyState.range })); } catch (e) { /* ignore */ }
+        onSelect();
+      }));
+      sync();
+    };
+    bindSegmented('history-range', 'range', loadHistory);
+    bindSegmented('history-metric', 'metric', renderHistory);
+
+    hEls.svg.addEventListener('pointermove', onHistoryHover);
+    hEls.svg.addEventListener('pointerleave', hideHistoryHover);
+    hEls.tableWrap.addEventListener('toggle', renderHistoryTable);
+    new ResizeObserver(() => renderHistoryChart()).observe(hEls.chart);
+
+    loadHistory();
+    setInterval(loadHistory, 5 * 60 * 1000);
+  }
+
+  // ---------------------------------------------------------------------------
   function init() {
     startClock();
     initHeaderControls();
@@ -1101,6 +1462,7 @@
     initDiagnostics();
     loadWeather();
     loadDrives();
+    initHistory();
     connectWebSocket();
 
     setInterval(loadWeather, 600000);

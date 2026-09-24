@@ -873,6 +873,260 @@ body {
 }
 
 /* ==========================================================================
+   Metrics History (24h / 7 Tage)
+   ========================================================================== */
+
+.history-card {
+  --chart-down: #0891d1;
+  --chart-up: #a855f7;
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-axis: var(--text-dim);
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.segmented {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.segmented button {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.segmented button:hover {
+  color: var(--text-main);
+}
+
+.segmented button.active {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+.history-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-bottom: 12px;
+}
+
+.history-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-stat .label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-stat .value {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.history-chart {
+  position: relative;
+  height: 240px;
+  transition: opacity 0.2s;
+}
+
+.history-chart.loading {
+  opacity: 0.45;
+}
+
+.history-chart svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.history-chart .grid-line {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+.history-chart .axis-label {
+  fill: var(--chart-axis);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.history-chart .series-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text-muted);
+}
+
+.history-chart .crosshair {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.history-chart .hover-dot {
+  stroke: var(--bg-deep);
+  stroke-width: 2;
+}
+
+.history-tooltip {
+  position: absolute;
+  top: 8px;
+  pointer-events: none;
+  background: rgba(10, 14, 24, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 12px;
+  min-width: 140px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+
+.history-tooltip[hidden] {
+  display: none;
+}
+
+.history-tooltip .tt-time {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.history-tooltip .tt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.history-tooltip .tt-row b {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  min-width: 70px;
+}
+
+.line-key {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 2px solid var(--key-color);
+  flex-shrink: 0;
+}
+
+.line-key.dashed {
+  border-top-style: dashed;
+}
+
+.history-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.history-empty[hidden] {
+  display: none;
+}
+
+.history-table-wrap {
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.history-table-wrap summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.history-table-wrap summary:hover {
+  color: var(--text-main);
+}
+
+.history-table-scroll {
+  max-height: 260px;
+  overflow: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.history-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+}
+
+.history-table-wrap th,
+.history-table-wrap td {
+  padding: 5px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.history-table-wrap th {
+  position: sticky;
+  top: 0;
+  background: #0d121d;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+.history-table-wrap th:first-child,
+.history-table-wrap td:first-child {
+  text-align: left;
+}
+
+/* ==========================================================================
    Metrics Grid (System Monitoring Core)
    ========================================================================== */
 
