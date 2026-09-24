@@ -442,6 +442,7 @@
       const status = srv.status || (srv.running ? 'active' : 'inactive');
       const tile = document.createElement('div');
       tile.className = `service-tile ${status}${srv.unit ? ' clickable' : ''}`;
+      tile.dataset.name = srv.name;
       if (srv.unit) {
         tile.tabIndex = 0;
         tile.setAttribute('role', 'button');

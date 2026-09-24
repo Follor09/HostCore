@@ -367,7 +367,9 @@
     'Nach vorne': 'Move forward', 'Nach hinten': 'Move back', 'Nach oben': 'Move up', 'Nach unten': 'Move down', 'Ausblenden': 'Hide', 'Einblenden': 'Show',
     'Obere Reihe': 'Top row', 'Messwerte': 'Metrics', 'Untere Reihe': 'Bottom row', 'Uhrzeit & Betriebszeit': 'Time & uptime',
     'Server-Dienste': 'Server services',
-    'Speicher & NVMe': 'Storage & NVMe', 'Laufwerke & Explorer': 'Drives & explorer', 'Prozesse & Diagnose': 'Processes & diagnostics'
+    'Speicher & NVMe': 'Storage & NVMe', 'Laufwerke & Explorer': 'Drives & explorer', 'Prozesse & Diagnose': 'Processes & diagnostics',
+    // Command palette
+    'Suchen & Befehle': 'Search & commands', 'Befehle & Suche': 'Commands & search', 'auswählen': 'select', 'ausführen': 'run', 'schließen': 'close', 'Seite, Bereich oder Aktion suchen…': 'Search pages, sections or actions…', 'Nichts gefunden.': 'Nothing found.', 'Strg+K': 'Ctrl+K', 'Zuletzt verwendet': 'Recently used', 'Aktionen': 'Actions', 'Seiten': 'Pages', 'System-Updates öffnen': 'Open system updates', 'NVMe-Verlauf öffnen': 'Open NVMe history', 'Dateien durchsuchen': 'Browse files', 'Wetter-Ort ändern': 'Change weather location', 'Design umschalten': 'Toggle theme', 'Vollbild': 'Full screen'
   };
 
   // ---------------------------------------------------------------------------
