@@ -27,6 +27,7 @@ import auth
 import settings_store
 import wol
 import files
+import terminal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -81,7 +82,8 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = (path == "/settings" or path.startswith(("/api/settings", "/api/workloads/", "/api/files/"))
+    always_private = (path in ("/settings", "/terminal")
+                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal"))
                       or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
@@ -340,6 +342,44 @@ async def api_files_download(path: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Web terminal
+# ---------------------------------------------------------------------------
+class TerminalTicketRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/terminal/ticket")
+async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
+    """Re-check the password before handing out a one-time terminal ticket."""
+    ip = request.client.host if request.client else "unknown"
+    wait = auth.lockout_remaining(ip)
+    if wait:
+        raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+    if not await asyncio.to_thread(auth.verify_login, request.state.user, req.password):
+        auth.record_failure(ip)
+        logger.warning(f"Terminal: wrong password for '{request.state.user}' from {ip}")
+        raise HTTPException(status_code=403, detail="Passwort ist falsch.")
+    auth.record_success(ip)
+    if terminal.session_count() >= terminal.MAX_SESSIONS:
+        raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
+    return {"ticket": terminal.issue_ticket(request.state.user), "expires_in": terminal.TICKET_TTL}
+
+
+@app.websocket("/ws/terminal")
+async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, cols: int = 80):
+    # WebSockets bypass the HTTP middleware: check session, origin and ticket here
+    user = auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME))
+    origin = websocket.headers.get("origin", "")
+    same_origin = origin.split("://", 1)[-1] == websocket.headers.get("host", "")
+    await websocket.accept()
+    if not user or not same_origin or not terminal.redeem_ticket(ticket, user):
+        await websocket.close(code=4401)
+        return
+    client = websocket.client.host if websocket.client else "unknown"
+    await terminal.run_session(websocket, user, client, rows, cols)
+
+
+# ---------------------------------------------------------------------------
 # systemd service control (tiles in the "Server-Dienste" widget)
 # ---------------------------------------------------------------------------
 @app.post("/api/services/{service_id}/{action}")
@@ -485,7 +525,7 @@ def _serve_page(name: str) -> HTMLResponse:
     mix a new page with a cached old style.css / *.js after an auto-update."""
     with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
         html = f.read()
-    for asset in ("style.css", "app.js", "settings.js"):
+    for asset in ("style.css", "app.js", "settings.js", "terminal.js"):
         path = os.path.join(STATIC_DIR, asset)
         if os.path.exists(path):
             html = html.replace(f"/static/{asset}\"", f"/static/{asset}?v={int(os.path.getmtime(path))}\"")
@@ -500,6 +540,11 @@ async def get_index():
 @app.get("/settings")
 async def get_settings_page():
     return _serve_page("settings.html")
+
+
+@app.get("/terminal")
+async def get_terminal_page():
+    return _serve_page("terminal.html")
 
 
 @app.get("/api/system")
