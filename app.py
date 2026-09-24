@@ -28,6 +28,7 @@ import settings_store
 import wol
 import files
 import terminal
+import systools
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -82,8 +83,8 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = (path in ("/settings", "/terminal")
-                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal"))
+    always_private = (path in ("/settings", "/terminal", "/system")
+                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/"))
                       or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
@@ -342,6 +343,19 @@ async def api_files_download(path: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# System tools page
+# ---------------------------------------------------------------------------
+@app.get("/api/tools/network")
+async def api_tools_network():
+    return await asyncio.to_thread(systools.network_details)
+
+
+@app.get("/api/tools/hardware")
+async def api_tools_hardware():
+    return await asyncio.to_thread(systools.hardware_info)
+
+
+# ---------------------------------------------------------------------------
 # Web terminal
 # ---------------------------------------------------------------------------
 class TerminalTicketRequest(BaseModel):
@@ -525,7 +539,7 @@ def _serve_page(name: str) -> HTMLResponse:
     mix a new page with a cached old style.css / *.js after an auto-update."""
     with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
         html = f.read()
-    for asset in ("style.css", "app.js", "settings.js", "terminal.js"):
+    for asset in ("style.css", "app.js", "settings.js", "terminal.js", "system.js"):
         path = os.path.join(STATIC_DIR, asset)
         if os.path.exists(path):
             html = html.replace(f"/static/{asset}\"", f"/static/{asset}?v={int(os.path.getmtime(path))}\"")
@@ -545,6 +559,11 @@ async def get_settings_page():
 @app.get("/terminal")
 async def get_terminal_page():
     return _serve_page("terminal.html")
+
+
+@app.get("/system")
+async def get_system_page():
+    return _serve_page("system.html")
 
 
 @app.get("/api/system")
