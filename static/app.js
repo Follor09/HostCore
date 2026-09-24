@@ -1167,11 +1167,19 @@
 
   const SHIELD_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
 
+  let lastUpdates = null;
+
   function renderUpdates(up) {
     const count = $('updates-count'), tags = $('updates-tags'), list = $('updates-list'), footer = $('updates-footer');
     if (!count) return;
+    lastUpdates = up;
     tags.innerHTML = '';
     list.innerHTML = '';
+    if (aptRun.running) {
+      const t = document.createElement('span');
+      setHealthTag(t, 'warning', aptRun.mode === 'upgrade' ? 'Upgrade läuft…' : 'Update läuft…');
+      tags.appendChild(t);
+    }
 
     const addTag = (level, text) => {
       const t = document.createElement('span');
@@ -1227,7 +1235,181 @@
     if (up.count > shown) addEmpty(`+ ${up.count - shown} weitere Pakete`);
     if (up.count === 0) addEmpty('Alle Pakete sind auf dem neuesten Stand.');
 
-    footer.innerHTML = up.count ? 'Installieren: <code>sudo apt update &amp;&amp; sudo apt full-upgrade</code>' : '';
+    footer.textContent = 'Klicken für alle Pakete & Installation';
+    if ($('updates-modal').classList.contains('open')) renderUpdatesSheet();
+  }
+
+  // ---- System-Updates sheet: full list + apt update / upgrade with live log ----
+  const aptRun = { running: false, mode: null, state: 'idle', pollTimer: null, confirmTimer: null };
+
+  function renderUpdatesSheet() {
+    const up = lastUpdates;
+    const table = $('updates-modal-table'), tags = $('updates-modal-tags');
+    table.innerHTML = '';
+    tags.innerHTML = '';
+    // Reuse the card's tags so both always agree
+    [...$('updates-tags').children].forEach(t => tags.appendChild(t.cloneNode(true)));
+
+    $('updates-modal-sub').textContent = up && up.supported && !up.error
+      ? `${up.count} Paket${up.count === 1 ? '' : 'e'} aktualisierbar${up.lists_updated ? ` · Paketlisten ${relTime(up.lists_updated)}` : ''}`
+      : 'apt-Pakete';
+
+    const head = table.createTHead().insertRow();
+    ['Paket', 'Installiert', 'Neu'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      head.appendChild(th);
+    });
+    const body = table.createTBody();
+    const pkgs = (up && up.packages) || [];
+    if (!pkgs.length) {
+      const row = body.insertRow();
+      row.className = 'empty-row';
+      const td = row.insertCell();
+      td.colSpan = 3;
+      td.textContent = !up || !up.supported ? 'Nur auf Debian / Raspberry Pi OS verfügbar.' : 'Alle Pakete sind auf dem neuesten Stand.';
+    }
+    pkgs.forEach(p => {
+      const row = body.insertRow();
+      const name = row.insertCell();
+      name.className = 'name';
+      if (p.security) {
+        const icon = document.createElement('span');
+        icon.className = 'sec-icon';
+        icon.title = 'Sicherheitsupdate';
+        icon.innerHTML = SHIELD_ICON;
+        name.appendChild(icon);
+      }
+      name.appendChild(document.createTextNode(p.name));
+      const oldV = row.insertCell(); oldV.className = 'ver'; oldV.textContent = p.old;
+      const newV = row.insertCell(); newV.className = 'ver'; newV.textContent = p.new;
+    });
+
+    const upgradeBtn = $('btn-apt-upgrade');
+    const supported = up && up.supported;
+    $('btn-apt-update').disabled = aptRun.running || !supported;
+    upgradeBtn.disabled = aptRun.running || !supported;
+    if (!upgradeBtn.classList.contains('confirming')) {
+      upgradeBtn.textContent = up && up.count ? `Update & Upgrade installieren (${up.count})` : 'Update & Upgrade installieren';
+    }
+  }
+
+  function renderAptRun(run) {
+    const wrap = $('apt-log-wrap'), log = $('apt-log');
+    if (!run || !run.supported || (!run.log && !run.running)) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    $('apt-log-title').textContent = run.mode === 'update' ? 'Ausgabe: apt update' : 'Ausgabe: apt update & full-upgrade';
+    const labels = { running: ['warning', 'Läuft…'], done: ['good', 'Fertig'], failed: ['critical', `Fehler (Code ${run.exit_code})`] };
+    const [level, text] = labels[run.state] || ['', run.state];
+    setHealthTag($('apt-run-tag'), level, text);
+
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+    log.textContent = run.log || 'Starte…';
+    if (atBottom || run.running) log.scrollTop = log.scrollHeight;
+  }
+
+  async function pollAptRun() {
+    clearTimeout(aptRun.pollTimer);
+    let run = null;
+    try {
+      const res = await fetch('/api/updates/apt');
+      if (res.ok) run = await res.json();
+    } catch (e) { /* keep polling */ }
+
+    const wasRunning = aptRun.running;
+    if (run) {
+      Object.assign(aptRun, { running: run.running, mode: run.mode, state: run.state });
+      renderAptRun(run);
+    }
+    if (wasRunning && run && !run.running) {
+      showToast(run.state === 'done' ? 'apt ist fertig. Paketliste wird aktualisiert.' : 'apt ist mit einem Fehler beendet.',
+        run.state === 'done' ? 'success' : 'error');
+      loadHomelab();  // fresh package counts (server drops its cache after a run)
+    }
+    renderUpdatesSheet();
+    if (lastUpdates) renderUpdates(lastUpdates);
+
+    const sheetOpen = $('updates-modal').classList.contains('open');
+    if (aptRun.running || (sheetOpen && !run)) {
+      aptRun.pollTimer = setTimeout(pollAptRun, aptRun.running ? 1500 : 5000);
+    }
+  }
+
+  async function startAptRun(mode) {
+    try {
+      const res = await fetch('/api/updates/apt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Start fehlgeschlagen.');
+      showToast(data.message, 'info');
+      Object.assign(aptRun, { running: true, mode, state: 'running' });
+      renderAptRun({ supported: true, running: true, state: 'running', mode, log: '' });
+      renderUpdatesSheet();
+      setTimeout(pollAptRun, 800);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function resetUpgradeConfirm() {
+    const btn = $('btn-apt-upgrade');
+    clearTimeout(aptRun.confirmTimer);
+    btn.classList.remove('confirming');
+    renderUpdatesSheet();
+  }
+
+  function openUpdatesSheet() {
+    const modal = $('updates-modal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    renderUpdatesSheet();
+    pollAptRun();
+    $('updates-modal-close').focus();
+  }
+
+  function closeUpdatesSheet() {
+    const modal = $('updates-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    resetUpgradeConfirm();
+    $('updates-card').focus();
+  }
+
+  function initUpdatesSheet() {
+    const card = $('updates-card');
+    if (!card) return;
+    card.addEventListener('click', openUpdatesSheet);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUpdatesSheet(); }
+    });
+    $('updates-modal-close').addEventListener('click', closeUpdatesSheet);
+    $('updates-modal').addEventListener('click', e => { if (e.target.id === 'updates-modal') closeUpdatesSheet(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('updates-modal').classList.contains('open')) closeUpdatesSheet();
+    });
+
+    $('btn-apt-update').addEventListener('click', () => startAptRun('update'));
+
+    // Installing is a real change to the system: require a second click within 5s
+    $('btn-apt-upgrade').addEventListener('click', () => {
+      const btn = $('btn-apt-upgrade');
+      if (btn.classList.contains('confirming')) {
+        resetUpgradeConfirm();
+        startAptRun('upgrade');
+        return;
+      }
+      btn.classList.add('confirming');
+      btn.textContent = 'Wirklich installieren? Nochmal klicken';
+      aptRun.confirmTimer = setTimeout(resetUpgradeConfirm, 5000);
+    });
+
+    pollAptRun();  // pick up a run that is already in progress
   }
 
   function renderNvme(nvme) {
@@ -1374,6 +1556,7 @@
         renderWorkloads();
       });
     }
+    initUpdatesSheet();
     loadHomelab();
     setInterval(loadHomelab, 20000);
   }

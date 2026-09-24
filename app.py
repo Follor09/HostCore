@@ -167,6 +167,25 @@ async def api_homelab():
     return await asyncio.to_thread(homelab.get_all)
 
 
+class AptRunRequest(BaseModel):
+    mode: str  # "update" or "upgrade"
+
+
+@app.get("/api/updates/apt")
+async def api_apt_status():
+    """Status and log of the running / last apt update or upgrade."""
+    return await asyncio.to_thread(homelab.get_apt_run)
+
+
+@app.post("/api/updates/apt")
+async def api_apt_start(req: AptRunRequest):
+    """Start apt update or update+full-upgrade via its systemd unit."""
+    result = await asyncio.to_thread(homelab.start_apt_run, req.mode)
+    if not result["ok"]:
+        raise HTTPException(status_code=409, detail=result["message"])
+    return result
+
+
 @app.get("/api/services")
 async def api_services():
     """Return status of homelab services."""

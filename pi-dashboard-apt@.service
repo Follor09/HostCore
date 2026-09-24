@@ -1,0 +1,8 @@
+[Unit]
+Description=PiCore Dashboard: apt %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=__DIR__/apt-run.sh %i

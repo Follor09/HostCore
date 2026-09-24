@@ -25,10 +25,10 @@ if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
     as_owner python3 -m venv "$DIR/venv"
 fi
 as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
-chmod +x "$DIR/update.sh" "$DIR/start.sh" "$DIR/set-token.sh"
+chmod +x "$DIR/update.sh" "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/apt-run.sh"
 
 echo "⚙️  Installing systemd units..."
-for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer; do
+for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer pi-dashboard-apt@.service; do
     sed -e "s|__USER__|$OWNER|g" -e "s|__DIR__|$DIR|g" "$DIR/$unit" > "/etc/systemd/system/$unit"
 done
 
@@ -38,11 +38,14 @@ if [ -e /dev/nvme0 ] && ! command -v smartctl >/dev/null; then
     apt-get install -y -qq smartmontools || echo "   ⚠️  smartmontools install failed, NVMe health stays limited"
 fi
 
-# Narrow sudo rules: restart the dashboard (Update button / webhook), read NVMe SMART data
+# Narrow sudo rules: restart the dashboard (Update button / webhook), run apt via its
+# systemd unit (System-Updates panel), read NVMe SMART data
 SYSTEMCTL="$(command -v systemctl)"
 SUDOERS=/etc/sudoers.d/pi-dashboard-restart
 {
     echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL restart raspberry-dashboard"
+    echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-apt@update.service"
+    echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-apt@upgrade.service"
     if [ -e /dev/nvme0 ] && command -v smartctl >/dev/null; then
         echo "$OWNER ALL=(root) NOPASSWD: $(command -v smartctl) -j -a /dev/nvme0"
     fi

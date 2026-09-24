@@ -42,6 +42,9 @@ class _Cache:
         self._data[key] = (time.time(), value)
         return value
 
+    def invalidate(self, key: str) -> None:
+        self._data.pop(key, None)
+
 
 _cache = _Cache()
 
@@ -172,14 +175,89 @@ def _apt_updates() -> Dict[str, Any]:
         "supported": True,
         "count": len(packages),
         "security_count": sum(p["security"] for p in packages),
-        "packages": packages[:50],
+        "packages": packages[:500],
         "lists_updated": int(max(os.path.getmtime(f) for f in lists)) if lists else None,
         "reboot_required": os.path.exists("/var/run/reboot-required"),
     }
 
 
 def get_updates() -> Dict[str, Any]:
+    _check_apt_run_finished()
     return _cache.get("apt", 30 * 60, _apt_updates)
+
+
+# apt update / upgrade, run as root by pi-dashboard-apt@<mode>.service (see apt-run.sh).
+# Running it as a systemd unit means a dashboard restart can't kill apt halfway.
+APT_STATE_DIR = os.environ.get("PI_DASHBOARD_STATE_DIR", "/run/pi-dashboard")
+APT_MODES = ("update", "upgrade")
+_apt_seen_finish = 0
+
+
+def _apt_unit_running() -> bool:
+    units = [f"pi-dashboard-apt@{m}.service" for m in APT_MODES]
+    try:
+        out = _run(["systemctl", "is-active", *units], timeout=3).stdout.split()
+    except Exception:
+        return False
+    return any(state in ("active", "activating", "reloading") for state in out)
+
+
+def _read_apt_status() -> Dict[str, Any]:
+    try:
+        with open(os.path.join(APT_STATE_DIR, "apt.status")) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _check_apt_run_finished() -> None:
+    """After a finished apt run, drop the cached package list so counts are fresh."""
+    global _apt_seen_finish
+    finished = _read_apt_status().get("finished") or 0
+    if finished > _apt_seen_finish:
+        _apt_seen_finish = finished
+        _cache.invalidate("apt")
+
+
+def get_apt_run() -> Dict[str, Any]:
+    if not IS_LINUX:
+        return {"supported": False, "running": False}
+    status = _read_apt_status()
+    running = _apt_unit_running()
+    log = ""
+    try:
+        with open(os.path.join(APT_STATE_DIR, "apt.log"), errors="replace") as f:
+            log = "".join(deque(f, maxlen=300))
+    except Exception:
+        pass
+    _check_apt_run_finished()
+    # Between "start" and the script's first write the old status is still on disk
+    state = "running" if running else status.get("state", "idle")
+    return {"supported": True, "running": running, "state": state, "mode": status.get("mode"),
+            "exit_code": status.get("exit_code"), "started": status.get("started"),
+            "finished": status.get("finished"), "log": log if running or status else ""}
+
+
+def start_apt_run(mode: str) -> Dict[str, Any]:
+    if mode not in APT_MODES:
+        return {"ok": False, "message": "Unbekannte Aktion."}
+    if not IS_LINUX:
+        return {"ok": False, "message": "Nur auf dem Raspberry Pi verfügbar."}
+    if _apt_unit_running():
+        return {"ok": False, "message": "apt läuft bereits."}
+
+    systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
+    try:
+        # Must match the sudoers rule written by install.sh exactly
+        res = _run(["sudo", "-n", systemctl, "start", "--no-block", f"pi-dashboard-apt@{mode}.service"], timeout=10)
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "password" in err.lower() or "not allowed" in err.lower():
+            return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
+        return {"ok": False, "message": err[:200] or "Start fehlgeschlagen."}
+    return {"ok": True, "message": "Paketlisten werden aktualisiert…" if mode == "update" else "Update & Upgrade gestartet…"}
 
 
 # ---------------------------------------------------------------------------

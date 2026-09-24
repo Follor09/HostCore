@@ -1038,6 +1038,177 @@ body {
   word-break: break-all;
 }
 
+/* Updates card is clickable -> opens the details sheet */
+.updates-card {
+  cursor: pointer;
+}
+
+.updates-card:hover {
+  border-color: rgba(255, 183, 3, 0.3);
+}
+
+.updates-card:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.updates-head-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.expand-icon {
+  color: var(--text-dim);
+  padding-top: 4px;
+  transition: color 0.2s;
+}
+
+.updates-card:hover .expand-icon {
+  color: var(--accent-amber);
+}
+
+/* Details sheet (larger modal) */
+.modal-card.sheet-card {
+  max-width: 760px;
+  width: calc(100% - 32px);
+  max-height: 88vh;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+
+.modal-card.sheet-card p {
+  margin-bottom: 0;
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.sheet-head h3 {
+  margin-bottom: 2px;
+}
+
+.sheet-table-scroll {
+  flex: 1 1 auto;
+  min-height: 80px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.pkg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.pkg-table th,
+.pkg-table td {
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.pkg-table th {
+  position: sticky;
+  top: 0;
+  background: #121828;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.pkg-table td.name {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.pkg-table td.name .sec-icon {
+  color: var(--accent-amber);
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.pkg-table td.ver {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  word-break: break-all;
+}
+
+.pkg-table .empty-row td {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 18px;
+}
+
+.apt-log-wrap[hidden] {
+  display: none;
+}
+
+.apt-log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.apt-log {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  background: #05070c;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: #a5b4c8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.sheet-actions button {
+  flex: 1;
+}
+
+.sheet-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.modal-card .btn-upgrade {
+  background: var(--accent-emerald);
+  color: #04130d;
+}
+
+.modal-card .btn-upgrade.confirming {
+  background: var(--accent-amber);
+  color: #1a1200;
+}
+
+.sheet-note {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .sheet-actions { flex-direction: column; }
+}
+
 /* Workloads */
 .workloads-grid {
   display: grid;

@@ -474,7 +474,7 @@
       </div>
 
       <!-- Metric 8: System-Updates (apt) -->
-      <div class="glass-card metric-card updates-card">
+      <div class="glass-card metric-card updates-card" id="updates-card" role="button" tabindex="0" title="Details &amp; Installation öffnen">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-amber">
@@ -485,7 +485,12 @@
               <p class="card-subtitle" id="updates-subtitle">apt-Pakete</p>
             </div>
           </div>
-          <div class="metric-highlight-value" id="updates-count">--</div>
+          <div class="updates-head-right">
+            <div class="metric-highlight-value" id="updates-count">--</div>
+            <span class="expand-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+            </span>
+          </div>
         </div>
 
         <div class="updates-tags" id="updates-tags"></div>
@@ -762,6 +767,41 @@
         <button class="btn-cancel" id="btn-modal-cancel">Abbrechen</button>
         <button class="btn-confirm" id="btn-modal-confirm">Bestätigen</button>
       </div>
+    </div>
+  </div>
+
+  <!-- System-Updates: details, apt update / upgrade with live log -->
+  <div class="modal-backdrop" id="updates-modal" aria-hidden="true">
+    <div class="modal-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="updates-modal-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="updates-modal-title">System-Updates</h3>
+          <p class="card-subtitle" id="updates-modal-sub">apt-Pakete</p>
+        </div>
+        <button class="mini-icon-btn" id="updates-modal-close" title="Schließen (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="updates-tags" id="updates-modal-tags"></div>
+
+      <div class="sheet-table-scroll" id="updates-modal-scroll">
+        <table class="pkg-table" id="updates-modal-table"></table>
+      </div>
+
+      <div class="apt-log-wrap" id="apt-log-wrap" hidden>
+        <div class="apt-log-head">
+          <span class="sub-label" id="apt-log-title">Ausgabe</span>
+          <span class="health-tag" id="apt-run-tag"></span>
+        </div>
+        <pre class="apt-log" id="apt-log"></pre>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn-cancel" id="btn-apt-update">Paketlisten aktualisieren</button>
+        <button class="btn-confirm btn-upgrade" id="btn-apt-upgrade">Update &amp; Upgrade installieren</button>
+      </div>
+      <p class="sheet-note">apt läuft als eigener Systemdienst weiter – auch wenn du dieses Fenster schließt oder das Dashboard neu startet.</p>
     </div>
   </div>
 
