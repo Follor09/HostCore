@@ -32,6 +32,8 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#netzwerk" class="active">Netzwerk</a>
+      <a href="#firewall">Firewall</a>
+      <a href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
@@ -60,6 +62,89 @@
           <table class="data-table" id="net-ports"></table>
         </div>
         <p class="field-hint" id="net-ports-hint"></p>
+      </section>
+
+      <!-- Firewall -->
+      <section class="glass-card settings-section" id="firewall">
+        <div class="section-head">
+          <h2>Firewall</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="fw-state">–</span>
+            <button class="mini-icon-btn" data-reload="firewall" title="Neu laden">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+        </div>
+        <p class="section-desc">Blockiert eingehende Verbindungen, die du nicht ausdrücklich erlaubst (ufw). Beim Einschalten bleiben SSH und das Dashboard automatisch erreichbar.</p>
+        <div id="fw-body">
+          <dl class="kv-grid" id="fw-summary"></dl>
+          <div class="form-actions fw-toggle-row">
+            <span class="form-msg" id="fw-msg" role="status"></span>
+            <button class="btn-primary" id="fw-toggle" hidden></button>
+          </div>
+          <div id="fw-suggestions-wrap" hidden>
+            <h3 class="subhead">Empfohlene Regeln</h3>
+            <div class="iface-list" id="fw-suggestions"></div>
+          </div>
+          <h3 class="subhead">Regeln</h3>
+          <div class="table-scroll">
+            <table class="data-table" id="fw-rules"></table>
+          </div>
+          <h3 class="subhead">Regel hinzufügen</h3>
+          <form class="log-filters" id="fw-form">
+            <select id="fw-action" aria-label="Aktion">
+              <option value="allow">Erlauben</option>
+              <option value="deny">Blockieren</option>
+              <option value="limit">Begrenzen</option>
+            </select>
+            <input type="text" id="fw-port" class="short" placeholder="Port, z.B. 443" inputmode="numeric" autocomplete="off" aria-label="Port" required>
+            <select id="fw-proto" aria-label="Protokoll">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+              <option value="any">TCP + UDP</option>
+            </select>
+            <input type="text" id="fw-from" placeholder="Von: alle, IP oder Netz (192.168.1.0/24)" autocomplete="off" spellcheck="false" aria-label="Quelle">
+            <input type="text" id="fw-comment" placeholder="Kommentar (optional)" maxlength="40" autocomplete="off" aria-label="Kommentar">
+            <button type="submit" class="btn-primary">Hinzufügen</button>
+          </form>
+          <p class="field-hint">„Begrenzen“ blockiert eine IP, die sich in 30 Sekunden 6-mal oder öfter verbindet – gut gegen Passwort-Raten bei SSH.</p>
+          <p class="field-hint" id="fw-docker-hint" hidden>Hinweis: Ports, die Docker-Container veröffentlichen, umgehen ufw und sind trotzdem erreichbar.</p>
+        </div>
+        <p class="field-hint" id="fw-hint"></p>
+      </section>
+
+      <!-- SSH-Anmeldungen -->
+      <section class="glass-card settings-section" id="ssh">
+        <div class="section-head">
+          <h2>SSH-Anmeldungen</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="ssh-range">7 Tage</span>
+            <button class="mini-icon-btn" data-reload="ssh" title="Neu laden">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="bench-values ssh-stats" id="ssh-stats"></div>
+        <h3 class="subhead">Gerade angemeldet</h3>
+        <div class="iface-list" id="ssh-active"></div>
+        <h3 class="subhead">fail2ban</h3>
+        <div class="iface-list" id="ssh-f2b"></div>
+        <h3 class="subhead">Häufigste Fehlversuche</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="ssh-top"></table>
+        </div>
+        <div class="section-head subhead-row">
+          <h3 class="subhead">Letzte Anmeldungen</h3>
+          <select id="ssh-filter" class="inline-select" aria-label="Filter">
+            <option value="all">Alle</option>
+            <option value="ok">Erfolgreich</option>
+            <option value="fail">Fehlgeschlagen</option>
+          </select>
+        </div>
+        <div class="table-scroll tall">
+          <table class="data-table" id="ssh-events"></table>
+        </div>
+        <p class="field-hint" id="ssh-hint"></p>
       </section>
 
       <!-- Hardware -->

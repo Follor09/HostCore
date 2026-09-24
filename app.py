@@ -29,6 +29,7 @@ import wol
 import files
 import terminal
 import systools
+import security
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -424,6 +425,45 @@ async def api_tools_set_cpu_mode(req: GovernorRequest, request: Request):
         raise HTTPException(status_code=400, detail=result["message"])
     logger.info(f"CPU governor -> {req.governor} by '{request.state.user}'")
     return {**result, **await asyncio.to_thread(systools.cpu_mode)}
+
+
+class UnbanRequest(BaseModel):
+    ip: str
+
+
+class FirewallRequest(BaseModel):
+    action: str                  # enable, disable, rule, delete, preset
+    params: dict = {}
+
+
+@app.get("/api/tools/ssh")
+async def api_tools_ssh():
+    return await asyncio.to_thread(security.ssh_logins)
+
+
+@app.post("/api/tools/fail2ban/unban")
+async def api_tools_unban(req: UnbanRequest, request: Request):
+    try:
+        await asyncio.to_thread(security.fail2ban_unban, req.ip)
+    except (ValueError, PermissionError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"fail2ban unban {req.ip} by '{request.state.user}'")
+    return await asyncio.to_thread(security.fail2ban_status)
+
+
+@app.get("/api/tools/firewall")
+async def api_tools_firewall():
+    return await asyncio.to_thread(security.firewall_status)
+
+
+@app.post("/api/tools/firewall")
+async def api_tools_firewall_action(req: FirewallRequest, request: Request):
+    try:
+        result = await asyncio.to_thread(security.firewall_action, req.action, req.params)
+    except (ValueError, TypeError, PermissionError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Firewall {req.action} {req.params} by '{request.state.user}'")
+    return result
 
 
 # ---------------------------------------------------------------------------

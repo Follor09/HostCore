@@ -409,6 +409,304 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Firewall (ufw)
+  // ---------------------------------------------------------------------------
+  const SCOPE = { lan: ['', 'LAN'], vpn: ['good', 'VPN'], local: ['', 'Lokal'], internet: ['warning', 'Internet'] };
+  const FW_DEFAULT = { deny: 'Blockiert', reject: 'Abgelehnt', allow: 'Erlaubt', disabled: 'Aus' };
+  const FW_ACTION = { allow: 'Erlauben', deny: 'Blockieren', reject: 'Ablehnen', limit: 'Begrenzen' };
+
+  function fmtTime(ts) {
+    return new Date(ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function scopeTag(scope) {
+    const [level, text] = SCOPE[scope] || SCOPE.internet;
+    return el('span', `health-tag ${level}`, text);
+  }
+
+  // Destructive buttons need a second click within 4 s
+  function confirmClick(btn, label, confirmLabel, action) {
+    btn.addEventListener('click', () => {
+      if (!btn.classList.contains('confirming')) {
+        btn.classList.add('confirming');
+        btn.textContent = confirmLabel;
+        setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = label; }, 4000);
+        return;
+      }
+      btn.classList.remove('confirming');
+      btn.textContent = label;
+      action();
+    });
+  }
+
+  async function firewallAction(action, params = {}) {
+    const msg = $('fw-msg');
+    document.querySelectorAll('#firewall button').forEach(b => { b.disabled = true; });
+    msg.className = 'form-msg';
+    msg.textContent = 'Wird ausgeführt…';
+    try {
+      cache.firewall = await api('/api/tools/firewall', { action, params });
+      msg.textContent = '';
+      document.querySelectorAll('#firewall button').forEach(b => { b.disabled = false; });
+      toast('Firewall aktualisiert.', 'success');
+      renderFirewall(cache.firewall);
+      return true;
+    } catch (err) {
+      msg.className = 'form-msg error';
+      msg.textContent = err.message;
+      document.querySelectorAll('#firewall button').forEach(b => { b.disabled = false; });
+      return false;
+    }
+  }
+
+  function renderFirewall(f) {
+    const state = $('fw-state');
+    $('fw-hint').textContent = '';
+    if (!f.installed || f.error) {
+      $('fw-body').hidden = true;
+      state.className = `health-tag ${f.error ? 'critical' : ''}`;
+      state.textContent = f.error ? 'Fehler' : 'Nicht installiert';
+      $('fw-hint').textContent = f.hint || f.error;
+      return;
+    }
+    $('fw-body').hidden = false;
+    state.className = `health-tag ${f.active ? 'good' : 'warning'}`;
+    state.textContent = f.active ? 'Aktiv' : 'Inaktiv';
+    renderKv($('fw-summary'), [
+      ['Eingehend', FW_DEFAULT[f.defaults.incoming] || f.defaults.incoming || '–'],
+      ['Ausgehend', FW_DEFAULT[f.defaults.outgoing] || f.defaults.outgoing || '–'],
+      ['Protokollierung', f.logging || '–'],
+      ['Immer erreichbar', `SSH (Port ${f.ssh_port}) · Dashboard (Port ${f.dashboard_port})`]
+    ]);
+
+    // On/off: fresh button each render so old listeners don't stack up
+    const old = $('fw-toggle');
+    const toggle = old.cloneNode(false);
+    old.replaceWith(toggle);
+    toggle.hidden = false;
+    toggle.disabled = false;
+    if (f.active) {
+      toggle.className = 'btn-danger';
+      toggle.textContent = 'Firewall ausschalten';
+      confirmClick(toggle, 'Firewall ausschalten', 'Wirklich ausschalten?', () => firewallAction('disable'));
+    } else {
+      toggle.className = 'btn-primary';
+      toggle.textContent = 'Firewall einschalten';
+      if (f.suggestions.length) {
+        confirmClick(toggle, 'Firewall einschalten', 'Trotzdem einschalten?', () => firewallAction('enable'));
+        toggle.addEventListener('click', () => {
+          if (toggle.classList.contains('confirming')) {
+            $('fw-msg').className = 'form-msg warning';
+            $('fw-msg').textContent = `Erst die empfohlenen Regeln hinzufügen – sonst blockiert: ${f.suggestions.map(x => x.label).join(', ')}`;
+          }
+        });
+      } else {
+        toggle.addEventListener('click', () => firewallAction('enable'));
+      }
+    }
+
+    $('fw-suggestions-wrap').hidden = !f.suggestions.length;
+    const sugg = $('fw-suggestions');
+    sugg.innerHTML = '';
+    f.suggestions.forEach(x => {
+      const row = infoRow(x.label, x.desc, []);
+      const btn = el('button', 'btn-secondary', 'Hinzufügen');
+      btn.addEventListener('click', () => firewallAction('preset', { preset: x.id }));
+      row.querySelector('.iface-tags').appendChild(btn);
+      sugg.appendChild(row);
+    });
+
+    const table = $('fw-rules');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['#', 'Ziel', 'Aktion', 'Von', 'Kommentar', ''].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    f.rules.forEach(r => {
+      const row = body.insertRow();
+      row.insertCell().textContent = r.num ?? '–';
+      const to = row.insertCell();
+      to.textContent = r.to.replace(' (v6)', '').replace(/^Anywhere/, 'Alles');
+      if (r.v6) to.append(' ', el('span', 'health-tag', 'IPv6'));
+      const act = row.insertCell();
+      const level = r.action === 'allow' ? 'good' : r.action === 'limit' ? 'warning' : 'critical';
+      act.appendChild(el('span', `health-tag ${level}`, `${FW_ACTION[r.action] || r.action}${r.direction === 'out' ? ' (ausgehend)' : ''}`));
+      row.insertCell().textContent = r.from ? r.from.replace(' (v6)', '').replace(/^Anywhere/, 'Überall') : '–';
+      const comment = row.insertCell();
+      comment.className = 'wrap';
+      comment.textContent = r.comment || '–';
+      const cell = row.insertCell();
+      cell.className = 'row-action';
+      if (r.num == null) return;  // saved rule while ufw is off: no number to delete by
+      const del = el('button', 'btn-danger', 'Löschen');
+      confirmClick(del, 'Löschen', 'Sicher?', () => firewallAction('delete', { num: r.num }));
+      cell.appendChild(del);
+    });
+    if (!f.rules.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.textContent = 'Keine Regeln.';
+      c.className = 'wrap';
+    }
+    if (!f.active && f.rules.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.className = 'wrap note';
+      c.textContent = 'Gespeicherte Regeln – sie gelten, sobald die Firewall eingeschaltet ist. Löschen geht nur bei eingeschalteter Firewall.';
+    }
+    $('fw-docker-hint').hidden = !f.docker;
+  }
+
+  async function addFirewallRule(e) {
+    e.preventDefault();
+    const ok = await firewallAction('rule', {
+      action: $('fw-action').value,
+      port: $('fw-port').value.trim(),
+      proto: $('fw-proto').value,
+      from: $('fw-from').value.trim() || 'any',
+      comment: $('fw-comment').value.trim()
+    });
+    if (ok) ['fw-port', 'fw-from', 'fw-comment'].forEach(id => { $(id).value = ''; });
+  }
+
+  // ---------------------------------------------------------------------------
+  // SSH logins + fail2ban
+  // ---------------------------------------------------------------------------
+  function bannedIps(f2b) {
+    const set = new Set();
+    ((f2b && f2b.jails) || []).forEach(j => j.banned.forEach(ip => set.add(ip)));
+    return set;
+  }
+
+  function renderFail2ban(f) {
+    const box = $('ssh-f2b');
+    box.innerHTML = '';
+    if (!f || !f.installed) {
+      box.appendChild(emptyRow((f && f.hint) || 'fail2ban ist nicht installiert.'));
+      return;
+    }
+    if (!f.active) {
+      box.appendChild(infoRow('fail2ban', 'Installiert, aber nicht gestartet: sudo systemctl enable --now fail2ban', [['warning', 'Inaktiv']]));
+      return;
+    }
+    if (f.error) {
+      box.appendChild(infoRow('fail2ban', f.error, [['good', 'Aktiv']]));
+      return;
+    }
+    f.jails.forEach(j => {
+      box.appendChild(infoRow(`Jail „${j.name}“`, j.banned.length ? '' : 'Keine IP gesperrt',
+        [['good', 'Aktiv'], [j.banned.length ? 'warning' : '', `${j.banned.length} gesperrt`]]));
+      j.banned.forEach(ip => {
+        const row = infoRow(ip, `Gesperrt in „${j.name}“`, []);
+        row.classList.add('sub-row');
+        const btn = el('button', 'btn-secondary', 'Entsperren');
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const status = await api('/api/tools/fail2ban/unban', { ip });
+            if (cache.ssh) cache.ssh.fail2ban = status;
+            toast(`${ip} entsperrt.`, 'success');
+            renderSsh(cache.ssh);
+          } catch (err) {
+            toast(err.message, 'error');
+            btn.disabled = false;
+          }
+        });
+        row.querySelector('.iface-tags').appendChild(btn);
+        box.appendChild(row);
+      });
+    });
+    if (!f.jails.length) box.appendChild(emptyRow('Keine Jails aktiv.'));
+  }
+
+  function renderSshEvents(s) {
+    const filter = $('ssh-filter').value;
+    const table = $('ssh-events');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Zeit', 'Ergebnis', 'Benutzer', 'IP-Adresse', 'Herkunft', 'Methode'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    const events = (s.events || []).filter(e => filter === 'all' || e.kind === filter);
+    events.forEach(e => {
+      const row = body.insertRow();
+      row.insertCell().textContent = fmtTime(e.ts);
+      const ok = e.kind === 'ok';
+      row.insertCell().appendChild(el('span', `health-tag ${ok ? 'good' : 'critical'}`,
+        ok ? 'Erfolgreich' : e.attempts > 1 ? `Fehlgeschlagen (${e.attempts}×)` : 'Fehlgeschlagen'));
+      row.insertCell().textContent = e.user;
+      row.insertCell().textContent = e.ip;
+      row.insertCell().appendChild(scopeTag(e.scope));
+      row.insertCell().textContent = e.method || '–';
+    });
+    if (!events.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.textContent = 'Keine Anmeldungen in diesem Zeitraum.';
+    }
+  }
+
+  function renderSsh(s) {
+    const hint = [];
+    if (!s.supported) {
+      $('ssh-stats').innerHTML = '';
+      hint.push('Kein systemd-Journal auf diesem System.');
+    } else if (s.error) {
+      hint.push(s.error);
+    } else {
+      const sum = s.summary;
+      benchValues($('ssh-stats'), [
+        ['Erfolgreich (24 Std.)', String(sum.ok_24h)],
+        ['Fehlversuche (24 Std.)', String(sum.fail_24h)],
+        ['Fehlversuche (7 Tage)', String(sum.fail_7d)],
+        ['IPs mit Fehlversuchen', String(sum.fail_ips_7d)]
+      ]);
+      $('ssh-stats').querySelectorAll('.value').forEach((v, i) => {
+        if (i === 1 && v.textContent !== '0') v.classList.add('warn');
+      });
+    }
+
+    const active = $('ssh-active');
+    active.innerHTML = '';
+    (s.active || []).forEach(a => {
+      const row = infoRow(a.user, `${a.host} · ${a.terminal || '–'} · seit ${fmtTime(a.started)}`, []);
+      row.querySelector('.iface-tags').appendChild(scopeTag(a.scope));
+      active.appendChild(row);
+    });
+    if (!active.children.length) active.appendChild(emptyRow('Niemand angemeldet.'));
+
+    renderFail2ban(s.fail2ban);
+
+    const banned = bannedIps(s.fail2ban);
+    const table = $('ssh-top');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['IP-Adresse', 'Herkunft', 'Versuche', 'Benutzernamen', 'Zuletzt', 'Status'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    (s.top_ips || []).forEach(p => {
+      const row = body.insertRow();
+      row.insertCell().textContent = p.ip;
+      row.insertCell().appendChild(scopeTag(p.scope));
+      row.insertCell().textContent = p.attempts;
+      const users = row.insertCell();
+      users.className = 'wrap';
+      users.textContent = p.users.join(', ');
+      row.insertCell().textContent = fmtTime(p.last);
+      const st = row.insertCell();
+      if (banned.has(p.ip)) st.appendChild(el('span', 'health-tag critical', 'Gesperrt'));
+      else st.textContent = '–';
+    });
+    if (!(s.top_ips || []).length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.textContent = 'Keine Fehlversuche in den letzten 7 Tagen.';
+    }
+
+    renderSshEvents(s);
+    if (s.hint) hint.push(s.hint);
+    if (s.truncated) hint.push('Sehr viele Einträge – nur die neuesten wurden ausgewertet.');
+    $('ssh-hint').textContent = hint.join(' ');
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
@@ -417,7 +715,9 @@
     cpu: ['/api/tools/cpu-mode', renderCpuMode],
     bench: ['/api/tools/benchmark', renderBenchmarks],
     logUnits: ['/api/tools/log-units', renderLogUnits],
-    cleanup: ['/api/tools/cleanup', renderCleanup]
+    cleanup: ['/api/tools/cleanup', renderCleanup],
+    firewall: ['/api/tools/firewall', renderFirewall],
+    ssh: ['/api/tools/ssh', renderSsh]
   };
 
   async function load(key) {
@@ -445,6 +745,8 @@
     $('bench-cpu').addEventListener('click', () => runBenchmark('cpu'));
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
     $('log-form').addEventListener('submit', searchLogs);
+    $('fw-form').addEventListener('submit', addFirewallRule);
+    $('ssh-filter').addEventListener('change', () => cache.ssh && renderSshEvents(cache.ssh));
     ['log-unit', 'log-priority', 'log-since'].forEach(id => $(id).addEventListener('change', () => searchLogs()));
     // "Alles aufräumen" needs a second click
     $('cleanup-all').addEventListener('click', () => {

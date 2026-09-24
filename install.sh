@@ -119,6 +119,8 @@ SUDOERS=/etc/sudoers.d/pi-dashboard-restart
             echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL $action --no-block $unit"
         done
     done
+    # Firewall + fail2ban panels: one helper from the root copy that checks every argument
+    echo "$OWNER ALL=(root) NOPASSWD: $SRC/pi-helper.sh *"
     if [ -e /dev/nvme0 ] && command -v smartctl >/dev/null; then
         echo "$OWNER ALL=(root) NOPASSWD: $(command -v smartctl) -j -a /dev/nvme0"
     fi

@@ -311,7 +311,44 @@
     'Zwischenspeicher von Programmen (pip, Thumbnails …). Wird automatisch neu aufgebaut.': 'Program caches (pip, thumbnails …). Rebuilt automatically.',
     'Gelöschte Dateien im Papierkorb.': 'Deleted files in the trash.', 'Löscht Einträge älter als 14 Tage.': 'Deletes entries older than 14 days.',
     'docker prune fehlgeschlagen.': 'docker prune failed.', 'Fehlgeschlagen.': 'Failed.',
-    'Wegen Inaktivität geschlossen (30 Min.).': 'Closed after 30 minutes of inactivity.', 'Shell beendet.': 'Shell ended.', 'Verbindung getrennt.': 'Connection closed.'
+    'Wegen Inaktivität geschlossen (30 Min.).': 'Closed after 30 minutes of inactivity.', 'Shell beendet.': 'Shell ended.', 'Verbindung getrennt.': 'Connection closed.',
+    // Firewall + SSH
+    'Firewall': 'Firewall', 'SSH-Anmeldungen': 'SSH logins',
+    'Blockiert eingehende Verbindungen, die du nicht ausdrücklich erlaubst (ufw). Beim Einschalten bleiben SSH und das Dashboard automatisch erreichbar.': 'Blocks incoming connections you have not explicitly allowed (ufw). When switched on, SSH and the dashboard stay reachable automatically.',
+    'Eingehend': 'Incoming', 'Ausgehend': 'Outgoing', 'Protokollierung': 'Logging', 'Immer erreichbar': 'Always reachable',
+    'Blockiert': 'Blocked', 'Abgelehnt': 'Rejected', 'Erlaubt': 'Allowed',
+    'Firewall einschalten': 'Turn firewall on', 'Firewall ausschalten': 'Turn firewall off', 'Wirklich ausschalten?': 'Really turn off?', 'Trotzdem einschalten?': 'Turn on anyway?',
+    'Empfohlene Regeln': 'Recommended rules', 'Regeln': 'Rules', 'Regel hinzufügen': 'Add rule',
+    'Ziel': 'Target', 'Von': 'From', 'Kommentar': 'Comment', 'Löschen': 'Delete',
+    'Erlauben': 'Allow', 'Blockieren': 'Block', 'Ablehnen': 'Reject', 'Begrenzen': 'Limit', 'Alles': 'Everything', 'Überall': 'Anywhere',
+    'Port, z.B. 443': 'Port, e.g. 443', 'Quelle': 'Source', 'TCP + UDP': 'TCP + UDP',
+    'Von: alle, IP oder Netz (192.168.1.0/24)': 'From: any, IP or network (192.168.1.0/24)', 'Kommentar (optional)': 'Comment (optional)',
+    '„Begrenzen“ blockiert eine IP, die sich in 30 Sekunden 6-mal oder öfter verbindet – gut gegen Passwort-Raten bei SSH.': '"Limit" blocks an IP that connects 6 or more times within 30 seconds – good against password guessing on SSH.',
+    'Hinweis: Ports, die Docker-Container veröffentlichen, umgehen ufw und sind trotzdem erreichbar.': 'Note: ports published by Docker containers bypass ufw and stay reachable.',
+    'Keine Regeln.': 'No rules.', 'Wird ausgeführt…': 'Running…', 'Firewall aktualisiert.': 'Firewall updated.', 'Nicht installiert': 'Not installed',
+    'Gespeicherte Regeln – sie gelten, sobald die Firewall eingeschaltet ist. Löschen geht nur bei eingeschalteter Firewall.': 'Saved rules – they apply once the firewall is on. Deleting only works while the firewall is on.',
+    'Kubernetes (k3s)': 'Kubernetes (k3s)', 'Webserver': 'Web server',
+    'API-Port 6443 und die Pod-/Service-Netze 10.42/10.43 – sonst funktioniert k3s nicht mehr.': 'API port 6443 and the pod/service networks 10.42/10.43 – otherwise k3s stops working.',
+    'Alles, was über das VPN (wt0) kommt, erlauben.': 'Allow everything coming in over the VPN (wt0).', 'HTTP (80) und HTTPS (443) erlauben.': 'Allow HTTP (80) and HTTPS (443).',
+    'ufw ist nicht installiert: sudo apt install ufw': 'ufw is not installed: sudo apt install ufw',
+    'Helfer fehlt – install.sh auf dem Pi erneut ausführen.': 'Helper missing – run install.sh on the Pi again.',
+    'Ungültige Aktion.': 'Invalid action.', 'Ungültiges Protokoll.': 'Invalid protocol.', 'Portbereiche brauchen TCP oder UDP.': 'Port ranges need TCP or UDP.',
+    'Port muss 1–65535 sein (oder ein Bereich wie 6000:6010).': 'Port must be 1–65535 (or a range like 6000:6010).',
+    'Quelle muss „any“, eine IP oder ein Netz wie 192.168.1.0/24 sein.': 'Source must be "any", an IP or a network like 192.168.1.0/24.',
+    'Kommentar: nur Buchstaben, Zahlen, Leerzeichen und . _ - ( ) (max. 40).': 'Comment: only letters, numbers, spaces and . _ - ( ) (max. 40).',
+    'Das würde SSH oder das Dashboard für alle sperren.': 'That would lock everyone out of SSH or the dashboard.',
+    'Regel nicht gefunden – Liste neu laden.': 'Rule not found – reload the list.', 'Unbekannte Vorlage.': 'Unknown preset.',
+    'Ungültige IP-Adresse.': 'Invalid IP address.',
+    'Gerade angemeldet': 'Logged in now', 'fail2ban': 'fail2ban', 'Häufigste Fehlversuche': 'Most failed attempts', 'Letzte Anmeldungen': 'Recent logins',
+    'Alle': 'All', 'Erfolgreich': 'Successful', 'Fehlgeschlagen': 'Failed', 'Filter': 'Filter',
+    'Erfolgreich (24 Std.)': 'Successful (24 h)', 'Fehlversuche (24 Std.)': 'Failed attempts (24 h)', 'Fehlversuche (7 Tage)': 'Failed attempts (7 days)', 'IPs mit Fehlversuchen': 'IPs with failed attempts', 'IP-Adresse': 'IP address', 'Herkunft': 'Origin', 'Methode': 'Method',
+    'Versuche': 'Attempts', 'Benutzernamen': 'Usernames', 'Zuletzt': 'Last', 'Gesperrt': 'Banned', 'Entsperren': 'Unban', 'Lokal': 'Local', 'Internet': 'Internet', 'lokal': 'local', 'SSH-Schlüssel': 'SSH key',
+    'Niemand angemeldet.': 'Nobody logged in.', 'Keine IP gesperrt': 'No IP banned', 'Keine Jails aktiv.': 'No jails active.',
+    'Keine Anmeldungen in diesem Zeitraum.': 'No logins in this period.', 'Keine Fehlversuche in den letzten 7 Tagen.': 'No failed attempts in the last 7 days.',
+    'Installiert, aber nicht gestartet: sudo systemctl enable --now fail2ban': 'Installed but not running: sudo systemctl enable --now fail2ban',
+    'fail2ban ist nicht installiert.': 'fail2ban is not installed.',
+    'Nicht installiert. Schutz gegen Passwort-Raten: sudo apt install fail2ban': 'Not installed. Protection against password guessing: sudo apt install fail2ban',
+    'Journal antwortet nicht.': 'Journal is not responding.', 'Sehr viele Einträge – nur die neuesten wurden ausgewertet.': 'Very many entries – only the newest were analysed.'
   };
 
   // ---------------------------------------------------------------------------
@@ -411,7 +448,19 @@
     [/^Kerne •$/, 'cores •'],
     [/^keine IP-Adresse( · [\s\S]+)$/, 'no IP address$1'],
     [/^(Aktiv|Inaktiv|Fehler) · (.+)$/, (m, st, d) => `${tr(st)} · ${tr(d)}`],
-    [/^Verlaufsdiagramm (.+)$/, (m, t) => `History chart ${tr(t)}`]
+    [/^Verlaufsdiagramm (.+)$/, (m, t) => `History chart ${tr(t)}`],
+    [/^SSH \(Port (\d+)\) · Dashboard \(Port (\d+)\)$/, 'SSH (port $1) · dashboard (port $2)'],
+    [/^(Erlauben|Blockieren|Ablehnen|Begrenzen) \(ausgehend\)$/, (m, a) => `${tr(a)} (outgoing)`],
+    [/^Erst die empfohlenen Regeln hinzufügen – sonst blockiert: (.+)$/, (m, l) => `Add the recommended rules first – otherwise blocked: ${l.split(', ').map(tr).join(', ')}`],
+    [/^Das ist die letzte Freigabe für Port (\d+) – du würdest dich aussperren\.$/, 'This is the last rule allowing port $1 – you would lock yourself out.'],
+    [/^Fehlgeschlagen \((\d+)×\)$/, 'Failed ($1×)'],
+    [/^(\d+) gesperrt$/, '$1 banned'],
+    [/^Jail „(.+)“$/, 'Jail "$1"'],
+    [/^Gesperrt in „(.+)“$/, 'Banned in "$1"'],
+    [/^(.+) entsperrt\.$/, '$1 unbanned.'],
+    [/^(.+) · (.+) · seit (.+)$/, (m, h, t, d) => `${tr(h)} · ${t} · since ${d}`],
+    [/^Keine Berechtigung für System-Logs: (.+)$/, 'No permission for system logs: $1'],
+    [/^(.+) ist nicht installiert\.$/, '$1 is not installed.']
   ];
 
   function translateDynamic(s) {
