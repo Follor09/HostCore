@@ -430,6 +430,51 @@ body {
   font-size: 0.8rem;
   color: var(--accent-amber);
   font-weight: 600;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  margin-left: -4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.2s;
+}
+
+.weather-location[hidden] {
+  display: none;
+}
+
+.weather-location svg {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+
+.weather-location:hover {
+  background: rgba(255, 183, 3, 0.1);
+}
+
+.weather-location:hover svg {
+  opacity: 1;
+}
+
+.weather-city-form input {
+  width: 130px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--accent-amber);
+  border-radius: 6px;
+  padding: 3px 7px;
+  outline: none;
+}
+
+.weather-city-form input:disabled {
+  opacity: 0.6;
 }
 
 .mini-icon-btn {

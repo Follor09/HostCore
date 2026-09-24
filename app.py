@@ -5,6 +5,7 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 """
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -45,6 +46,39 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 class CommandRequest(BaseModel):
     command: str
+
+
+class WeatherLocationRequest(BaseModel):
+    city: str
+
+
+# Weather location, persisted in settings.json (untracked, so it survives git updates)
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
+DEFAULT_WEATHER_LOCATION = {"city": "Berlin", "lat": 52.52, "lon": 13.41}
+
+
+def load_weather_location() -> dict:
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            loc = json.load(f).get("weather_location")
+            if loc and {"city", "lat", "lon"} <= loc.keys():
+                return loc
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
+        pass
+    return dict(DEFAULT_WEATHER_LOCATION)
+
+
+def save_weather_location(loc: dict) -> None:
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        settings = {}
+    settings["weather_location"] = loc
+    tmp = SETTINGS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(settings, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, SETTINGS_FILE)
 
 
 # Cached weather response to prevent rate limiting
@@ -169,19 +203,20 @@ async def api_github_webhook(request: Request, x_hub_signature_256: Optional[str
 
 
 @app.get("/api/weather")
-async def api_weather(lat: float = 52.52, lon: float = 13.41, city: str = "Berlin"):
-    """Fetch live weather conditions."""
+async def api_weather(force: bool = False):
+    """Fetch live weather conditions for the configured location."""
     global _cached_weather
     import time
     now = time.time()
+    loc = load_weather_location()
 
-    if now - _cached_weather["timestamp"] < 600 and _cached_weather.get("city") == city:
+    if not force and now - _cached_weather["timestamp"] < 600 and _cached_weather.get("city") == loc["city"]:
         return _cached_weather
 
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+            f"latitude={loc['lat']}&longitude={loc['lon']}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
             f"&timezone=auto"
         )
         async with httpx.AsyncClient(timeout=4.0) as client:
@@ -199,7 +234,7 @@ async def api_weather(lat: float = 52.52, lon: float = 13.41, city: str = "Berli
                     "description": desc,
                     "icon": icon,
                     "weather_code": code,
-                    "city": city,
+                    "city": loc["city"],
                     "timestamp": now
                 }
                 return _cached_weather
@@ -207,6 +242,35 @@ async def api_weather(lat: float = 52.52, lon: float = 13.41, city: str = "Berli
         logger.warning(f"Failed to fetch weather: {e}")
 
     return _cached_weather
+
+
+@app.post("/api/weather/location")
+async def api_set_weather_location(req: WeatherLocationRequest):
+    """Look up a city via Open-Meteo geocoding, save it, and return its weather."""
+    name = req.city.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Bitte einen Ort eingeben.")
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": name, "count": 1, "language": "de", "format": "json"},
+            )
+            resp.raise_for_status()
+            results = resp.json().get("results") or []
+    except Exception as e:
+        logger.warning(f"Geocoding failed: {e}")
+        raise HTTPException(status_code=502, detail="Ortssuche fehlgeschlagen. Internetverbindung prüfen.")
+
+    if not results:
+        raise HTTPException(status_code=404, detail=f"Ort \"{name}\" nicht gefunden.")
+
+    hit = results[0]
+    loc = {"city": hit["name"], "lat": hit["latitude"], "lon": hit["longitude"]}
+    save_weather_location(loc)
+    logger.info(f"Weather location set to {loc['city']} ({loc['lat']}, {loc['lon']})")
+    return await api_weather(force=True)
 
 
 @app.post("/api/action/command")

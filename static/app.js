@@ -43,6 +43,9 @@
 
     // Weather
     weatherCity: document.getElementById('weather-city'),
+    weatherCityBtn: document.getElementById('weather-city-btn'),
+    weatherCityForm: document.getElementById('weather-city-form'),
+    weatherCityInput: document.getElementById('weather-city-input'),
     weatherTemp: document.getElementById('weather-temp'),
     weatherDesc: document.getElementById('weather-description'),
     weatherHumidity: document.getElementById('weather-humidity'),
@@ -235,19 +238,56 @@
   // ---------------------------------------------------------------------------
   // Weather Widget Loader
   // ---------------------------------------------------------------------------
+  function renderWeather(data) {
+    if (els.weatherCity) els.weatherCity.textContent = data.city;
+    if (els.weatherTemp) els.weatherTemp.textContent = data.temp;
+    if (els.weatherDesc) els.weatherDesc.textContent = data.description;
+    if (els.weatherHumidity) els.weatherHumidity.textContent = `${data.humidity}%`;
+    if (els.weatherWind) els.weatherWind.textContent = `${data.wind_speed} km/h`;
+  }
+
   async function loadWeather() {
     try {
       const res = await fetch('/api/weather');
-      if (res.ok) {
-        const data = await res.json();
-        if (els.weatherCity) els.weatherCity.textContent = data.city;
-        if (els.weatherTemp) els.weatherTemp.textContent = data.temp;
-        if (els.weatherDesc) els.weatherDesc.textContent = data.description;
-        if (els.weatherHumidity) els.weatherHumidity.textContent = `${data.humidity}%`;
-        if (els.weatherWind) els.weatherWind.textContent = `${data.wind_speed} km/h`;
-      }
+      if (res.ok) renderWeather(await res.json());
     } catch (e) {
       console.warn('Weather fetch failed:', e);
+    }
+  }
+
+  // Inline city editor: click the city name, type, Enter saves, Esc cancels
+  function toggleCityEditor(open) {
+    els.weatherCityBtn.hidden = open;
+    els.weatherCityForm.hidden = !open;
+    if (open) {
+      els.weatherCityInput.value = els.weatherCity.textContent;
+      els.weatherCityInput.focus();
+      els.weatherCityInput.select();
+    }
+  }
+
+  async function saveWeatherCity(e) {
+    e.preventDefault();
+    const city = els.weatherCityInput.value.trim();
+    if (!city || city === els.weatherCity.textContent) return toggleCityEditor(false);
+
+    els.weatherCityInput.disabled = true;
+    try {
+      const res = await fetch('/api/weather/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Ort konnte nicht gesetzt werden.');
+      renderWeather(data);
+      toggleCityEditor(false);
+      showToast(`Wetter-Ort: ${data.city}`, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+      els.weatherCityInput.focus();
+    } finally {
+      els.weatherCityInput.disabled = false;
     }
   }
 
@@ -823,6 +863,17 @@
     if (els.btnShutdownModal) els.btnShutdownModal.addEventListener('click', () => openModal('shutdown'));
     if (els.btnModalCancel) els.btnModalCancel.addEventListener('click', closeModal);
     if (els.btnModalConfirm) els.btnModalConfirm.addEventListener('click', executeModalAction);
+
+    if (els.weatherCityBtn && els.weatherCityForm && els.weatherCityInput) {
+      els.weatherCityBtn.addEventListener('click', () => toggleCityEditor(true));
+      els.weatherCityForm.addEventListener('submit', saveWeatherCity);
+      els.weatherCityInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') toggleCityEditor(false);
+      });
+      els.weatherCityInput.addEventListener('blur', () => {
+        if (!els.weatherCityInput.disabled) toggleCityEditor(false);
+      });
+    }
 
     if (els.btnWeatherRefresh) {
       els.btnWeatherRefresh.addEventListener('click', () => {
