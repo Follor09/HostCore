@@ -6,3 +6,5 @@ __pycache__/
 settings.json
 history.db
 history.db-journal
+auth.json
+auth.json.tmp

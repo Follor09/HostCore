@@ -12,7 +12,7 @@ import os
 import subprocess
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -22,6 +22,7 @@ import services_manager
 import updater
 import history
 import homelab
+import auth
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -48,6 +49,107 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# ---------------------------------------------------------------------------
+# Login: everything requires a session, except the login page itself and static assets.
+# With "public view" enabled, GET requests are open and only actions need a login.
+# ---------------------------------------------------------------------------
+PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/favicon.ico"}
+
+
+def _same_origin(request: Request) -> bool:
+    """Reject cross-site form posts / fetches (CSRF) on state-changing requests."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return True  # same-origin navigation / non-browser clients
+    return origin.split("://", 1)[-1] == request.headers.get("host", "")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    path = request.url.path
+    user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
+    request.state.user = user
+
+    if path.startswith("/static/") or path in PUBLIC_PATHS:
+        return await call_next(request)
+    # The GitHub webhook authenticates itself via HMAC - but only if a secret is configured
+    if path == "/api/webhook/github" and updater.WEBHOOK_SECRET:
+        return await call_next(request)
+
+    is_read = request.method in ("GET", "HEAD")
+    if user is None and not (is_read and auth.public_view()):
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
+        return RedirectResponse("/login", status_code=303)
+
+    if not is_read and not _same_origin(request):
+        return JSONResponse({"detail": "Ungültige Herkunft der Anfrage."}, status_code=403)
+
+    return await call_next(request)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    remember: bool = False
+
+
+@app.get("/login")
+async def login_page(request: Request):
+    if request.state.user:
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/auth/status")
+async def api_auth_status(request: Request):
+    return {
+        "configured": auth.is_configured(),
+        "user": request.state.user,
+        "public_view": auth.public_view(),
+    }
+
+
+@app.post("/api/auth/login")
+async def api_login(req: LoginRequest, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not auth.is_configured():
+        raise HTTPException(status_code=503, detail="Noch kein Passwort gesetzt. Auf dem Pi ausführen: ~/pi-dashboard/set-password.sh")
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
+
+    wait = auth.lockout_remaining(ip)
+    if wait:
+        raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+
+    ok = await asyncio.to_thread(auth.verify_login, req.username.strip(), req.password)
+    if not ok:
+        auth.record_failure(ip)
+        logger.warning(f"Failed login for '{req.username[:32]}' from {ip}")
+        wait = auth.lockout_remaining(ip)
+        raise HTTPException(status_code=401 if not wait else 429,
+                            detail="Benutzername oder Passwort falsch." if not wait else f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+
+    auth.record_success(ip)
+    logger.info(f"Login '{req.username}' from {ip}")
+    token, ttl = auth.make_session(req.username.strip(), req.remember)
+    response = JSONResponse({"ok": True, "user": req.username.strip()})
+    response.set_cookie(
+        auth.COOKIE_NAME, token,
+        max_age=ttl if req.remember else None,  # without "remember": ends with the browser
+        httponly=True, samesite="strict", path="/",
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+async def api_logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
+    return response
 
 
 class CommandRequest(BaseModel):
@@ -442,7 +544,11 @@ async def websocket_endpoint(websocket: WebSocket):
     WebSocket endpoint for real-time live push updates.
     Sends system snapshot, top processes, services, drives, and updater state every 1.5 seconds.
     """
+    # Middleware doesn't cover WebSockets: check the session here
     await websocket.accept()
+    if not auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME)) and not auth.public_view():
+        await websocket.close(code=4401)  # the page redirects to /login on this code
+        return
     logger.info("WebSocket Client connected.")
     try:
         while True:

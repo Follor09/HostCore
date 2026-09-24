@@ -853,7 +853,8 @@
       }
     };
 
-    state.ws.onclose = function () {
+    state.ws.onclose = function (evt) {
+      if (evt && evt.code === 4401) { location.href = '/login'; return; }
       state.connected = false;
       if (els.wsStatusText) els.wsStatusText.textContent = 'Verbindung getrennt';
       if (els.wsStatusChip) {
@@ -1923,7 +1924,34 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Session expired / not logged in: any 401 sends the user to the login page
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const res = await nativeFetch(...args);
+    if (res.status === 401 && !String(args[0]).startsWith('/api/auth/')) location.href = '/login';
+    return res;
+  };
+
+  async function initAuth() {
+    try {
+      const status = await (await nativeFetch('/api/auth/status')).json();
+      const chip = document.getElementById('user-chip');
+      if (status.user) {
+        document.getElementById('user-name').textContent = status.user;
+        chip.hidden = false;
+      } else {
+        document.getElementById('btn-login-link').hidden = false;  // public view, not logged in
+      }
+    } catch (e) { /* ignore */ }
+
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await nativeFetch('/api/auth/logout', { method: 'POST' });
+      location.href = '/login';
+    });
+  }
+
   function init() {
+    initAuth();
     startClock();
     initHeaderControls();
     initUpdaterControls();

@@ -84,6 +84,23 @@ sudo ~/pi-dashboard/update.sh                # Sofort manuell aktualisieren
 systemctl list-timers pi-dashboard-update    # Nächste Prüfung
 ```
 
+### 🔐 Login
+
+Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem Pi** gesetzt (nicht über das Web):
+
+```bash
+~/pi-dashboard/set-password.sh                  # Benutzer & Passwort setzen (meldet alle Sitzungen ab)
+~/pi-dashboard/set-password.sh public-view on   # Ansehen ohne Login (z.B. Wanddisplay) – Aktionen bleiben geschützt
+~/pi-dashboard/set-password.sh public-view off
+~/pi-dashboard/set-password.sh status
+```
+
+- Passwort als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed).
+- Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab.
+- Nach 5 Fehlversuchen wird die IP zunehmend lange gesperrt (30 s … 15 min).
+- Aktionen (Updates, Neustart, Befehle …) werden nur von der eigenen Seite akzeptiert (CSRF-Schutz).
+- Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
+
 ### 🔑 Privates Repo: GitHub-Token hinterlegen
 
 Der Pi braucht Lesezugriff auf das Repo. Token erstellen unter [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):

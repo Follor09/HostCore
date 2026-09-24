@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anmelden | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber login-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <main class="login-wrap">
+    <form class="glass-card login-card" id="login-form" novalidate>
+      <div class="login-brand">
+        <div class="card-icon-pill icon-cyan">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        </div>
+        <div>
+          <h1>PiCore Server</h1>
+          <p class="card-subtitle">Anmelden, um das Dashboard zu verwenden</p>
+        </div>
+      </div>
+
+      <div class="login-notice" id="login-notice" hidden></div>
+
+      <label class="login-field">
+        <span>Benutzername</span>
+        <input type="text" id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </label>
+
+      <label class="login-field">
+        <span>Passwort</span>
+        <input type="password" id="login-password" name="password" autocomplete="current-password" required>
+      </label>
+
+      <label class="toggle-label login-remember">
+        <input type="checkbox" id="login-remember" checked>
+        Angemeldet bleiben (30 Tage)
+      </label>
+
+      <div class="login-error" id="login-error" role="alert" hidden></div>
+
+      <button type="submit" class="login-submit" id="login-submit">Anmelden</button>
+
+      <a class="login-public" id="login-public" href="/" hidden>Nur ansehen, ohne Anmeldung →</a>
+    </form>
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById('login-form');
+      const user = document.getElementById('login-username');
+      const pass = document.getElementById('login-password');
+      const remember = document.getElementById('login-remember');
+      const errorBox = document.getElementById('login-error');
+      const notice = document.getElementById('login-notice');
+      const submit = document.getElementById('login-submit');
+
+      function showError(msg) {
+        errorBox.textContent = msg;
+        errorBox.hidden = !msg;
+      }
+
+      fetch('/api/auth/status').then(r => r.json()).then(status => {
+        if (!status.configured) {
+          notice.hidden = false;
+          notice.innerHTML = 'Noch kein Passwort gesetzt. Auf dem Pi per SSH ausführen:<br><code>~/pi-dashboard/set-password.sh</code>';
+          submit.disabled = true;
+        }
+        document.getElementById('login-public').hidden = !status.public_view;
+      }).catch(() => {});
+
+      try { user.value = localStorage.getItem('loginUser') || ''; } catch (e) { /* ignore */ }
+      (user.value ? pass : user).focus();
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        showError('');
+        if (!user.value.trim() || !pass.value) return showError('Bitte Benutzername und Passwort eingeben.');
+
+        submit.disabled = true;
+        submit.textContent = 'Prüfe…';
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user.value.trim(), password: pass.value, remember: remember.checked })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || 'Anmeldung fehlgeschlagen.');
+          try { localStorage.setItem('loginUser', user.value.trim()); } catch (e) { /* ignore */ }
+          location.replace('/');
+        } catch (err) {
+          showError(err.message);
+          pass.value = '';
+          pass.focus();
+          submit.disabled = false;
+          submit.textContent = 'Anmelden';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

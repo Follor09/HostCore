@@ -57,6 +57,17 @@ systemctl enable --now pi-dashboard-update.timer
 systemctl enable raspberry-dashboard
 systemctl restart raspberry-dashboard
 
+# Login: ask for a password on first install (interactive runs only)
+chmod +x "$DIR/set-password.sh"
+if [ ! -f "$DIR/auth.json" ]; then
+    if [ -t 0 ]; then
+        echo "🔐 Dashboard-Login einrichten:"
+        "$DIR/set-password.sh" set-password || echo "   ⚠️  Später nachholen: ./set-password.sh"
+    else
+        echo "🔐 Noch kein Login gesetzt – das Dashboard bleibt gesperrt, bis du ./set-password.sh ausführst."
+    fi
+fi
+
 IP="$(hostname -I | awk '{print $1}')"
 echo ""
 echo "✅ Done! Dashboard: http://${IP}:8000"
