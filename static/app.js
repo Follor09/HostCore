@@ -97,6 +97,15 @@
     // Network
     netDownRate: document.getElementById('net-down-rate'),
     diskType: document.getElementById('disk-type'),
+    fanCard: document.querySelector('.fan-card'),
+    fanSubtitle: document.getElementById('fan-subtitle'),
+    fanLevelVal: document.getElementById('fan-level-val'),
+    fanRotor: document.getElementById('fan-rotor'),
+    fanLevels: document.getElementById('fan-levels'),
+    fanLevelsLabel: document.getElementById('fan-levels-label'),
+    fanRpm: document.getElementById('fan-rpm'),
+    fanPwm: document.getElementById('fan-pwm'),
+    fanThresholds: document.getElementById('fan-thresholds'),
     diskSummary: document.getElementById('disk-summary'),
     netUpRate: document.getElementById('net-up-rate'),
     netTotalRecv: document.getElementById('net-total-recv'),
@@ -634,6 +643,46 @@
   // ---------------------------------------------------------------------------
   // Update UI with System Snapshot
   // ---------------------------------------------------------------------------
+  // Fan colors go from calm cyan to hot rose as the level rises
+  const FAN_COLORS = ['#00f0ff', '#00ffa3', '#ffb703', '#ff2a5f'];
+
+  function renderFan(fan) {
+    if (!els.fanCard) return;
+    els.fanCard.classList.toggle('unavailable', !fan.available);
+
+    if (!fan.available) {
+      els.fanLevelVal.textContent = '--';
+      els.fanSubtitle.textContent = 'Kein Lüfter erkannt';
+      els.fanRotor.classList.remove('spinning');
+      els.fanLevelsLabel.textContent = 'Stufe – / –';
+      return;
+    }
+
+    const { level, max_level: max } = fan;
+    els.fanLevelVal.textContent = fan.level_name;
+    els.fanSubtitle.textContent = fan.device === 'pwm-fan' ? 'Active Cooler (PWM)' : fan.device;
+    els.fanLevelsLabel.textContent = `Stufe ${level} / ${max}`;
+
+    // Higher level -> faster spin (full level ~0.3s per turn)
+    els.fanRotor.classList.toggle('spinning', level > 0);
+    if (level > 0) els.fanRotor.style.setProperty('--fan-speed', `${(1.8 - 1.5 * (level / max)).toFixed(2)}s`);
+
+    if (els.fanLevels.childElementCount !== max) {
+      els.fanLevels.innerHTML = Array.from({ length: max }, (_, i) =>
+        `<div class="fan-level-bar" style="height:${30 + 70 * (i + 1) / max}%"></div>`).join('');
+    }
+    [...els.fanLevels.children].forEach((bar, i) => {
+      bar.classList.toggle('on', i < level);
+      bar.style.setProperty('--bar-color', FAN_COLORS[Math.min(FAN_COLORS.length - 1, Math.floor(i * FAN_COLORS.length / max))]);
+    });
+
+    els.fanRpm.textContent = fan.rpm != null ? `${fan.rpm} RPM` : '--';
+    els.fanPwm.textContent = fan.pwm_percent != null ? `${fan.pwm_percent}%` : '--';
+    els.fanThresholds.textContent = fan.thresholds && fan.thresholds.length
+      ? `${fan.thresholds.map(t => Math.round(t)).join('/')}°C`
+      : '--';
+  }
+
   function updateSystemMetrics(sys) {
     if (els.deviceModel) {
       els.deviceModel.textContent = sys.model || 'Raspberry Pi Server';
@@ -711,6 +760,9 @@
         els.throttleDescription.textContent = th.summary;
       }
     }
+
+    // Fan
+    if (sys.fan) renderFan(sys.fan);
 
     // Memory (RAM)
     if (sys.memory) {

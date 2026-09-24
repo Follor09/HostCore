@@ -1195,6 +1195,88 @@ body {
   font-weight: 600;
 }
 
+/* Fan card */
+.fan-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 1;
+  padding: 6px 4px;
+}
+
+.fan-rotor {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.08), transparent 70%);
+  border: 1px solid var(--border-subtle);
+  transition: color 0.4s;
+}
+
+.fan-rotor.spinning {
+  color: var(--accent-cyan);
+}
+
+.fan-rotor.spinning svg {
+  animation: fan-spin var(--fan-speed, 1s) linear infinite;
+}
+
+@keyframes fan-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fan-rotor.spinning svg { animation: none; }
+}
+
+.fan-levels-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.fan-levels {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 56px;
+}
+
+.fan-level-bar {
+  width: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.fan-level-bar.on {
+  border-color: transparent;
+  background: var(--bar-color);
+  box-shadow: 0 0 10px var(--bar-color);
+}
+
+.fan-levels-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.fan-stats {
+  grid-template-columns: 1fr 1fr 1.3fr;
+}
+
+.fan-card.unavailable .fan-body,
+.fan-card.unavailable .fan-stats {
+  opacity: 0.4;
+}
+
 .swap-subcard {
   margin-top: 12px;
   padding-top: 8px;

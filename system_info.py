@@ -4,6 +4,7 @@ Gathers CPU, Memory, Disk, Network, Temperature, Processes, and Hardware diagnos
 Automatically detects Raspberry Pi vs macOS/generic Linux and provides seamless fallbacks.
 """
 
+import glob
 import os
 import platform
 import subprocess
@@ -291,6 +292,64 @@ def get_top_processes(limit: int = 8) -> list:
     return procs[:limit]
 
 
+def _read_sysfs(path: str) -> str:
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+FAN_LEVEL_NAMES = {0: "Aus", 1: "Niedrig", 2: "Mittel", 3: "Hoch", 4: "Maximal"}
+
+
+def get_fan_status() -> dict:
+    """
+    Fan level from the thermal cooling device (Pi 5 active cooler: pwm-fan, states 0-4),
+    plus RPM/PWM from hwmon and the temperatures at which the fan steps up.
+    """
+    devices = sorted(glob.glob("/sys/class/thermal/cooling_device*"))
+    fan_dev = next((d for d in devices if "fan" in _read_sysfs(f"{d}/type").lower()), None)
+    if fan_dev is None and os.path.exists("/sys/class/thermal/cooling_device0/cur_state"):
+        fan_dev = "/sys/class/thermal/cooling_device0"
+    if fan_dev is None:
+        return {"available": False}
+
+    try:
+        level = int(_read_sysfs(f"{fan_dev}/cur_state"))
+        max_level = int(_read_sysfs(f"{fan_dev}/max_state"))
+    except ValueError:
+        return {"available": False}
+
+    rpm, pwm_percent = None, None
+    for hw in glob.glob("/sys/class/hwmon/hwmon*"):
+        if os.path.exists(f"{hw}/fan1_input"):
+            val = _read_sysfs(f"{hw}/fan1_input")
+            rpm = int(val) if val.isdigit() else None
+            pwm = _read_sysfs(f"{hw}/pwm1")
+            pwm_percent = round(int(pwm) / 255 * 100) if pwm.isdigit() else None
+            break
+
+    # "active" trip points of the CPU thermal zone are where the fan steps up
+    thresholds = []
+    for trip in sorted(glob.glob("/sys/class/thermal/thermal_zone0/trip_point_*_type")):
+        if _read_sysfs(trip) == "active":
+            temp = _read_sysfs(trip.replace("_type", "_temp"))
+            if temp.lstrip("-").isdigit():
+                thresholds.append(round(int(temp) / 1000, 1))
+
+    return {
+        "available": True,
+        "device": _read_sysfs(f"{fan_dev}/type") or os.path.basename(fan_dev),
+        "level": level,
+        "max_level": max_level,
+        "level_name": FAN_LEVEL_NAMES.get(level, f"Stufe {level}") if max_level == 4 else ("Aus" if level == 0 else f"Stufe {level}"),
+        "rpm": rpm,
+        "pwm_percent": pwm_percent,
+        "thresholds": sorted(thresholds),
+    }
+
+
 _root_drive_cache = None
 
 
@@ -383,6 +442,7 @@ def get_system_snapshot() -> dict:
         },
         "temperature": temp_info,
         "throttled": throttled,
+        "fan": get_fan_status(),
         "memory": {
             "total_mb": round(mem.total / (1024 * 1024), 0),
             "used_mb": round(mem.used / (1024 * 1024), 0),
