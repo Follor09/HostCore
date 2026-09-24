@@ -2605,7 +2605,8 @@ a.file-name:hover {
    Metrics History (24h / 7 Tage)
    ========================================================================== */
 
-.history-card {
+.history-card,
+.nvme-sheet {
   --chart-down: #0891d1;
   --chart-up: #a855f7;
   --chart-grid: rgba(255, 255, 255, 0.06);
@@ -3893,4 +3894,136 @@ a.file-name:hover {
 .data-table td.note {
   font-family: var(--font-body);
   color: var(--text-muted);
+}
+
+/* NVMe history sheet */
+.nvme-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.text-btn {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.text-btn:hover {
+  text-decoration: underline;
+}
+
+.modal-card.sheet-card.nvme-sheet {
+  max-width: 880px;
+  overflow-y: auto;
+}
+
+.nvme-sheet .sheet-head-actions {
+  align-items: center;
+  gap: 10px;
+}
+
+.nvme-stats {
+  gap: 14px 28px;
+}
+
+.nvme-stats .history-stat .sub {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.nvme-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.nvme-chart-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+
+.nvme-chart {
+  height: 190px;
+  flex-shrink: 0;
+}
+
+.nvme-chart .bar {
+  transition: opacity 0.15s;
+}
+
+.nvme-chart .bar.dim {
+  opacity: 0.45;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nvme-empty {
+  position: static;
+  padding: 24px 0;
+}
+
+@media (max-width: 640px) {
+  .nvme-sheet .sheet-head { flex-direction: column; gap: 10px; }
+  .nvme-chart { height: 160px; }
+}
+
+/* Header: never wider than the screen. Wrap as a last resort, icon-only pills first. */
+.app-header {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1320px) {
+  .pill-button.warning-pill span,
+  .pill-button.danger-pill span {
+    display: none;
+  }
+  .pill-button.warning-pill,
+  .pill-button.danger-pill {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .header-center {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-right {
+    gap: 8px;
+    justify-content: flex-start;
+  }
+  .user-chip #user-name {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }

@@ -331,7 +331,10 @@
         <div class="nvme-health" id="nvme-health" hidden>
           <div class="nvme-health-head">
             <span class="sub-label">NVMe-Zustand</span>
-            <span class="health-tag" id="nvme-health-tag">–</span>
+            <div class="nvme-head-tools">
+              <button class="text-btn" id="nvme-history-btn" title="Verschleiß, Schreibmenge und Temperatur über Wochen">Verlauf</button>
+              <span class="health-tag" id="nvme-health-tag">–</span>
+            </div>
           </div>
           <div class="progress-bar-bg mini">
             <div class="progress-bar-fill fill-emerald" id="nvme-life-fill" style="width: 0%"></div>
@@ -556,6 +559,7 @@
             <button data-metric="net">Netzwerk</button>
             <button data-metric="fan">Lüfter</button>
             <button data-metric="power">Leistung</button>
+            <button data-metric="nvme" data-nvme hidden>NVMe</button>
           </div>
         </div>
       </div>
@@ -841,6 +845,53 @@
         <button class="btn-confirm btn-upgrade" id="btn-apt-upgrade">Update &amp; Upgrade installieren</button>
       </div>
       <p class="sheet-note">apt läuft als eigener Systemdienst weiter – auch wenn du dieses Fenster schließt oder das Dashboard neu startet.</p>
+    </div>
+  </div>
+
+  <!-- NVMe health history (daily values, kept for 3 years) -->
+  <div class="modal-backdrop" id="nvme-modal" aria-hidden="true">
+    <div class="modal-card sheet-card nvme-sheet" role="dialog" aria-modal="true" aria-labelledby="nvme-modal-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="nvme-modal-title">NVMe-Verlauf</h3>
+          <p class="card-subtitle" id="nvme-modal-sub">Ein Messpunkt pro Tag</p>
+        </div>
+        <div class="sheet-head-actions">
+          <div class="segmented" id="nvme-range" role="tablist" aria-label="Zeitraum">
+            <button data-days="30">30 Tage</button>
+            <button class="active" data-days="90">90 Tage</button>
+            <button data-days="365">1 Jahr</button>
+          </div>
+          <button class="mini-icon-btn" id="nvme-modal-close" title="Schließen (Esc)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="history-stats nvme-stats" id="nvme-stats"></div>
+
+      <h4 class="nvme-chart-title">Pro Tag geschrieben</h4>
+      <div class="history-chart nvme-chart" id="nvme-chart-written">
+        <svg role="img" aria-label="Pro Tag geschriebene Datenmenge"></svg>
+        <div class="history-tooltip" hidden></div>
+      </div>
+
+      <div class="nvme-chart-head">
+        <h4 class="nvme-chart-title">Temperatur pro Tag</h4>
+        <div class="chart-legend" id="nvme-temp-legend"></div>
+      </div>
+      <div class="history-chart nvme-chart" id="nvme-chart-temp">
+        <svg role="img" aria-label="NVMe-Temperatur pro Tag"></svg>
+        <div class="history-tooltip" hidden></div>
+      </div>
+
+      <div class="history-empty nvme-empty" id="nvme-empty" hidden>Noch keine Daten – der erste Tageswert wird etwa eine Minute nach dem Start gespeichert, danach stündlich aktualisiert.</div>
+
+      <details class="history-table-wrap">
+        <summary>Als Tabelle anzeigen</summary>
+        <div class="history-table-scroll"><table id="nvme-table"></table></div>
+      </details>
+      <p class="sheet-note">Verschleiß meldet die SSD selbst in ganzen Prozent. Die Restlebensdauer ist eine Hochrechnung aus dem bisherigen Anstieg – erst nach einigen Wochen aussagekräftig.</p>
     </div>
   </div>
 

@@ -348,7 +348,19 @@
     'Installiert, aber nicht gestartet: sudo systemctl enable --now fail2ban': 'Installed but not running: sudo systemctl enable --now fail2ban',
     'fail2ban ist nicht installiert.': 'fail2ban is not installed.',
     'Nicht installiert. Schutz gegen Passwort-Raten: sudo apt install fail2ban': 'Not installed. Protection against password guessing: sudo apt install fail2ban',
-    'Journal antwortet nicht.': 'Journal is not responding.', 'Sehr viele Einträge – nur die neuesten wurden ausgewertet.': 'Very many entries – only the newest were analysed.'
+    'Journal antwortet nicht.': 'Journal is not responding.', 'Sehr viele Einträge – nur die neuesten wurden ausgewertet.': 'Very many entries – only the newest were analysed.',
+    // NVMe history
+    'NVMe-Verlauf': 'NVMe history', 'NVMe-Temperatur': 'NVMe temperature',
+    'Verschleiß, Schreibmenge und Temperatur über Wochen': 'Wear, data written and temperature over weeks',
+    'Ein Messpunkt pro Tag': 'One data point per day', '30 Tage': '30 days', '90 Tage': '90 days', '1 Jahr': '1 year',
+    'Verschleiß': 'Wear', 'Restlebensdauer': 'Remaining life', 'Ø pro Tag geschrieben': 'Avg. written per day', 'Höchsttemperatur': 'Peak temperature',
+    'Unsichere Abschaltungen': 'Unsafe shutdowns', 'Medienfehler': 'Media errors', 'Strom weg ohne Herunterfahren': 'Power lost without shutdown',
+    'Kein Verschleiß': 'No wear', 'Sammle Daten': 'Collecting data', '> 20 Jahre': '> 20 years',
+    'Pro Tag geschrieben': 'Written per day', 'Temperatur pro Tag': 'Temperature per day', 'Höchstwert': 'Maximum', 'Durchschnitt': 'Average',
+    'Tag': 'Day', 'Temp. Ø': 'Temp. avg', 'Temp. max': 'Temp. max', 'Reserve': 'Spare', 'Noch keine Werte': 'No values yet',
+    'Pro Tag geschriebene Datenmenge': 'Data written per day', 'NVMe-Temperatur pro Tag': 'NVMe temperature per day',
+    'Noch keine Daten – der erste Tageswert wird etwa eine Minute nach dem Start gespeichert, danach stündlich aktualisiert.': 'No data yet – the first daily value is saved about a minute after start-up, then updated hourly.',
+    'Verschleiß meldet die SSD selbst in ganzen Prozent. Die Restlebensdauer ist eine Hochrechnung aus dem bisherigen Anstieg – erst nach einigen Wochen aussagekräftig.': 'The SSD reports wear itself in whole percent. Remaining life is extrapolated from the rise so far – meaningful only after a few weeks.'
   };
 
   // ---------------------------------------------------------------------------
@@ -460,7 +472,15 @@
     [/^(.+) entsperrt\.$/, '$1 unbanned.'],
     [/^(.+) · (.+) · seit (.+)$/, (m, h, t, d) => `${tr(h)} · ${t} · since ${d}`],
     [/^Keine Berechtigung für System-Logs: (.+)$/, 'No permission for system logs: $1'],
-    [/^(.+) ist nicht installiert\.$/, '$1 is not installed.']
+    [/^(.+) ist nicht installiert\.$/, '$1 is not installed.'],
+    [/^\+(\d+)% in (\d+) Tagen$/, '+$1% in $2 days'],
+    [/^unverändert in (\d+) Tagen$/, 'unchanged in $1 days'],
+    [/^in (\d+) Tagen$/, 'in $1 days'],
+    [/^~(.+) Jahre$/, '~$1 years'],
+    [/^Hochrechnung: (.+)% pro Jahr$/, 'Extrapolated: $1% per year'],
+    [/^seit (\d+) Tagen kein Anstieg$/, 'no increase for $1 days'],
+    [/^(\d+) von 30 Tagen$/, '$1 of 30 days'],
+    [/^Ein Messpunkt pro Tag · (\d+) Tage erfasst$/, 'One data point per day · $1 days recorded']
   ];
 
   function translateDynamic(s) {

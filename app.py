@@ -344,6 +344,11 @@ async def api_files_download(path: str, request: Request):
     return FileResponse(real, filename=os.path.basename(real))
 
 
+@app.get("/api/nvme/history")
+async def api_nvme_history(days: int = 90):
+    return await asyncio.to_thread(history.get_nvme_history, days)
+
+
 # ---------------------------------------------------------------------------
 # System tools page
 # ---------------------------------------------------------------------------

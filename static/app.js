@@ -2140,7 +2140,8 @@
       { key: 'net_up', label: 'Upload', color: 'var(--chart-up)', dashed: true }
     ] },
     fan:  { title: 'Lüfterstufe', unit: 'level', max: 4, series: [{ key: 'fan', label: 'Lüfter', color: 'var(--accent-emerald)', area: true }], peak: 'fan_max' },
-    power: { title: 'Board-Leistung', unit: 'W', series: [{ key: 'power', label: 'Leistung', color: 'var(--accent-amber)', area: true }], peak: 'power_max' }
+    power: { title: 'Board-Leistung', unit: 'W', series: [{ key: 'power', label: 'Leistung', color: 'var(--accent-amber)', area: true }], peak: 'power_max' },
+    nvme: { title: 'NVMe-Temperatur', unit: '°C', series: [{ key: 'nvme_temp', label: 'NVMe', color: 'var(--accent-violet)', area: true }], peak: 'nvme_temp_max' }
   };
 
   const historyState = { range: '24h', metric: 'cpu', data: null, layout: null };
@@ -2496,6 +2497,275 @@
   }
 
   // ---------------------------------------------------------------------------
+  // NVMe history sheet: one value per day (wear, writes, temperature range)
+  // ---------------------------------------------------------------------------
+  const nvmeState = { days: 90, data: null };
+  const NVME_TEMP_SERIES = [
+    { key: 'temp_max', label: 'Höchstwert', color: 'var(--chart-down)' },
+    { key: 'temp_avg', label: 'Durchschnitt', color: 'var(--chart-up)', dashed: true }
+  ];
+
+  const fmtDay = (day, opts = { day: 'numeric', month: 'numeric' }) =>
+    new Date(`${day}T12:00:00`).toLocaleDateString(LOCALE, opts);
+  const fmtGb = gb => (gb == null ? '–' : gb >= 1000 ? `${(gb / 1000).toFixed(2)} TB` : `${gb >= 100 ? Math.round(gb) : gb.toFixed(1)} GB`);
+
+  function nvmeStat(label, value, sub) {
+    const box = document.createElement('div');
+    box.className = 'history-stat';
+    const l = document.createElement('span'); l.className = 'label'; l.textContent = label;
+    const v = document.createElement('span'); v.className = 'value'; v.textContent = value;
+    box.append(l, v);
+    if (sub) { const x = document.createElement('span'); x.className = 'sub'; x.textContent = sub; box.appendChild(x); }
+    return box;
+  }
+
+  function renderNvmeStats(sum, rangeDays) {
+    const box = $('nvme-stats');
+    box.innerHTML = '';
+    if (sum.used != null) {
+      box.appendChild(nvmeStat('Verschleiß', `${sum.used}%`,
+        sum.used_change > 0 ? `+${sum.used_change}% in ${rangeDays} Tagen` : `unverändert in ${rangeDays} Tagen`));
+      let life, lifeSub;
+      if (sum.life_status === 'estimate') {
+        life = sum.remaining_years >= 20 ? '> 20 Jahre' : `~${sum.remaining_years.toLocaleString(LOCALE)} Jahre`;
+        lifeSub = `Hochrechnung: ${sum.wear_per_year.toLocaleString(LOCALE)}% pro Jahr`;
+      } else if (sum.life_status === 'no_wear') {
+        life = 'Kein Verschleiß'; lifeSub = `seit ${sum.tracked_days} Tagen kein Anstieg`;
+      } else {
+        life = 'Sammle Daten'; lifeSub = `${sum.tracked_days ?? 0} von 30 Tagen`;
+      }
+      box.appendChild(nvmeStat('Restlebensdauer', life, lifeSub));
+      box.appendChild(nvmeStat('Ø pro Tag geschrieben', fmtGb(sum.avg_written_gb)));
+    }
+    if (sum.temp_max != null) box.appendChild(nvmeStat('Höchsttemperatur', `${sum.temp_max.toFixed(0)} °C`, `in ${rangeDays} Tagen`));
+    if (sum.used != null) {
+      box.appendChild(nvmeStat('Unsichere Abschaltungen', sum.unsafe_change > 0 ? `+${sum.unsafe_change}` : '0',
+        sum.unsafe_change > 0 ? 'Strom weg ohne Herunterfahren' : `in ${rangeDays} Tagen`));
+      box.appendChild(nvmeStat('Medienfehler', String(sum.media_errors ?? 0)));
+    }
+  }
+
+  // Small daily chart: bars (one series) or lines (several); hover shows the day's values
+  function drawDailyChart(container, rows, cfg) {
+    const svg = container.querySelector('svg');
+    const tip = container.querySelector('.history-tooltip');
+    svg.innerHTML = '';
+    tip.hidden = true;
+    const series = cfg.series;
+    const vals = rows.flatMap(r => series.map(s => r[s.key])).filter(v => v != null);
+    if (!vals.length) {
+      const t = svgEl('text', { x: '50%', y: '50%', 'text-anchor': 'middle', class: 'axis-label' });
+      t.textContent = 'Noch keine Werte';
+      svg.appendChild(t);
+      return;
+    }
+    const W = container.clientWidth, H = container.clientHeight;
+    const pad = { l: 58, r: cfg.kind === 'line' ? 12 : 8, t: 10, b: 24 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+    // Fixed day grid for the whole range, so gaps show as gaps
+    const n = nvmeState.days;
+    const end = new Date(); end.setHours(12, 0, 0, 0);
+    const dayIndex = day => n - 1 - Math.round((end - new Date(`${day}T12:00:00`)) / 86400000);
+    const slot = iw / n;
+    const xc = i => pad.l + (i + 0.5) * slot;
+
+    const lo = cfg.kind === 'line' ? Math.max(0, Math.min(...vals) - 3) : 0;
+    const nt = niceTicks(lo, Math.max(...vals, cfg.minMax || 1));
+    const y = v => pad.t + ih - (v - nt.min) / (nt.max - nt.min) * ih;
+    nt.ticks.forEach(t => {
+      svg.appendChild(svgEl('line', { x1: pad.l, x2: pad.l + iw, y1: y(t), y2: y(t), class: 'grid-line' }));
+      const lbl = svgEl('text', { x: pad.l - 8, y: y(t) + 3, 'text-anchor': 'end', class: 'axis-label' });
+      lbl.textContent = cfg.tick(t);
+      svg.appendChild(lbl);
+    });
+
+    // X labels: about 6 dates across the range
+    const every = Math.max(1, Math.round(n / 6));
+    for (let i = n - 1; i >= 0; i -= every) {
+      const d = new Date(end.getTime() - (n - 1 - i) * 86400000);
+      const lbl = svgEl('text', { x: xc(i), y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });
+      lbl.textContent = d.toLocaleDateString(LOCALE, { day: 'numeric', month: 'numeric' });
+      svg.appendChild(lbl);
+    }
+
+    const placed = rows.map(r => ({ r, i: dayIndex(r.day) })).filter(p => p.i >= 0 && p.i < n);
+    if (cfg.kind === 'bar') {
+      const s = series[0];
+      const bw = Math.max(1, Math.min(slot - 2, 18));  // 2px surface gap between bars
+      placed.forEach(p => {
+        const v = p.r[s.key];
+        if (v == null) return;
+        const h = Math.max(1, y(nt.min) - y(v));
+        const x0 = xc(p.i) - bw / 2, y0 = y(nt.min) - h, rad = Math.min(4, bw / 2, h);
+        // Rounded top, square base on the axis
+        const d = `M${x0},${y0 + h}V${y0 + rad}Q${x0},${y0} ${x0 + rad},${y0}H${x0 + bw - rad}Q${x0 + bw},${y0} ${x0 + bw},${y0 + rad}V${y0 + h}Z`;
+        svg.appendChild(svgEl('path', { d, fill: s.color, class: 'bar', 'data-i': p.i }));
+      });
+    } else {
+      series.forEach(s => {
+        let seg = [];
+        const flush = () => {
+          if (!seg.length) return;
+          if (seg.length === 1) seg.push([seg[0][0] + 2, seg[0][1]]);
+          svg.appendChild(svgEl('path', {
+            d: seg.map((q, k) => `${k ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(''),
+            fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+            ...(s.dashed ? { 'stroke-dasharray': '5 4' } : {})
+          }));
+          seg = [];
+        };
+        let prevI = null;
+        placed.forEach(p => {
+          const v = p.r[s.key];
+          if (v == null || (prevI != null && p.i - prevI > 1)) flush();
+          if (v != null) seg.push([xc(p.i), y(v)]);
+          prevI = p.i;
+        });
+        flush();
+      });
+    }
+
+    // Hover: crosshair + dots (lines) or dimmed neighbours (bars), tooltip with the day's values
+    const hover = svgEl('g', { visibility: 'hidden' });
+    hover.appendChild(svgEl('line', { y1: pad.t, y2: pad.t + ih, class: 'crosshair' }));
+    if (cfg.kind === 'line') series.forEach(s => hover.appendChild(svgEl('circle', { r: 4, fill: s.color, class: 'hover-dot' })));
+    svg.appendChild(hover);
+    const byIndex = new Map(placed.map(p => [p.i, p.r]));
+
+    svg.onpointermove = evt => {
+      const px = evt.clientX - svg.getBoundingClientRect().left;
+      const i = Math.floor((px - pad.l) / slot);
+      const r = byIndex.get(i);
+      if (!r) { svg.onpointerleave(); return; }
+      const cx = xc(i);
+      const [line, ...dots] = hover.children;
+      line.setAttribute('x1', cx); line.setAttribute('x2', cx);
+      dots.forEach((dot, k) => {
+        const v = r[series[k].key];
+        dot.setAttribute('visibility', v == null ? 'hidden' : 'visible');
+        if (v != null) { dot.setAttribute('cx', cx); dot.setAttribute('cy', y(v)); }
+      });
+      hover.setAttribute('visibility', 'visible');
+      svg.querySelectorAll('.bar').forEach(b => b.classList.toggle('dim', +b.dataset.i !== i));
+
+      tip.innerHTML = '';
+      const t = document.createElement('div');
+      t.className = 'tt-time';
+      t.textContent = fmtDay(r.day, { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' });
+      tip.appendChild(t);
+      series.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'tt-row';
+        const key = document.createElement('span');
+        key.className = `line-key ${s.dashed ? 'dashed' : ''}`;
+        key.style.setProperty('--key-color', s.color);
+        const b = document.createElement('b');
+        b.textContent = cfg.fmt(r[s.key]);
+        row.append(key, b, document.createTextNode(s.label));
+        tip.appendChild(row);
+      });
+      tip.hidden = false;
+      tip.style.left = `${cx + 14 + tip.offsetWidth > W ? cx - 14 - tip.offsetWidth : cx + 14}px`;
+    };
+    svg.onpointerleave = () => {
+      hover.setAttribute('visibility', 'hidden');
+      svg.querySelectorAll('.bar.dim').forEach(b => b.classList.remove('dim'));
+      tip.hidden = true;
+    };
+  }
+
+  function renderNvmeHistory() {
+    const data = nvmeState.data;
+    if (!data) return;
+    const rows = data.days;
+    const has = rows.length > 0;
+    $('nvme-empty').hidden = has;
+    ['nvme-chart-written', 'nvme-chart-temp'].forEach(id => { $(id).hidden = !has; });
+    document.querySelectorAll('.nvme-chart-title, .nvme-chart-head').forEach(e => { e.hidden = !has; });
+    renderNvmeStats(data.summary || {}, nvmeState.days);
+    $('nvme-modal-sub').textContent = has
+      ? `Ein Messpunkt pro Tag · ${rows.length} Tage erfasst`
+      : 'Ein Messpunkt pro Tag';
+    if (!has) return;
+
+    const maxGb = Math.max(0, ...rows.map(r => r.written_gb || 0));
+    const inTb = maxGb >= 1000;
+    drawDailyChart($('nvme-chart-written'), rows, {
+      kind: 'bar', series: [{ key: 'written_gb', label: 'Geschrieben', color: 'var(--chart-down)' }],
+      tick: t => (t === 0 ? '0' : inTb ? `${+(t / 1000).toFixed(2)} TB` : `${+t.toFixed(1)} GB`), fmt: fmtGb, minMax: 1
+    });
+    drawDailyChart($('nvme-chart-temp'), rows, {
+      kind: 'line', series: NVME_TEMP_SERIES, tick: t => `${t}°`, fmt: v => (v == null ? '–' : `${v.toFixed(1)} °C`), minMax: 10
+    });
+
+    const table = $('nvme-table');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Tag', 'Geschrieben', 'Temp. Ø', 'Temp. max', 'Verschleiß', 'Reserve'].forEach(h => {
+      const th = document.createElement('th'); th.textContent = h; head.appendChild(th);
+    });
+    const body = table.createTBody();
+    [...rows].reverse().forEach(r => {
+      const tr = body.insertRow();
+      [fmtDay(r.day, { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' }), fmtGb(r.written_gb),
+       r.temp_avg == null ? '–' : `${r.temp_avg.toFixed(1)} °C`, r.temp_max == null ? '–' : `${r.temp_max.toFixed(1)} °C`,
+       r.used == null ? '–' : `${r.used}%`, r.spare == null ? '–' : `${r.spare}%`].forEach(v => { tr.insertCell().textContent = v; });
+    });
+  }
+
+  async function loadNvmeHistory() {
+    try {
+      const res = await fetch(`/api/nvme/history?days=${nvmeState.days}`);
+      if (res.ok) nvmeState.data = await res.json();
+    } catch (e) {
+      console.warn('NVMe history fetch failed:', e);
+    }
+    renderNvmeHistory();
+  }
+
+  function openNvmeHistory() {
+    const modal = $('nvme-modal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    $('nvme-modal-close').focus();
+    loadNvmeHistory();
+  }
+
+  function closeNvmeHistory() {
+    const modal = $('nvme-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function initNvmeHistory() {
+    if (!$('nvme-modal')) return;
+    const legend = $('nvme-temp-legend');
+    NVME_TEMP_SERIES.forEach(s => {
+      const item = document.createElement('span');
+      const key = document.createElement('span');
+      key.className = `line-key ${s.dashed ? 'dashed' : ''}`;
+      key.style.setProperty('--key-color', s.color);
+      item.append(key, document.createTextNode(s.label));
+      legend.appendChild(item);
+    });
+    $('nvme-history-btn').addEventListener('click', openNvmeHistory);
+    $('nvme-modal-close').addEventListener('click', closeNvmeHistory);
+    $('nvme-modal').addEventListener('click', e => { if (e.target.id === 'nvme-modal') closeNvmeHistory(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('nvme-modal').classList.contains('open')) closeNvmeHistory();
+    });
+    document.querySelectorAll('#nvme-range button').forEach(b => b.addEventListener('click', () => {
+      nvmeState.days = +b.dataset.days;
+      document.querySelectorAll('#nvme-range button').forEach(x => x.classList.toggle('active', x === b));
+      loadNvmeHistory();
+    }));
+    new ResizeObserver(() => { if ($('nvme-modal').classList.contains('open')) renderNvmeHistory(); })
+      .observe($('nvme-chart-written'));
+  }
+
+  // ---------------------------------------------------------------------------
   // Session expired / not logged in: any 401 sends the user to the login page
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async (...args) => {
@@ -2532,6 +2802,7 @@
     loadWeather();
     loadDrives();
     initHistory();
+    initNvmeHistory();
     initHomelab();
     connectWebSocket();
 

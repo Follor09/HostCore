@@ -198,7 +198,9 @@ def _nvme_smart() -> Dict[str, Any]:
         "available_spare": log.get("available_spare"),
         "tb_written": round(log.get("data_units_written", 0) * 512000 / 1e12, 2),
         "power_on_hours": log.get("power_on_hours"),
+        "tb_read": round(log.get("data_units_read", 0) * 512000 / 1e12, 2),
         "media_errors": log.get("media_errors", 0),
+        "unsafe_shutdowns": log.get("unsafe_shutdowns"),
         "critical_warning": log.get("critical_warning", 0),
         "smart_temp": log.get("temperature"),
     }
