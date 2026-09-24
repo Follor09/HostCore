@@ -5,6 +5,8 @@
 (function () {
   'use strict';
 
+  const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
+
   const $ = id => document.getElementById(id);
   let data = null;
 
@@ -69,7 +71,7 @@
   }
 
   function fmtDate(ts) {
-    return ts ? new Date(ts * 1000).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) : '–';
+    return ts ? new Date(ts * 1000).toLocaleString(LOCALE, { dateStyle: 'medium', timeStyle: 'short' }) : '–';
   }
 
   // Two-click confirmation for destructive buttons
@@ -124,7 +126,7 @@
 
     renderKv($('history-info'), [
       ['Speicherplatz', fmtBytes(history.size_bytes)],
-      ['Messpunkte', history.samples.toLocaleString('de-DE')],
+      ['Messpunkte', history.samples.toLocaleString(LOCALE)],
       ['Ältester Wert', fmtDate(history.oldest)],
       ['Aufbewahrung', history.retention_days ? `${history.retention_days} Tage, Messung jede Minute` : '–']
     ]);
@@ -209,6 +211,15 @@
   }
 
   function bind() {
+    document.querySelectorAll('#lang-switch button').forEach(btn => {
+      const current = (window.I18N && window.I18N.lang) || 'de';
+      btn.classList.toggle('active', btn.dataset.lang === current);
+      btn.setAttribute('aria-pressed', String(btn.dataset.lang === current));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.lang !== current && window.I18N) window.I18N.setLang(btn.dataset.lang);
+      });
+    });
+
     $('btn-logout').addEventListener('click', async () => {
       await fetch('/api/auth/logout', { method: 'POST' });
       location.href = '/login';

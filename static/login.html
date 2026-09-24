@@ -47,8 +47,10 @@
       <button type="submit" class="login-submit" id="login-submit">Anmelden</button>
 
       <a class="login-public" id="login-public" href="/" hidden>Nur ansehen, ohne Anmeldung →</a>
+      <button type="button" class="login-lang" id="login-lang" data-no-i18n></button>
     </form>
   </main>
+  <script src="/static/i18n.js"></script>
 
   <script>
     (function () {
@@ -73,6 +75,12 @@
         }
         document.getElementById('login-public').hidden = !status.public_view;
       }).catch(() => {});
+
+      // Language toggle: shows the other language
+      const langBtn = document.getElementById('login-lang');
+      const current = (window.I18N && window.I18N.lang) || 'de';
+      langBtn.textContent = current === 'de' ? 'English' : 'Deutsch';
+      langBtn.addEventListener('click', () => window.I18N && window.I18N.setLang(current === 'de' ? 'en' : 'de'));
 
       try { user.value = localStorage.getItem('loginUser') || ''; } catch (e) { /* ignore */ }
       (user.value ? pass : user).focus();

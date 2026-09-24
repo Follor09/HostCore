@@ -108,7 +108,7 @@ class LoginRequest(BaseModel):
 async def login_page(request: Request):
     if request.state.user:
         return RedirectResponse("/", status_code=303)
-    return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers={"Cache-Control": "no-cache"})
+    return _serve_page("login.html")
 
 
 @app.get("/api/auth/status")
@@ -610,7 +610,7 @@ def _serve_page(name: str) -> HTMLResponse:
     mix a new page with a cached old style.css / *.js after an auto-update."""
     with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
         html = f.read()
-    for asset in ("style.css", "app.js", "settings.js", "terminal.js", "system.js"):
+    for asset in ("style.css", "i18n.js", "app.js", "settings.js", "terminal.js", "system.js"):
         path = os.path.join(STATIC_DIR, asset)
         if os.path.exists(path):
             html = html.replace(f"/static/{asset}\"", f"/static/{asset}?v={int(os.path.getmtime(path))}\"")

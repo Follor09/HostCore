@@ -35,6 +35,7 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#konto" class="active">Konto</a>
+      <a href="#sprache">Sprache</a>
       <a href="#wetter">Wetter</a>
       <a href="#dienste">Dienste</a>
       <a href="#wake-on-lan">Wake-on-LAN</a>
@@ -92,6 +93,16 @@
             <p>Beendet jede Sitzung außer dieser – z.B. wenn ein Gerät verloren ging.</p>
           </div>
           <button class="btn-secondary" id="logout-others">Abmelden</button>
+        </div>
+      </section>
+
+      <!-- Sprache / Language -->
+      <section class="glass-card settings-section" id="sprache">
+        <h2>Sprache</h2>
+        <p class="section-desc">Sprache der Oberfläche. Wird in diesem Browser gespeichert.</p>
+        <div class="segmented lang-switch" id="lang-switch" data-no-i18n>
+          <button type="button" data-lang="de">Deutsch</button>
+          <button type="button" data-lang="en">English</button>
         </div>
       </section>
 
@@ -169,6 +180,7 @@
   </main>
 
   <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
   <script src="/static/settings.js"></script>
 </body>
 </html>

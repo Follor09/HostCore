@@ -6,6 +6,8 @@
 (function () {
   'use strict';
 
+  const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
+
   // State Management
   const state = {
     ws: null,
@@ -229,7 +231,7 @@
 
       if (els.clockDate) {
         const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
-        els.clockDate.textContent = now.toLocaleDateString('de-DE', options);
+        els.clockDate.textContent = now.toLocaleDateString(LOCALE, options);
       }
     }
     updateClock();
@@ -295,7 +297,7 @@
   function dayName(dateStr, index) {
     if (index === 0) return 'Heute';
     if (index === 1) return 'Morgen';
-    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'short' });
+    return new Date(`${dateStr}T12:00:00`).toLocaleDateString(LOCALE, { weekday: 'short' });
   }
 
   function renderHours(hours) {
@@ -319,7 +321,7 @@
       els.weatherTomorrow.innerHTML = '<div class="weather-empty">Keine Vorhersage für morgen verfügbar</div>';
       return;
     }
-    const date = new Date(`${day.date}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'numeric' });
+    const date = new Date(`${day.date}T12:00:00`).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'numeric' });
     els.weatherTomorrow.innerHTML = `
       <div class="weather-tomorrow-head">
         <div>
@@ -632,7 +634,7 @@
   }
 
   function fmtDate(ts) {
-    return ts ? new Date(ts * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '';
+    return ts ? new Date(ts * 1000).toLocaleDateString(LOCALE, { day: '2-digit', month: '2-digit', year: '2-digit' }) : '';
   }
 
   function fileIcon(kind) {
@@ -828,7 +830,7 @@
         filesState.largest = await filesApi('largest', filesState.path);
         filesState.mode = 'largest';
         renderFiles();
-        setFilesMsg(`${filesState.largest.scanned.toLocaleString('de-DE')} Dateien durchsucht${filesState.largest.timed_out ? ' (nach 60 s abgebrochen)' : ''}`, 'success');
+        setFilesMsg(`${filesState.largest.scanned.toLocaleString(LOCALE)} Dateien durchsucht${filesState.largest.timed_out ? ' (nach 60 s abgebrochen)' : ''}`, 'success');
       } catch (err) {
         setFilesMsg(err.message, 'error');
       } finally {
@@ -2160,8 +2162,8 @@
 
   function fmtTime(ts, withDay) {
     const d = new Date(ts * 1000);
-    const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    return withDay ? `${d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })} ${time}` : time;
+    const time = d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+    return withDay ? `${d.toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'numeric' })} ${time}` : time;
   }
 
   // Round axis ticks: step is 1, 2 or 5 x 10^n, axis snaps to whole steps
@@ -2280,7 +2282,7 @@
     const xTicks = [];
     if (data.range === '7d') {
       const d = new Date(x0 * 1000); d.setHours(24, 0, 0, 0);
-      for (let t = d.getTime() / 1000; t < now; t += 86400) xTicks.push([t, new Date(t * 1000).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric' })]);
+      for (let t = d.getTime() / 1000; t < now; t += 86400) xTicks.push([t, new Date(t * 1000).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })]);
     } else {
       const d = new Date(x0 * 1000); d.setMinutes(0, 0, 0); d.setHours(Math.ceil((d.getHours() + 1) / 3) * 3);
       for (let t = d.getTime() / 1000; t < now; t += 3 * 3600) xTicks.push([t, fmtTime(t)]);

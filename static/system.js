@@ -5,6 +5,8 @@
 (function () {
   'use strict';
 
+  const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
+
   const $ = id => document.getElementById(id);
   const cache = {};
 
@@ -245,7 +247,7 @@
   }
 
   function fmtNum(n) {
-    return n == null ? '–' : n >= 1000 ? Math.round(n).toLocaleString('de-DE') : String(n);
+    return n == null ? '–' : n >= 1000 ? Math.round(n).toLocaleString(LOCALE) : String(n);
   }
 
   function renderBenchmarks(b) {
@@ -279,7 +281,7 @@
       const result = r.kind === 'disk'
         ? `↑ ${fmtNum(r.write_mbs)} MB/s · ↓ ${fmtNum(r.read_mbs)} MB/s · ${fmtNum(r.iops_4k)} IOPS`
         : `${fmtNum(r.single_mbs)} MB/s (1 Kern) · ${fmtNum(r.multi_mbs)} MB/s (${r.cores})`;
-      [new Date(r.ts * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }),
+      [new Date(r.ts * 1000).toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short' }),
        r.kind === 'disk' ? `Laufwerk ${r.target}` : 'CPU', result,
        r.temp_c != null ? `${r.temp_c} °C` : '–', r.governor || '–'].forEach(v => { row.insertCell().textContent = v; });
     });
@@ -348,7 +350,7 @@
       if (!r.supported) { status.textContent = 'Kein systemd-Journal auf diesem System.'; return; }
       r.entries.forEach(entry => {
         const line = el('div', `log-line${entry.priority <= 3 ? ' err' : entry.priority === 4 ? ' warn' : ''}`);
-        const t = el('time', '', new Date(entry.ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        const t = el('time', '', new Date(entry.ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         const unit = el('span', 'log-unit', (entry.unit || '').replace(/\.service$/, ''));
         unit.title = entry.unit + (entry.pid ? ` (PID ${entry.pid})` : '');
         const msg = el('span', 'log-msg');

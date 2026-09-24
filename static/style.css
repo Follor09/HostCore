@@ -1124,6 +1124,25 @@ body {
   color: var(--text-main);
 }
 
+.login-lang {
+  align-self: center;
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.login-lang:hover {
+  color: var(--text-main);
+}
+
+.lang-switch {
+  width: fit-content;
+}
+
 .warning-pill {
   background: rgba(255, 183, 3, 0.12);
   color: #ffc83b;
@@ -2860,6 +2879,7 @@ a.file-name:hover {
 }
 
 .metric-highlight-value {
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 1.7rem;
   font-weight: 700;
