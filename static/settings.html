@@ -37,7 +37,6 @@
       <a href="#konto" class="active">Konto</a>
       <a href="#wetter">Wetter</a>
       <a href="#dienste">Dienste</a>
-      <a href="#benachrichtigungen">Benachrichtigungen</a>
       <a href="#wake-on-lan">Wake-on-LAN</a>
       <a href="#auto-update">Auto-Update</a>
       <a href="#verlauf">Verlauf</a>
@@ -115,70 +114,6 @@
         <h2>Dienste</h2>
         <p class="section-desc">Welche Kacheln im Widget „Server-Dienste“ angezeigt werden. Änderungen werden sofort gespeichert.</p>
         <div class="check-grid" id="services-checks"></div>
-      </section>
-
-      <!-- Benachrichtigungen -->
-      <section class="glass-card settings-section" id="benachrichtigungen">
-        <h2>Benachrichtigungen</h2>
-        <p class="section-desc">
-          Push-Nachrichten aufs Handy über <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>:
-          App installieren, ein Thema abonnieren und dessen URL hier eintragen.
-          Auf ntfy.sh ist jedes Thema öffentlich – nimm einen langen, zufälligen Namen.
-        </p>
-
-        <form class="settings-form" id="notify-form" autocomplete="off">
-          <div class="settings-row first">
-            <div>
-              <strong>Benachrichtigungen senden</strong>
-              <p>Warnungen erscheinen immer auch in der Glocke im Dashboard.</p>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="notify-enabled">
-              <span class="switch-track" aria-hidden="true"></span>
-            </label>
-          </div>
-
-          <div class="form-grid notify-grid">
-            <label class="login-field">
-              <span>ntfy-URL (Server + Thema)</span>
-              <input type="url" id="notify-url" placeholder="https://ntfy.sh/picore-…" spellcheck="false">
-            </label>
-            <div class="field-with-button">
-              <button type="button" class="btn-secondary" id="notify-random">Zufälliges Thema</button>
-            </div>
-            <label class="login-field">
-              <span>Access-Token <em>(nur für geschützte Server)</em></span>
-              <input type="password" id="notify-token" autocomplete="off" placeholder="leer = unverändert">
-            </label>
-            <div class="field-with-button">
-              <button type="button" class="btn-secondary" id="notify-token-clear" hidden>Token entfernen</button>
-            </div>
-          </div>
-
-          <h3 class="subhead">Warnen bei</h3>
-          <div class="rules-grid">
-            <label class="rule-item">
-              <span>CPU-Temperatur ab</span>
-              <span class="num-input"><input type="number" id="rule-cpu_temp" min="0" max="110"> °C</span>
-            </label>
-            <label class="rule-item">
-              <span>Systemlaufwerk voll ab</span>
-              <span class="num-input"><input type="number" id="rule-disk_percent" min="0" max="100"> %</span>
-            </label>
-            <label class="check-item"><input type="checkbox" id="rule-nvme"> NVMe-Probleme (SMART, Verschleiß, &gt; 70 °C)</label>
-            <label class="check-item"><input type="checkbox" id="rule-services"> Dienst im Status „Fehler“</label>
-            <label class="check-item"><input type="checkbox" id="rule-updater"> Auto-Update fehlgeschlagen</label>
-            <label class="check-item"><input type="checkbox" id="rule-workloads"> Container / Pod abgestürzt</label>
-            <label class="check-item"><input type="checkbox" id="rule-reboot"> Neustart nach Updates nötig</label>
-          </div>
-          <p class="field-hint">0 °C / 0 % schaltet eine Schwelle ab. Eine Warnung kommt erst, wenn der Zustand mehrere Minuten anhält, und einmal, wenn er behoben ist.</p>
-
-          <div class="form-actions">
-            <span class="form-msg" id="notify-msg" role="status"></span>
-            <button type="button" class="btn-secondary" id="notify-test">Test senden</button>
-            <button type="submit" class="btn-primary">Speichern</button>
-          </div>
-        </form>
       </section>
 
       <!-- Wake-on-LAN -->

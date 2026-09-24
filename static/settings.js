@@ -120,7 +120,6 @@
     });
 
     renderUpdater(updater);
-    renderNotifications(data.notifications);
     renderWolSettings(data.wol_devices);
 
     renderKv($('history-info'), [
@@ -154,20 +153,6 @@
       ['GitHub-Token', u.token_set ? 'Hinterlegt' : 'Nicht hinterlegt (nur für private Repos nötig)', u.token_set ? 'good' : ''],
       ['Letzte Prüfung', fmtDate(u.last_check_timestamp)]
     ]);
-  }
-
-  const RULE_KEYS = ['cpu_temp', 'disk_percent', 'nvme', 'services', 'updater', 'workloads', 'reboot'];
-
-  function renderNotifications(n) {
-    $('notify-enabled').checked = n.enabled;
-    $('notify-url').value = n.ntfy_url;
-    $('notify-token').value = '';
-    $('notify-token').placeholder = n.token_set ? '•••••••• gesetzt – leer = unverändert' : 'optional';
-    $('notify-token-clear').hidden = !n.token_set;
-    RULE_KEYS.forEach(k => {
-      const el = $(`rule-${k}`);
-      if (el.type === 'checkbox') el.checked = !!n.rules[k]; else el.value = n.rules[k];
-    });
   }
 
   function renderWolSettings(devices) {
@@ -207,15 +192,6 @@
       item.append(main, del);
       list.appendChild(item);
     });
-  }
-
-  function notifyPayload(token) {
-    const rules = {};
-    RULE_KEYS.forEach(k => {
-      const el = $(`rule-${k}`);
-      rules[k] = el.type === 'checkbox' ? el.checked : Number(el.value || 0);
-    });
-    return { enabled: $('notify-enabled').checked, ntfy_url: $('notify-url').value.trim(), token, rules };
   }
 
   // ---------------------------------------------------------------------------
@@ -322,56 +298,6 @@
         render();
       } catch (err) {
         setMsg($('history-msg'), err.message, 'error');
-      }
-    });
-
-    $('notify-form').addEventListener('submit', async e => {
-      e.preventDefault();
-      const msg = $('notify-msg');
-      const token = $('notify-token').value.trim();
-      try {
-        const res = await api('/api/settings/notifications', notifyPayload(token ? token : null));
-        data.notifications = res.notifications;
-        renderNotifications(res.notifications);
-        setMsg(msg, 'Gespeichert.', 'success');
-      } catch (err) {
-        setMsg(msg, err.message, 'error');
-      }
-    });
-
-    $('notify-test').addEventListener('click', async () => {
-      const msg = $('notify-msg'), btn = $('notify-test');
-      btn.disabled = true;
-      setMsg(msg, 'Speichere & sende…');
-      try {
-        // Save first so the test uses what is in the form
-        const token = $('notify-token').value.trim();
-        const saved = await api('/api/settings/notifications', notifyPayload(token ? token : null));
-        renderNotifications(saved.notifications);
-        const res = await api('/api/settings/notifications/test', {});
-        setMsg(msg, `${res.message} Schau aufs Handy.`, 'success');
-      } catch (err) {
-        setMsg(msg, err.message, 'error');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    $('notify-random').addEventListener('click', () => {
-      const bytes = new Uint8Array(9);
-      crypto.getRandomValues(bytes);
-      const topic = 'picore-' + [...bytes].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 16);
-      $('notify-url').value = `https://ntfy.sh/${topic}`;
-      setMsg($('notify-msg'), 'Dieses Thema in der ntfy-App abonnieren, dann speichern.', 'warning');
-    });
-
-    confirmClick($('notify-token-clear'), 'Wirklich entfernen?', async () => {
-      try {
-        const res = await api('/api/settings/notifications', notifyPayload(''));
-        renderNotifications(res.notifications);
-        setMsg($('notify-msg'), 'Token entfernt.', 'success');
-      } catch (err) {
-        setMsg($('notify-msg'), err.message, 'error');
       }
     });
 

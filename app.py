@@ -25,7 +25,6 @@ import history
 import homelab
 import auth
 import settings_store
-import alerts
 import wol
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -38,12 +37,10 @@ async def lifespan(app: FastAPI):
     updater.refresh_git_info()
     poller_task = asyncio.create_task(updater.background_update_poller())
     history_task = asyncio.create_task(history.background_sampler())
-    alerts_task = asyncio.create_task(alerts.background_alerts())
     yield
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
-    alerts_task.cancel()
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
@@ -214,7 +211,6 @@ def _settings_payload(user: str) -> dict:
             "token_set": os.path.exists(os.path.join(BASE_DIR, ".git", "github-credentials")),
         },
         "history": history.get_stats(),
-        "notifications": alerts.public_config(),
         "wol_devices": wol.list_devices(),
         "system": {
             "hostname": platform.node(),
@@ -285,40 +281,6 @@ async def api_settings_services(req: HiddenServicesRequest):
 async def api_settings_history_clear():
     await asyncio.to_thread(history.clear)
     return {"ok": True, "message": "Verlauf gelöscht."}
-
-
-# ---------------------------------------------------------------------------
-# Alerts & notifications
-# ---------------------------------------------------------------------------
-class NotificationsRequest(BaseModel):
-    enabled: bool
-    ntfy_url: str = ""
-    token: Optional[str] = None  # None = keep the stored token, "" = remove it
-    rules: dict = {}
-
-
-@app.get("/api/alerts")
-async def api_alerts():
-    return alerts.get_alerts()
-
-
-@app.post("/api/settings/notifications")
-async def api_settings_notifications(req: NotificationsRequest):
-    try:
-        alerts.save_config(req.enabled, req.ntfy_url, req.token, req.rules)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"ok": True, "notifications": alerts.public_config()}
-
-
-@app.post("/api/settings/notifications/test")
-async def api_settings_notifications_test():
-    try:
-        await alerts.send("🔔 Test von PiCore", f"Benachrichtigungen von {platform.node()} funktionieren.",
-                          priority=3, tags=["bell"])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Senden fehlgeschlagen: {e}")
-    return {"ok": True, "message": "Testnachricht gesendet."}
 
 
 # ---------------------------------------------------------------------------

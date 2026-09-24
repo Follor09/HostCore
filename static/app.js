@@ -1502,76 +1502,6 @@
     modal.setAttribute('aria-hidden', 'true');
   }
 
-  // ---- Alerts bell ----
-  function alertItem(a, withTime) {
-    const item = document.createElement('div');
-    item.className = 'alert-item';
-    const dot = document.createElement('span');
-    dot.className = `service-dot ${a.level === 'good' ? 'active' : a.level === 'info' ? 'inactive' : 'error'}`;
-    const title = document.createElement('strong');
-    title.textContent = a.title;
-    const msg = document.createElement('p');
-    msg.textContent = a.message;
-    item.append(dot, title, msg);
-    if (withTime) {
-      const t = document.createElement('time');
-      t.textContent = relTime(a.ts || a.since);
-      item.appendChild(t);
-    }
-    return item;
-  }
-
-  function renderAlerts(data) {
-    const badge = $('alert-badge');
-    const n = data.active.length;
-    badge.hidden = n === 0;
-    badge.textContent = String(n);
-    $('btn-alerts').title = n ? `${n} aktive Warnung${n === 1 ? '' : 'en'}` : 'Keine Warnungen';
-
-    const active = $('alerts-active'), recent = $('alerts-recent');
-    active.innerHTML = '';
-    recent.innerHTML = '';
-    if (!n) {
-      const p = document.createElement('p');
-      p.className = 'alerts-empty';
-      p.textContent = 'Alles in Ordnung – keine aktiven Warnungen.';
-      active.appendChild(p);
-    }
-    data.active.forEach(a => active.appendChild(alertItem(a, true)));
-    data.recent.slice(0, 6).forEach(e => recent.appendChild(alertItem(e, true)));
-    if (!data.recent.length) {
-      const p = document.createElement('p');
-      p.className = 'alerts-empty';
-      p.textContent = 'Noch keine Ereignisse.';
-      recent.appendChild(p);
-    }
-    $('alerts-note').textContent = data.notifications_enabled
-      ? 'Push-Benachrichtigungen sind aktiv.'
-      : 'Push aufs Handy ist aus – in den Einstellungen einrichten.';
-  }
-
-  async function loadAlerts() {
-    try {
-      const res = await fetch('/api/alerts');
-      if (res.ok) renderAlerts(await res.json());
-    } catch (e) { /* ignore */ }
-  }
-
-  function initAlertsMenu() {
-    const btn = $('btn-alerts'), pop = $('alerts-popover');
-    if (!btn) return;
-    const setOpen = open => {
-      pop.hidden = !open;
-      btn.setAttribute('aria-expanded', String(open));
-      if (open) loadAlerts();
-    };
-    btn.addEventListener('click', e => { e.stopPropagation(); setOpen(pop.hidden); });
-    document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target)) setOpen(false); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) { setOpen(false); btn.focus(); } });
-    loadAlerts();
-    setInterval(loadAlerts, 30000);
-  }
-
   // ---- Wake-on-LAN ----
   function renderWol(devices) {
     const list = $('wol-list');
@@ -1710,7 +1640,6 @@
       });
     }
     initUpdatesSheet();
-    initAlertsMenu();
     loadHomelab();
     loadWol();
     setInterval(loadHomelab, 20000);
