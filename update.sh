@@ -10,8 +10,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OWNER="$(stat -c %U "$DIR")"
 SERVICE="raspberry-dashboard"
 
-# git/pip run as the repo owner so file ownership and SSH keys stay correct
-as_owner() { sudo -u "$OWNER" -H -- "$@"; }
+OWNER_HOME="$(getent passwd "$OWNER" | cut -d: -f6)"
+
+# git/pip run as the repo owner so file ownership and SSH keys stay correct.
+# setpriv instead of sudo: no PAM session, so the journal isn't flooded every minute.
+as_owner() { setpriv --reuid="$OWNER" --regid="$OWNER" --init-groups env HOME="$OWNER_HOME" "$@"; }
 git_() { as_owner git -C "$DIR" "$@"; }
 
 BRANCH="$(git_ rev-parse --abbrev-ref HEAD)"
