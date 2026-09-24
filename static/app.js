@@ -2284,10 +2284,12 @@
     const xTicks = [];
     if (data.range === '7d') {
       const d = new Date(x0 * 1000); d.setHours(24, 0, 0, 0);
-      for (let t = d.getTime() / 1000; t < now; t += 86400) xTicks.push([t, new Date(t * 1000).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })]);
+      const everyDays = iw < 420 ? 2 : 1;  // narrow (phone): every other day so labels don't collide
+      for (let t = d.getTime() / 1000; t < now; t += 86400 * everyDays) xTicks.push([t, new Date(t * 1000).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })]);
     } else {
-      const d = new Date(x0 * 1000); d.setMinutes(0, 0, 0); d.setHours(Math.ceil((d.getHours() + 1) / 3) * 3);
-      for (let t = d.getTime() / 1000; t < now; t += 3 * 3600) xTicks.push([t, fmtTime(t)]);
+      const everyHours = iw < 420 ? 6 : 3;
+      const d = new Date(x0 * 1000); d.setMinutes(0, 0, 0); d.setHours(Math.ceil((d.getHours() + 1) / everyHours) * everyHours);
+      for (let t = d.getTime() / 1000; t < now; t += everyHours * 3600) xTicks.push([t, fmtTime(t)]);
     }
     xTicks.forEach(([t, text]) => {
       const lbl = svgEl('text', { x: x(t), y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });

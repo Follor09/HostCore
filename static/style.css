@@ -4318,3 +4318,229 @@ body.customizing .dashboard-container {
   .palette-backdrop { padding-top: 8vh; }
   .palette-foot { display: none; }
 }
+
+/* ==========================================================================
+   Mobile (phones)
+   ========================================================================== */
+.mobile-nav {
+  display: none;
+}
+
+/* Drive card header: button + percentage stay on one line */
+.drive-header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drive-title-wrap {
+  min-width: 0;
+}
+
+.drive-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-legend {
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+
+.drive-legend span {
+  white-space: nowrap;
+}
+
+.processes-table th {
+  white-space: nowrap;
+}
+
+/* Tab rows scroll sideways instead of overflowing */
+.history-controls {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tabs-header,
+.history-controls .segmented {
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+
+.tabs-header::-webkit-scrollbar,
+.history-controls .segmented::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-btn,
+.history-controls .segmented button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Bigger touch targets on touchscreens */
+@media (pointer: coarse) {
+  .weather-tab,
+  .segmented button {
+    min-height: 38px;
+  }
+  .mini-icon-btn,
+  .user-logout,
+  .widget-tool {
+    min-width: 38px;
+    min-height: 38px;
+  }
+  .text-btn,
+  .wol-manage,
+  .login-lang {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+  }
+  .proc-kill,
+  .weather-location {
+    min-height: 32px;
+  }
+  .drive-open {
+    min-height: 34px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  /* Bottom navigation replaces the page icons in the header */
+  .mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: rgba(8, 11, 18, 0.94);
+    backdrop-filter: var(--glass-blur);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 50px;
+    font-family: var(--font-body);
+    font-size: 0.64rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-decoration: none;
+    background: none;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-item span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-nav-item.active {
+    color: var(--accent-cyan);
+    background: rgba(0, 240, 255, 0.08);
+  }
+
+  body.has-mobile-nav {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  body.has-mobile-nav .app-header #btn-palette,
+  body.has-mobile-nav .app-header a.icon-button[href="/system"],
+  body.has-mobile-nav .app-header a.icon-button[href="/terminal"],
+  body.has-mobile-nav .app-header a.icon-button[href="/settings"],
+  body.has-mobile-nav .app-header #btn-fullscreen {
+    display: none;
+  }
+
+  /* Header scrolls away instead of eating a fifth of the screen */
+  .app-header {
+    position: static;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  body.has-mobile-nav .toast-container {
+    right: 12px;
+    left: 12px;
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  body.has-mobile-nav .customize-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  /* iOS zooms into inputs below 16px */
+  input[type="text"],
+  input[type="search"],
+  input[type="password"],
+  input[type="number"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Dialogs become bottom sheets */
+  .modal-backdrop {
+    align-items: flex-end;
+  }
+
+  .modal-card.sheet-card {
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    border-bottom: none;
+  }
+
+  .modal-backdrop .modal-card.sheet-card {
+    transform: translateY(24px);
+  }
+
+  .modal-backdrop.open .modal-card.sheet-card {
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .services-list-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Processes: PID and user are the least useful on a phone */
+  .processes-table th:nth-child(1),
+  .processes-table td:nth-child(1),
+  .processes-table th:nth-child(5),
+  .processes-table td:nth-child(5) {
+    display: none;
+  }
+
+  .drive-legend {
+    font-size: 0.68rem;
+  }
+
+  .header-right {
+    gap: 6px;
+  }
+}

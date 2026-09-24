@@ -109,6 +109,13 @@ Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem P
 - Aktionen (Updates, Neustart, Befehle …) werden nur von der eigenen Seite akzeptiert (CSRF-Schutz).
 - Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
 
+### 📱 Handy & Tablet
+
+- Auf dem Handy: **Navigationsleiste unten** (Dashboard, System, Suche, Terminal, Einstellungen), kompakter Kopfbereich, der beim Scrollen verschwindet, und Dialoge als Bottom-Sheets.
+- Alle Seiten passen ab 360 px Breite ohne seitliches Scrollen; Tab-Leisten scrollen seitlich, Tabellen zeigen auf kleinen Displays nur die wichtigen Spalten.
+- Größere Tippflächen auf Touchscreens, keine Zoom-Sprünge beim Tippen in Eingabefelder (iOS).
+- **Zum Home-Bildschirm hinzufügen** (Safari: Teilen → „Zum Home-Bildschirm“, Chrome: Menü → „App installieren“): eigenes Icon, startet im Vollbild wie eine App, berücksichtigt Notch & Home-Indikator.
+
 ### 🔎 Befehlspalette (Strg+K / ⌘K)
 
 Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder die Lupe oben rechts eine Suche über alle Seiten, Bereiche (z.B. „Firewall“, „SSH-Anmeldungen“, „Sprache“) und Aktionen („System-Updates öffnen“, „NVMe-Verlauf“, „Dateien durchsuchen“, „Prozess suchen“, Dienste steuern, Wake-on-LAN-Geräte wecken, Verlauf-Diagramme, Sprache, Abmelden). Pfeiltasten + Enter, tippfehlertolerant, zuletzt verwendete Befehle stehen oben. Im Web-Terminal gehört Strg+K der Shell – dort die Lupe benutzen.
