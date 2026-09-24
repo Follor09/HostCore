@@ -393,6 +393,25 @@ async def api_tools_logs(unit: str = "", priority: str = "all", since: str = "1h
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class CleanupRequest(BaseModel):
+    item: str
+
+
+@app.get("/api/tools/cleanup")
+async def api_tools_cleanup_status():
+    return await asyncio.to_thread(systools.cleanup_status)
+
+
+@app.post("/api/tools/cleanup")
+async def api_tools_cleanup(req: CleanupRequest, request: Request):
+    try:
+        result = await asyncio.to_thread(systools.cleanup_run, req.item)
+    except (ValueError, PermissionError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Cleanup {req.item} by '{request.state.user}': freed {result['freed']} bytes")
+    return result
+
+
 @app.get("/api/tools/cpu-mode")
 async def api_tools_cpu_mode():
     return await asyncio.to_thread(systools.cpu_mode)

@@ -365,6 +365,48 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Storage cleanup
+  // ---------------------------------------------------------------------------
+  function renderCleanup(c) {
+    $('cleanup-free').textContent = `${fmtBytes(c.free_bytes)} frei`;
+    const list = $('cleanup-items');
+    list.innerHTML = '';
+    if (!c.items.length) list.appendChild(emptyRow('Nichts zum Aufräumen gefunden.'));
+    c.items.forEach(item => {
+      const size = item.size == null ? 'unbekannt' : `${item.size_is_total ? 'gesamt ' : ''}${fmtBytes(item.size)}`;
+      const row = infoRow(item.label, item.desc, [[item.size ? 'warning' : '', size]]);
+      const btn = el('button', 'btn-secondary', 'Aufräumen');
+      btn.disabled = item.size === 0;
+      btn.dataset.item = item.id;
+      btn.addEventListener('click', () => runCleanup([item.id], btn));
+      row.querySelector('.iface-tags').appendChild(btn);
+      list.appendChild(row);
+    });
+    $('cleanup-all').disabled = !c.items.some(i => i.size !== 0);
+  }
+
+  async function runCleanup(ids, btn) {
+    const msg = $('cleanup-msg');
+    const buttons = [...document.querySelectorAll('#cleanup-items button'), $('cleanup-all')];
+    buttons.forEach(b => { b.disabled = true; });
+    if (btn) btn.textContent = 'Läuft…';
+    let freed = 0;
+    const errors = [];
+    for (const id of ids) {
+      msg.textContent = `Räume auf: ${id}…`;
+      msg.className = 'form-msg';
+      try {
+        freed += (await api('/api/tools/cleanup', { item: id })).freed;
+      } catch (err) {
+        errors.push(err.message);
+      }
+    }
+    msg.textContent = errors.length ? errors.join(' · ') : `${fmtBytes(freed)} freigegeben.`;
+    msg.className = `form-msg ${errors.length ? 'error' : 'success'}`;
+    await load('cleanup');
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
@@ -372,7 +414,8 @@
     hardware: ['/api/tools/hardware', renderHardware],
     cpu: ['/api/tools/cpu-mode', renderCpuMode],
     bench: ['/api/tools/benchmark', renderBenchmarks],
-    logUnits: ['/api/tools/log-units', renderLogUnits]
+    logUnits: ['/api/tools/log-units', renderLogUnits],
+    cleanup: ['/api/tools/cleanup', renderCleanup]
   };
 
   async function load(key) {
@@ -401,6 +444,19 @@
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
     $('log-form').addEventListener('submit', searchLogs);
     ['log-unit', 'log-priority', 'log-since'].forEach(id => $(id).addEventListener('change', () => searchLogs()));
+    // "Alles aufräumen" needs a second click
+    $('cleanup-all').addEventListener('click', () => {
+      const btn = $('cleanup-all');
+      if (!btn.classList.contains('confirming')) {
+        btn.classList.add('confirming');
+        btn.textContent = 'Wirklich alles?';
+        setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = 'Alles aufräumen'; }, 5000);
+        return;
+      }
+      btn.classList.remove('confirming');
+      btn.textContent = 'Alles aufräumen';
+      runCleanup((cache.cleanup.items || []).filter(i => i.size !== 0).map(i => i.id));
+    });
 
     // Highlight the section currently in view
     const links = [...document.querySelectorAll('.settings-nav a')];

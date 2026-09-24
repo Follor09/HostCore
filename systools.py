@@ -554,3 +554,107 @@ def journal_search(unit: str = "", priority: str = "all", since: str = "1h", que
             break
     return {"supported": True, "entries": entries, "limit": LOG_LIMIT,
             "hint": _journal_hint(res.stderr, len(entries))}
+
+
+# ---------------------------------------------------------------------------
+# Storage cleanup
+# ---------------------------------------------------------------------------
+JOURNAL_KEEP = "14d"
+USER_CACHE = os.path.join(os.path.expanduser("~"), ".cache")
+USER_TRASH = os.path.join(os.path.expanduser("~"), ".local", "share", "Trash")
+
+_SIZE_RE = re.compile(r"([\d.]+)\s*([KMGT]?)i?B?", re.IGNORECASE)
+_UNITS = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
+
+
+def _parse_size(text: str) -> int:
+    m = _SIZE_RE.search(text or "")
+    return int(float(m.group(1)) * _UNITS[m.group(2).upper()]) if m else 0
+
+
+def _tree_size(path: str) -> int:
+    total = 0
+    for dirpath, _, filenames in os.walk(path, onerror=lambda e: None):
+        for f in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def _docker_reclaimable() -> Optional[int]:
+    out = _run(["docker", "system", "df", "--format", "{{json .}}"], timeout=20)
+    if not out:
+        return None
+    total = 0
+    for line in out.splitlines():
+        try:
+            row = _json.loads(line)
+        except ValueError:
+            continue
+        if row.get("Type") in ("Images", "Build Cache"):
+            total += _parse_size(row.get("Reclaimable", "").split("(")[0])
+    return total
+
+
+def cleanup_status() -> Dict[str, Any]:
+    items = []
+    if shutil.which("journalctl"):
+        m = re.search(r"take up ([\d.]+\s*[KMGT]?)", _run(["journalctl", "--disk-usage"]))
+        items.append({"id": "journal", "label": "System-Logs (Journal)",
+                      "desc": f"Löscht Einträge älter als {JOURNAL_KEEP.replace('d', ' Tage')}.",
+                      "size": _parse_size(m.group(1)) if m else None, "size_is_total": True})
+    if os.path.isdir("/var/cache/apt/archives"):
+        debs = glob.glob("/var/cache/apt/archives/*.deb")
+        items.append({"id": "apt", "label": "Paket-Cache (apt)", "desc": "Heruntergeladene Installationsdateien. Werden bei Bedarf neu geladen.",
+                      "size": sum(os.path.getsize(f) for f in debs if os.path.isfile(f))})
+    if shutil.which("docker"):
+        items.append({"id": "docker", "label": "Docker", "desc": "Ungenutzte Images und Build-Cache. Laufende Container bleiben unberührt.",
+                      "size": _docker_reclaimable()})
+    if os.path.isdir(USER_CACHE):
+        items.append({"id": "user_cache", "label": "Benutzer-Cache (~/.cache)", "desc": "Zwischenspeicher von Programmen (pip, Thumbnails …). Wird automatisch neu aufgebaut.",
+                      "size": _tree_size(USER_CACHE)})
+    if os.path.isdir(USER_TRASH):
+        items.append({"id": "trash", "label": "Papierkorb", "desc": "Gelöschte Dateien im Papierkorb.", "size": _tree_size(USER_TRASH)})
+    return {"items": items, "free_bytes": shutil.disk_usage("/").free}
+
+
+def _empty_dir(path: str) -> None:
+    for entry in os.scandir(path):
+        try:
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path, ignore_errors=True)
+            else:
+                os.remove(entry.path)
+        except OSError:
+            pass
+
+
+def _sudo(cmd: List[str]) -> None:
+    res = subprocess.run(["sudo", "-n", *cmd], capture_output=True, text=True, timeout=300)
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "password" in err.lower() or "not allowed" in err.lower():
+            raise PermissionError("Keine Berechtigung – install.sh auf dem Pi erneut ausführen.")
+        raise RuntimeError(err[:200] or "Fehlgeschlagen.")
+
+
+def cleanup_run(item: str) -> Dict[str, Any]:
+    before = shutil.disk_usage("/").free
+    if item == "journal":
+        _sudo([shutil.which("journalctl") or "/usr/bin/journalctl", f"--vacuum-time={JOURNAL_KEEP}"])
+    elif item == "apt":
+        _sudo([shutil.which("apt-get") or "/usr/bin/apt-get", "clean"])
+    elif item == "docker":
+        for cmd in (["docker", "image", "prune", "-af"], ["docker", "builder", "prune", "-af"]):
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if res.returncode != 0:
+                raise RuntimeError(res.stderr.strip()[:200] or "docker prune fehlgeschlagen.")
+    elif item == "user_cache":
+        _empty_dir(USER_CACHE)
+    elif item == "trash":
+        _empty_dir(USER_TRASH)
+    else:
+        raise ValueError("Unbekannter Eintrag.")
+    return {"item": item, "freed": max(0, shutil.disk_usage("/").free - before)}

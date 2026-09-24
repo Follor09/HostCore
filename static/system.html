@@ -36,6 +36,7 @@
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
       <a href="#logs">Logs</a>
+      <a href="#aufraeumen">Aufräumen</a>
     </nav>
 
     <div class="settings-sections">
@@ -139,6 +140,20 @@
         </form>
         <p class="field-hint" id="log-status"></p>
         <div class="log-results" id="log-results"></div>
+      </section>
+
+      <!-- Aufräumen -->
+      <section class="glass-card settings-section" id="aufraeumen">
+        <div class="section-head">
+          <h2>Speicher aufräumen</h2>
+          <span class="health-tag" id="cleanup-free">– frei</span>
+        </div>
+        <p class="section-desc">Gibt Speicherplatz frei, ohne Programme oder deine Daten anzufassen. Größen werden beim Öffnen neu berechnet.</p>
+        <div class="iface-list" id="cleanup-items"></div>
+        <div class="form-actions">
+          <span class="form-msg" id="cleanup-msg" role="status"></span>
+          <button class="btn-danger" id="cleanup-all">Alles aufräumen</button>
+        </div>
       </section>
     </div>
   </main>
