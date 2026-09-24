@@ -189,11 +189,54 @@
   }
 
   // ---------------------------------------------------------------------------
+  // CPU mode
+  // ---------------------------------------------------------------------------
+  const GOVERNORS = {
+    powersave: ['Sparsam', 'Immer niedrigster Takt. Kühl und leise, aber spürbar langsamer.'],
+    conservative: ['Sanft', 'Taktet langsam und schrittweise hoch. Spart etwas Strom.'],
+    ondemand: ['Ausgewogen', 'Standard: taktet bei Last sofort hoch, im Leerlauf runter.'],
+    schedutil: ['Ausgewogen (schedutil)', 'Moderne Variante von „Ausgewogen“, gesteuert vom Scheduler.'],
+    performance: ['Leistung', 'Immer maximaler Takt. Schnellste Reaktion, mehr Wärme und Verbrauch.']
+  };
+  const GOVERNOR_ORDER = ['powersave', 'conservative', 'ondemand', 'schedutil', 'performance'];
+
+  function renderCpuMode(c) {
+    const grid = $('cpu-modes');
+    grid.innerHTML = '';
+    if (!c.available) {
+      grid.appendChild(emptyRow('Auf diesem System nicht verfügbar (nur Linux mit cpufreq).'));
+      $('cpu-live').textContent = '–';
+      return;
+    }
+    $('cpu-live').textContent = `${c.cur_mhz} MHz`;
+    $('cpu-hint').textContent = `Takt: ${c.min_mhz}–${c.max_mhz} MHz`;
+    [...c.governors].sort((a, b) => GOVERNOR_ORDER.indexOf(a) - GOVERNOR_ORDER.indexOf(b)).forEach(g => {
+      const [label, desc] = GOVERNORS[g] || [g, ''];
+      const btn = el('button', `mode-card${g === c.governor ? ' active' : ''}`);
+      btn.append(el('strong', '', label), el('span', '', desc || g));
+      btn.setAttribute('aria-pressed', String(g === c.governor));
+      btn.addEventListener('click', async () => {
+        if (g === c.governor) return;
+        grid.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        try {
+          cache.cpu = await api('/api/tools/cpu-mode', { governor: g });
+          toast(`CPU-Modus: ${label}`, 'success');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+        renderCpuMode(cache.cpu);
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
     network: ['/api/tools/network', renderNetwork],
-    hardware: ['/api/tools/hardware', renderHardware]
+    hardware: ['/api/tools/hardware', renderHardware],
+    cpu: ['/api/tools/cpu-mode', renderCpuMode]
   };
 
   async function load(key) {
@@ -226,6 +269,14 @@
     document.querySelectorAll('.settings-section').forEach(s => observer.observe(s));
 
     Object.keys(LOADERS).forEach(load);
+    // Live clock speed while the page is open
+    setInterval(async () => {
+      if (document.hidden || !cache.cpu || !cache.cpu.available) return;
+      try {
+        const c = await api('/api/tools/cpu-mode');
+        $('cpu-live').textContent = `${c.cur_mhz} MHz`;
+      } catch (e) { /* ignore */ }
+    }, 3000);
   }
 
   init();

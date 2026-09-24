@@ -33,6 +33,7 @@
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#netzwerk" class="active">Netzwerk</a>
       <a href="#hardware">Hardware</a>
+      <a href="#cpu-modus">CPU-Modus</a>
     </nav>
 
     <div class="settings-sections">
@@ -71,6 +72,17 @@
         <div class="iface-list" id="hw-storage"></div>
         <h3 class="subhead">USB-Geräte</h3>
         <div class="iface-list" id="hw-usb"></div>
+      </section>
+
+      <!-- CPU-Modus -->
+      <section class="glass-card settings-section" id="cpu-modus">
+        <div class="section-head">
+          <h2>CPU-Modus</h2>
+          <span class="health-tag" id="cpu-live">– MHz</span>
+        </div>
+        <p class="section-desc">Legt fest, wie schnell die CPU hochtaktet. Wird gespeichert und nach einem Neustart automatisch wieder gesetzt.</p>
+        <div class="mode-grid" id="cpu-modes"></div>
+        <p class="field-hint" id="cpu-hint"></p>
       </section>
     </div>
   </main>

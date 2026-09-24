@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
     # Startup: Initial git check & background poller
     updater.refresh_git_info()
     poller_task = asyncio.create_task(updater.background_update_poller())
+    await asyncio.to_thread(systools.restore_governor)
     history_task = asyncio.create_task(history.background_sampler())
     yield
     # Shutdown
@@ -353,6 +354,24 @@ async def api_tools_network():
 @app.get("/api/tools/hardware")
 async def api_tools_hardware():
     return await asyncio.to_thread(systools.hardware_info)
+
+
+class GovernorRequest(BaseModel):
+    governor: str
+
+
+@app.get("/api/tools/cpu-mode")
+async def api_tools_cpu_mode():
+    return await asyncio.to_thread(systools.cpu_mode)
+
+
+@app.post("/api/tools/cpu-mode")
+async def api_tools_set_cpu_mode(req: GovernorRequest, request: Request):
+    result = await asyncio.to_thread(systools.set_governor, req.governor)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    logger.info(f"CPU governor -> {req.governor} by '{request.state.user}'")
+    return {**result, **await asyncio.to_thread(systools.cpu_mode)}
 
 
 # ---------------------------------------------------------------------------

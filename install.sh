@@ -48,6 +48,10 @@ SUDOERS=/etc/sudoers.d/pi-dashboard-restart
     echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-apt@upgrade.service"
     # Service tiles: start/stop/restart exactly the units the dashboard tracks, plus "run update now"
     echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-update.service"
+    # CPU mode: write the governor file of each cpufreq policy (exact paths, no wildcards)
+    for policy in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do
+        [ -e "$policy" ] && echo "$OWNER ALL=(root) NOPASSWD: $(command -v tee) $policy"
+    done
     for unit in $(as_owner env PYTHONDONTWRITEBYTECODE=1 "$DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$DIR'); import services_manager as s; print(' '.join(s.controllable_units()))"); do
         for action in start stop restart; do
             echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL $action --no-block $unit"

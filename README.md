@@ -109,6 +109,7 @@ Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem P
 ### 🧰 System-Werkzeuge (`/system`, Schraubenschlüssel oben rechts)
 
 - **Netzwerk:** Schnittstellen mit IPs, MAC, Traffic, Link-Speed und WLAN-Signal (SSID, dBm, Band); Gateway & DNS; offene Ports mit Dienst, Prozess und „nur lokal / im Netzwerk erreichbar“.
+- **CPU-Modus:** Sparsam / Sanft / Ausgewogen / Leistung (cpufreq-Governor) mit Live-Takt; wird gespeichert und nach Neustart wieder gesetzt. sudo erlaubt nur das Schreiben der Governor-Datei.
 - **Hardware:** Modell, SoC, RAM, Revision, Seriennummer, Kernel, Firmware, Bootloader mit Update-Hinweis, NVMe mit PCIe-Generation (Tipp für Gen 3), Laufwerke, USB-Geräte mit Geschwindigkeit.
 
 ### ⚙️ Einstellungen (`/settings`, Zahnrad oben rechts)

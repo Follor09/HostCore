@@ -267,3 +267,72 @@ def hardware_info() -> Dict[str, Any]:
         "disks": _block_devices(),
         "usb": _usb_devices(),
     }
+
+
+# ---------------------------------------------------------------------------
+# CPU mode (cpufreq governor)
+# ---------------------------------------------------------------------------
+CPUFREQ_DIR = "/sys/devices/system/cpu/cpufreq"
+GOVERNOR_HIDDEN = {"userspace"}  # needs a manual frequency, not useful here
+
+
+def _policies() -> List[str]:
+    return sorted(glob.glob(os.path.join(CPUFREQ_DIR, "policy*")))
+
+
+def cpu_mode() -> Dict[str, Any]:
+    import settings_store
+    policies = _policies()
+    if not policies:
+        return {"available": False}
+    p0 = policies[0]
+
+    def khz(name: str) -> Optional[int]:
+        v = _read(os.path.join(p0, name))
+        return int(v) // 1000 if v.isdigit() else None
+
+    governors = [g for g in _read(os.path.join(p0, "scaling_available_governors")).split() if g not in GOVERNOR_HIDDEN]
+    return {
+        "available": True,
+        "governor": _read(os.path.join(p0, "scaling_governor")),
+        "governors": governors,
+        "saved": settings_store.get("cpu_governor"),
+        "cur_mhz": khz("scaling_cur_freq"),
+        "min_mhz": khz("cpuinfo_min_freq"),
+        "max_mhz": khz("cpuinfo_max_freq"),
+        "policies": len(policies),
+    }
+
+
+def set_governor(governor: str, persist: bool = True) -> Dict[str, Any]:
+    import settings_store
+    status = cpu_mode()
+    if not status["available"]:
+        return {"ok": False, "message": "CPU-Modus wird auf diesem System nicht unterstützt."}
+    if governor not in status["governors"]:
+        return {"ok": False, "message": "Unbekannter CPU-Modus."}
+    tee = shutil.which("tee") or "/usr/bin/tee"
+    for policy in _policies():
+        target = os.path.join(policy, "scaling_governor")
+        try:
+            # Exactly the command form allowed by the sudoers rule from install.sh
+            res = subprocess.run(["sudo", "-n", tee, target], input=governor, capture_output=True, text=True, timeout=5)
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+        if res.returncode != 0:
+            err = res.stderr.strip()
+            if "password" in err.lower() or "not allowed" in err.lower():
+                return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
+            return {"ok": False, "message": err[:200] or "Umschalten fehlgeschlagen."}
+    if persist:
+        settings_store.set("cpu_governor", governor)
+    return {"ok": True, "message": f"CPU-Modus: {governor}"}
+
+
+def restore_governor() -> None:
+    """Re-apply the saved governor after a reboot (the kernel starts with its default)."""
+    import settings_store
+    saved = settings_store.get("cpu_governor")
+    status = cpu_mode()
+    if saved and status["available"] and status["governor"] != saved and saved in status["governors"]:
+        set_governor(saved, persist=False)

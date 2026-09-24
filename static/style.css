@@ -682,6 +682,51 @@ body {
   max-width: 55%;
 }
 
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.mode-card:hover {
+  border-color: rgba(0, 240, 255, 0.35);
+}
+
+.mode-card strong {
+  font-size: 0.9rem;
+}
+
+.mode-card span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.mode-card.active {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.07);
+}
+
+.mode-card:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .net-toggle {
   margin-top: 10px;
 }
