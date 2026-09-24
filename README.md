@@ -79,13 +79,15 @@ git commit -am "Neue Funktion" && git push
 Der systemd-Timer `pi-dashboard-update.timer` prüft **jede Minute** GitHub. Bei einem neuen Commit:
 1. installiert er geänderte `requirements.txt` (vor dem Code-Wechsel – schlägt pip fehl, läuft die alte Version weiter),
 2. setzt den Code auf `origin/<branch>` (`git reset --hard` – lokale Änderungen auf dem Pi werden verworfen),
-3. startet den Dienst neu (bei geänderten `.service`/`.timer`-Dateien läuft `install.sh` erneut).
+3. startet den Dienst neu (bei geänderten `.service`/`.timer`-Dateien, `install.sh` oder `services_manager.py` läuft `install.sh` erneut).
+
+**Sicherheit:** Alles, was als root läuft (`update.sh`, `apt-run.sh`, `install.sh`, die Unit-Dateien und die sudo-Regeln), kommt aus einer **eigenen Kopie des Repos direkt von GitHub** unter `/var/lib/pi-dashboard/src` (gehört root). Der Dashboard-Ordner gehört deinem Benutzer – root führt daraus nie etwas aus. So kann niemand, der nur deinen Benutzer (oder die Dashboard-App) kontrolliert, über geänderte Skripte oder eine umgebogene `origin`-URL root werden. Ein neuer Token aus `set-token.sh` wird beim nächsten Durchlauf automatisch übernommen.
 
 Der Timer läuft unabhängig vom Dashboard – auch wenn ein fehlerhafter Commit die App abstürzen lässt, wird der nächste Fix-Commit trotzdem gezogen.
 
 ```bash
 journalctl -u pi-dashboard-update -f         # Update-Log live ansehen
-sudo ~/pi-dashboard/update.sh                # Sofort manuell aktualisieren
+sudo systemctl start pi-dashboard-update     # Sofort manuell aktualisieren
 systemctl list-timers pi-dashboard-update    # Nächste Prüfung
 ```
 

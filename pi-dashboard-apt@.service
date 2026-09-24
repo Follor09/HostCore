@@ -5,4 +5,5 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=__DIR__/apt-run.sh %i
+# Runs as root from root's own clone of the repo, never from the dashboard folder
+ExecStart=__SRC__/apt-run.sh %i
