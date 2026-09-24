@@ -34,6 +34,7 @@
       <a href="#netzwerk" class="active">Netzwerk</a>
       <a href="#hardware">Hardware</a>
       <a href="#cpu-modus">CPU-Modus</a>
+      <a href="#leistungstest">Leistungstest</a>
     </nav>
 
     <div class="settings-sections">
@@ -83,6 +84,33 @@
         <p class="section-desc">Legt fest, wie schnell die CPU hochtaktet. Wird gespeichert und nach einem Neustart automatisch wieder gesetzt.</p>
         <div class="mode-grid" id="cpu-modes"></div>
         <p class="field-hint" id="cpu-hint"></p>
+      </section>
+
+      <!-- Leistungstest -->
+      <section class="glass-card settings-section" id="leistungstest">
+        <h2>Leistungstest</h2>
+        <p class="section-desc">Misst Laufwerk und CPU. Ergebnisse werden gespeichert – praktisch zum Vergleichen, z.B. vor und nach PCIe Gen 3 oder einem anderen CPU-Modus.</p>
+        <div class="bench-grid">
+          <div class="bench-card">
+            <div class="bench-head">
+              <strong>Laufwerk</strong>
+              <select id="bench-drive" aria-label="Laufwerk"></select>
+            </div>
+            <div class="bench-values" id="bench-disk-values"></div>
+            <button class="btn-primary" id="bench-disk">Test starten (~15 s)</button>
+            <p class="field-hint">Schreibt eine 512-MB-Testdatei und löscht sie danach wieder.</p>
+          </div>
+          <div class="bench-card">
+            <div class="bench-head"><strong>CPU</strong></div>
+            <div class="bench-values" id="bench-cpu-values"></div>
+            <button class="btn-primary" id="bench-cpu">Test starten (~6 s)</button>
+            <p class="field-hint">SHA-256-Durchsatz auf einem und auf allen Kernen.</p>
+          </div>
+        </div>
+        <h3 class="subhead">Bisherige Ergebnisse</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="bench-history"></table>
+        </div>
       </section>
     </div>
   </main>

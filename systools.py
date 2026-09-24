@@ -336,3 +336,138 @@ def restore_governor() -> None:
     status = cpu_mode()
     if saved and status["available"] and status["governor"] != saved and saved in status["governors"]:
         set_governor(saved, persist=False)
+
+
+# ---------------------------------------------------------------------------
+# Speed test: drive (sequential write/read + 4K random read) and CPU
+# ---------------------------------------------------------------------------
+import hashlib
+import random
+import threading
+import time
+
+_bench_lock = threading.Lock()
+BENCH_SIZE_MB = 512
+CHUNK = 4 * 1024 * 1024
+
+
+def _bench_dir(mount: str) -> str:
+    """A writable folder on the given drive: the mount itself or (for /) the user's cache."""
+    mount_dev = os.stat(mount).st_dev
+    candidates = [mount] if mount != "/" else []
+    candidates.append(os.path.join(os.path.expanduser("~"), ".cache"))
+    for c in candidates:
+        os.makedirs(c, exist_ok=True) if c.endswith(".cache") else None
+        if os.path.isdir(c) and os.access(c, os.W_OK) and os.stat(c).st_dev == mount_dev:
+            return c
+    raise PermissionError("Kein Schreibzugriff auf diesem Laufwerk.")
+
+
+def _drop_cache(fd: int) -> None:
+    if hasattr(os, "posix_fadvise"):
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+
+
+def _no_cache(fd: int) -> None:
+    import fcntl
+    if hasattr(fcntl, "F_NOCACHE"):  # macOS
+        fcntl.fcntl(fd, fcntl.F_NOCACHE, 1)
+
+
+def disk_benchmark(mount: str) -> Dict[str, Any]:
+    import files
+    real = files.resolve(mount)
+    folder = _bench_dir(real)
+    size = BENCH_SIZE_MB * 1024 * 1024
+    if shutil.disk_usage(folder).free < size * 2 + 1024 ** 3:
+        raise ValueError("Zu wenig freier Speicher für den Test (mind. 2 GB frei nötig).")
+    path = os.path.join(folder, f".picore-speedtest-{os.getpid()}")
+    block = os.urandom(CHUNK)  # random data: compressing SSD controllers can't cheat
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        _no_cache(fd)
+        start = time.perf_counter()
+        for _ in range(size // CHUNK):
+            os.write(fd, block)
+        os.fsync(fd)
+        write_s = time.perf_counter() - start
+        _drop_cache(fd)
+        os.close(fd)
+
+        fd = os.open(path, os.O_RDONLY)
+        _no_cache(fd)
+        _drop_cache(fd)
+        start = time.perf_counter()
+        while os.read(fd, CHUNK):
+            pass
+        read_s = time.perf_counter() - start
+
+        # 4K random reads for 3 seconds
+        _drop_cache(fd)
+        rnd = random.Random(1)
+        ops, start = 0, time.perf_counter()
+        while time.perf_counter() - start < 3:
+            os.pread(fd, 4096, rnd.randrange(0, size // 4096) * 4096)
+            ops += 1
+        iops_s = time.perf_counter() - start
+        os.close(fd)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    mb = size / 1024 / 1024
+    return {"write_mbs": round(mb / write_s, 1), "read_mbs": round(mb / read_s, 1),
+            "iops_4k": int(ops / iops_s), "size_mb": BENCH_SIZE_MB, "folder": folder}
+
+
+def cpu_benchmark(seconds: float = 3) -> Dict[str, Any]:
+    data = os.urandom(1024 * 1024)
+
+    def worker(result: list, idx: int) -> None:
+        n, end = 0, time.perf_counter() + seconds
+        while time.perf_counter() < end:
+            hashlib.sha256(data).digest()  # releases the GIL -> threads really run in parallel
+            n += 1
+        result[idx] = n
+
+    single = [0]
+    worker(single, 0)
+    cores = psutil.cpu_count(logical=True) or 1
+    multi = [0] * cores
+    threads = [threading.Thread(target=worker, args=(multi, i)) for i in range(cores)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    single_mbs = single[0] / seconds
+    multi_mbs = sum(multi) / seconds
+    return {"single_mbs": round(single_mbs, 1), "multi_mbs": round(multi_mbs, 1),
+            "cores": cores, "scaling": round(multi_mbs / single_mbs, 2) if single_mbs else None}
+
+
+def run_benchmark(kind: str, mount: str = "/") -> Dict[str, Any]:
+    import settings_store
+    import system_info
+    if not _bench_lock.acquire(blocking=False):
+        raise ValueError("Es läuft bereits ein Test.")
+    try:
+        result = disk_benchmark(mount) if kind == "disk" else cpu_benchmark() if kind == "cpu" else None
+        if result is None:
+            raise ValueError("Unbekannter Test.")
+    finally:
+        _bench_lock.release()
+    temp = system_info.get_cpu_temp()
+    entry = {"ts": int(time.time()), "kind": kind, "target": mount if kind == "disk" else "CPU",
+             "governor": (cpu_mode() or {}).get("governor"), "temp_c": None if temp.get("is_simulated") else temp["celsius"],
+             **result}
+    history = settings_store.get("benchmarks", []) or []
+    settings_store.set("benchmarks", ([entry] + history)[:20])
+    return entry
+
+
+def benchmark_history() -> Dict[str, Any]:
+    import settings_store
+    import services_manager
+    drives = [{"mount": d["mount"], "label": d["label"]} for d in services_manager.get_mounted_drives()]
+    return {"results": settings_store.get("benchmarks", []) or [], "drives": drives, "running": _bench_lock.locked()}

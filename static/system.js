@@ -231,12 +231,89 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Speed test
+  // ---------------------------------------------------------------------------
+  function benchValues(target, items) {
+    target.innerHTML = '';
+    items.forEach(([label, value, unit]) => {
+      const box = el('div', 'bench-value');
+      const v = el('span', 'value', value);
+      if (unit) v.appendChild(el('span', 'unit', unit));
+      box.append(el('span', 'label', label), v);
+      target.appendChild(box);
+    });
+  }
+
+  function fmtNum(n) {
+    return n == null ? '–' : n >= 1000 ? Math.round(n).toLocaleString('de-DE') : String(n);
+  }
+
+  function renderBenchmarks(b) {
+    const select = $('bench-drive');
+    const selected = select.value;
+    select.innerHTML = '';
+    b.drives.forEach(d => {
+      const o = el('option', '', `${d.label}`);
+      o.value = d.mount;
+      select.appendChild(o);
+    });
+    if (selected) select.value = selected;
+
+    const lastDisk = b.results.find(r => r.kind === 'disk' && r.target === select.value) || b.results.find(r => r.kind === 'disk');
+    const lastCpu = b.results.find(r => r.kind === 'cpu');
+    benchValues($('bench-disk-values'), lastDisk
+      ? [['Schreiben', fmtNum(lastDisk.write_mbs), 'MB/s'], ['Lesen', fmtNum(lastDisk.read_mbs), 'MB/s'], ['4K zufällig', fmtNum(lastDisk.iops_4k), 'IOPS']]
+      : [['Noch kein Ergebnis', '–']]);
+    benchValues($('bench-cpu-values'), lastCpu
+      ? [['1 Kern', fmtNum(lastCpu.single_mbs), 'MB/s'], [`${lastCpu.cores} Kerne`, fmtNum(lastCpu.multi_mbs), 'MB/s'], ['Skalierung', `${lastCpu.scaling}×`]]
+      : [['Noch kein Ergebnis', '–']]);
+    ['bench-disk', 'bench-cpu'].forEach(id => { $(id).disabled = b.running; });
+
+    const table = $('bench-history');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Datum', 'Test', 'Ergebnis', 'Temperatur', 'CPU-Modus'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    b.results.forEach(r => {
+      const row = body.insertRow();
+      const result = r.kind === 'disk'
+        ? `↑ ${fmtNum(r.write_mbs)} MB/s · ↓ ${fmtNum(r.read_mbs)} MB/s · ${fmtNum(r.iops_4k)} IOPS`
+        : `${fmtNum(r.single_mbs)} MB/s (1 Kern) · ${fmtNum(r.multi_mbs)} MB/s (${r.cores})`;
+      [new Date(r.ts * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }),
+       r.kind === 'disk' ? `Laufwerk ${r.target}` : 'CPU', result,
+       r.temp_c != null ? `${r.temp_c} °C` : '–', r.governor || '–'].forEach(v => { row.insertCell().textContent = v; });
+    });
+    if (!b.results.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 5;
+      c.textContent = 'Noch keine Tests.';
+    }
+  }
+
+  async function runBenchmark(kind) {
+    const btn = $(kind === 'disk' ? 'bench-disk' : 'bench-cpu');
+    const label = btn.textContent;
+    ['bench-disk', 'bench-cpu'].forEach(id => { $(id).disabled = true; });
+    btn.textContent = 'Läuft…';
+    try {
+      await api('/api/tools/benchmark', { kind, mount: $('bench-drive').value || '/' });
+      toast('Test abgeschlossen.', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.textContent = label;
+      await load('bench');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
     network: ['/api/tools/network', renderNetwork],
     hardware: ['/api/tools/hardware', renderHardware],
-    cpu: ['/api/tools/cpu-mode', renderCpuMode]
+    cpu: ['/api/tools/cpu-mode', renderCpuMode],
+    bench: ['/api/tools/benchmark', renderBenchmarks]
   };
 
   async function load(key) {
@@ -260,6 +337,9 @@
     document.querySelectorAll('[data-reload]').forEach(btn =>
       btn.addEventListener('click', () => load(btn.dataset.reload)));
     $('net-show-virtual').addEventListener('change', () => cache.network && renderNetwork(cache.network));
+    $('bench-disk').addEventListener('click', () => runBenchmark('disk'));
+    $('bench-cpu').addEventListener('click', () => runBenchmark('cpu'));
+    $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
 
     // Highlight the section currently in view
     const links = [...document.querySelectorAll('.settings-nav a')];

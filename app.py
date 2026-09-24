@@ -360,6 +360,26 @@ class GovernorRequest(BaseModel):
     governor: str
 
 
+class BenchmarkRequest(BaseModel):
+    kind: str          # "disk" or "cpu"
+    mount: str = "/"
+
+
+@app.get("/api/tools/benchmark")
+async def api_tools_benchmarks():
+    return await asyncio.to_thread(systools.benchmark_history)
+
+
+@app.post("/api/tools/benchmark")
+async def api_tools_run_benchmark(req: BenchmarkRequest, request: Request):
+    try:
+        entry = await asyncio.to_thread(systools.run_benchmark, req.kind, req.mount)
+    except (ValueError, PermissionError, files.FileAccessError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Benchmark {req.kind} {req.mount} by '{request.state.user}': {entry}")
+    return entry
+
+
 @app.get("/api/tools/cpu-mode")
 async def api_tools_cpu_mode():
     return await asyncio.to_thread(systools.cpu_mode)
