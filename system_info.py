@@ -7,6 +7,7 @@ Automatically detects Raspberry Pi vs macOS/generic Linux and provides seamless 
 import glob
 import os
 import platform
+import re
 import subprocess
 import time
 import socket
@@ -271,6 +272,71 @@ def get_uptime() -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Pi 5 power supply (PMIC)
+# ---------------------------------------------------------------------------
+_power_cache = {"ts": 0.0, "data": None}
+POWER_CACHE_SECONDS = 3
+
+
+def parse_pmic_adc(output: str) -> dict:
+    """Pair each rail's current (…_A) and voltage (…_V) from `vcgencmd pmic_read_adc`."""
+    currents, volts = {}, {}
+    for m in re.finditer(r"^\s*(\S+)_([AV])\s+\w+\(\d+\)=([\d.]+)[AV]\s*$", output, re.MULTILINE):
+        rail, kind, value = m.group(1), m.group(2), float(m.group(3))
+        (currents if kind == "A" else volts)[rail] = value
+    rails = [{"name": r, "volt": round(volts[r], 3), "amp": round(currents[r], 3),
+              "watt": round(volts[r] * currents[r], 3)} for r in currents if r in volts]
+    rails.sort(key=lambda r: r["watt"], reverse=True)
+    return {"rails": rails, "board_watt": round(sum(r["watt"] for r in rails), 2),
+            "input_volt": round(volts["EXT5V"], 2) if "EXT5V" in volts else None}
+
+
+def _psu_max_current_ma():
+    """Current limit the Pi 5 negotiated with its USB-C PSU (device tree, big-endian u32 in mA)."""
+    try:
+        with open("/proc/device-tree/chosen/power/max_current", "rb") as f:
+            raw = f.read()
+        return int.from_bytes(raw[:4], "big") if len(raw) >= 4 else None
+    except OSError:
+        return None
+
+
+def get_power_status() -> dict:
+    now = time.time()
+    if _power_cache["data"] is not None and now - _power_cache["ts"] < POWER_CACHE_SECONDS:
+        return _power_cache["data"]
+
+    data = {"available": False}
+    try:
+        res = subprocess.run(["vcgencmd", "pmic_read_adc"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0 and "EXT5V" in res.stdout:
+            data = {"available": True, **parse_pmic_adc(res.stdout)}
+    except Exception:
+        pass
+
+    if data["available"]:
+        flags = 0
+        try:
+            out = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=1).stdout
+            flags = int(out.split("=")[1].strip(), 16)
+        except Exception:
+            pass
+        max_ma = _psu_max_current_ma()
+        data.update(
+            undervoltage_now=bool(flags & 0x1),
+            undervoltage_since_boot=bool(flags & 0x10000),
+            psu_max_ma=max_ma,
+            # < 5 A PSUs make the Pi 5 limit USB ports to 600 mA total
+            psu_ok=max_ma is None or max_ma >= 5000,
+            top_rails=data["rails"][:4],
+        )
+        data.pop("rails", None)
+
+    _power_cache.update(ts=now, data=data)
+    return data
+
+
 _OWN_USER = None
 
 
@@ -496,6 +562,7 @@ def get_system_snapshot() -> dict:
         "temperature": temp_info,
         "throttled": throttled,
         "fan": get_fan_status(),
+        "power": get_power_status(),
         "memory": {
             "total_mb": round(mem.total / (1024 * 1024), 0),
             "used_mb": round(mem.used / (1024 * 1024), 0),

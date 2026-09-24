@@ -18,6 +18,7 @@
       temp: [],
       netDown: [],
       netUp: [],
+      power: [],
       netUp: [],
       maxPoints: 25
     }
@@ -845,6 +846,44 @@
   // ---------------------------------------------------------------------------
   // Update UI with System Snapshot
   // ---------------------------------------------------------------------------
+  function renderPower(pw) {
+    const card = document.getElementById('power-card');
+    if (!card) return;
+    const set = (id, text) => { document.getElementById(id).textContent = text; };
+    card.classList.toggle('unavailable', !pw.available);
+    const tag = document.getElementById('power-tag');
+
+    if (!pw.available) {
+      set('power-watt', '--');
+      set('power-subtitle', 'Nur auf Raspberry Pi 5');
+      tag.className = 'health-tag';
+      tag.textContent = 'Nicht verfügbar';
+      return;
+    }
+
+    set('power-watt', `${pw.board_watt.toFixed(1)} W`);
+    set('power-subtitle', 'Board, ohne USB-Geräte');
+    set('power-volt', pw.input_volt != null ? `${pw.input_volt.toFixed(2)} V` : '--');
+    set('power-psu', pw.psu_max_ma != null ? `${(pw.psu_max_ma / 1000).toFixed(1)} A` : '--');
+    document.getElementById('power-psu').title = pw.psu_ok ? '' : 'Unter 5 A: der Pi begrenzt USB-Geräte auf 600 mA';
+    const core = (pw.top_rails || []).find(r => r.name === 'VDD_CORE');
+    set('power-core', core ? `${core.watt.toFixed(2)} W` : '--');
+
+    // Status: live undervoltage > undervoltage since boot > weak PSU > ok
+    let level = 'good', text = 'Spannung OK';
+    if (pw.undervoltage_now) { level = 'critical'; text = 'Unterspannung!'; }
+    else if (pw.undervoltage_since_boot) { level = 'warning'; text = 'Unterspannung seit Boot'; }
+    else if (!pw.psu_ok) { level = 'warning'; text = 'Netzteil < 5 A'; }
+    tag.className = `health-tag ${level}`;
+    tag.textContent = text;
+
+    const h = state.history;
+    h.power.push(pw.board_watt);
+    if (h.power.length > h.maxPoints) h.power.shift();
+    drawSparkline(document.getElementById('power-chart'), h.power, '#ffb703', 'rgba(255, 183, 3, 0.2)',
+      { max: Math.max(2, ...h.power) * 1.2 });
+  }
+
   // Fan colors go from calm cyan to hot rose as the level rises
   const FAN_COLORS = ['#00f0ff', '#00ffa3', '#ffb703', '#ff2a5f'];
 
@@ -965,6 +1004,9 @@
 
     // Fan
     if (sys.fan) renderFan(sys.fan);
+
+    // Power supply (Pi 5)
+    if (sys.power) renderPower(sys.power);
 
     // Memory (RAM)
     if (sys.memory) {
@@ -1868,7 +1910,8 @@
       { key: 'net_down', label: 'Download', color: 'var(--chart-down)' },
       { key: 'net_up', label: 'Upload', color: 'var(--chart-up)', dashed: true }
     ] },
-    fan:  { title: 'Lüfterstufe', unit: 'level', max: 4, series: [{ key: 'fan', label: 'Lüfter', color: 'var(--accent-emerald)', area: true }], peak: 'fan_max' }
+    fan:  { title: 'Lüfterstufe', unit: 'level', max: 4, series: [{ key: 'fan', label: 'Lüfter', color: 'var(--accent-emerald)', area: true }], peak: 'fan_max' },
+    power: { title: 'Board-Leistung', unit: 'W', series: [{ key: 'power', label: 'Leistung', color: 'var(--accent-amber)', area: true }], peak: 'power_max' }
   };
 
   const historyState = { range: '24h', metric: 'cpu', data: null, layout: null };
@@ -1884,6 +1927,7 @@
     const unit = HISTORY_METRICS[metric].unit;
     if (unit === 'rate') return fmtRate(v);
     if (unit === 'level') return v < 0.05 ? 'Aus' : `Stufe ${v.toFixed(1).replace('.0', '')}`;
+    if (unit === 'W') return `${v.toFixed(2)} W`;
     return `${v.toFixed(1)}${unit === '%' ? '%' : ' °C'}`;
   }
 
@@ -1983,6 +2027,10 @@
       const nt = niceTicks(0, Math.max(dataMax / div, div === 1 ? 10 : 1));
       yMax = nt.max * div; ticks = nt.ticks.map(t => t * div);
       tickLabel = t => (t === 0 ? '0' : `${+(t / div).toFixed(2)} ${div === 1 ? 'KB/s' : 'MB/s'}`);
+    } else if (cfg.unit === 'W') {
+      const nt = niceTicks(0, Math.max(dataMax, 1));
+      yMax = nt.max; ticks = nt.ticks;
+      tickLabel = t => `${+t.toFixed(2)} W`;
     } else if (cfg.unit === '%') {
       yMax = 100; ticks = [0, 25, 50, 75, 100];
       tickLabel = t => `${t}%`;

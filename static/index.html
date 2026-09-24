@@ -443,6 +443,45 @@
         </div>
       </div>
 
+      <!-- Metric: Stromversorgung (Pi 5 PMIC) -->
+      <div class="glass-card metric-card power-card" id="power-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-amber">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+            </div>
+            <div>
+              <h3>Stromversorgung</h3>
+              <p class="card-subtitle" id="power-subtitle">Board, ohne USB-Geräte</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="power-watt">--</div>
+        </div>
+
+        <div class="power-status-row">
+          <span class="health-tag" id="power-tag">–</span>
+        </div>
+
+        <div class="metric-chart-wrap">
+          <canvas id="power-chart" width="280" height="65"></canvas>
+        </div>
+
+        <div class="disk-meta-stats power-stats">
+          <div class="meta-stat-item">
+            <span class="meta-label">Eingang</span>
+            <span class="meta-val" id="power-volt">--</span>
+          </div>
+          <div class="meta-stat-item">
+            <span class="meta-label">Netzteil</span>
+            <span class="meta-val" id="power-psu">--</span>
+          </div>
+          <div class="meta-stat-item">
+            <span class="meta-label">CPU-Kern</span>
+            <span class="meta-val" id="power-core">--</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Metric 7: System-Updates (apt) -->
       <div class="glass-card metric-card updates-card" id="updates-card" role="button" tabindex="0" title="Details &amp; Installation öffnen">
         <div class="card-header">
@@ -510,6 +549,7 @@
             <button data-metric="ram">RAM</button>
             <button data-metric="net">Netzwerk</button>
             <button data-metric="fan">Lüfter</button>
+            <button data-metric="power">Leistung</button>
           </div>
         </div>
       </div>

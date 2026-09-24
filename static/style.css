@@ -1482,6 +1482,23 @@ body {
   row-gap: 8px;
 }
 
+/* Power supply card */
+.power-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.disk-meta-stats.power-stats {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.power-card.unavailable .metric-chart-wrap,
+.power-card.unavailable .power-stats {
+  opacity: 0.4;
+}
+
 /* System updates */
 .updates-tags {
   display: flex;

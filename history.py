@@ -29,7 +29,7 @@ RANGES = {
     "7d": (7 * 24 * 3600, 30 * 60),
 }
 
-METRICS = ["cpu", "temp", "ram", "net_down", "net_up", "fan"]
+METRICS = ["cpu", "temp", "ram", "net_down", "net_up", "fan", "power"]
 
 
 def _connect() -> sqlite3.Connection:
@@ -41,6 +41,11 @@ def _connect() -> sqlite3.Connection:
             net_down REAL, net_up REAL, fan REAL
         )
     """)
+    # Columns added in later versions: extend older databases in place
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(samples)")}
+    for column in METRICS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE samples ADD COLUMN {column} REAL")
     return conn
 
 
@@ -69,6 +74,7 @@ class _Sampler:
 
         temp = system_info.get_cpu_temp()
         fan = system_info.get_fan_status()
+        power = system_info.get_power_status()
         return {
             "ts": int(now),
             "cpu": round(cpu, 1),
@@ -78,6 +84,7 @@ class _Sampler:
             "net_down": round(recv / dt / 1024, 1) if recv >= 0 else None,
             "net_up": round(sent / dt / 1024, 1) if sent >= 0 else None,
             "fan": fan.get("level") if fan.get("available") else None,
+            "power": power.get("board_watt") if power.get("available") else None,
         }
 
 
@@ -114,7 +121,7 @@ def get_history(range_key: str) -> Dict[str, Any]:
         rows = conn.execute(f"""
             SELECT (ts / {bucket}) * {bucket} AS b,
                    AVG(cpu), MAX(cpu), AVG(temp), MAX(temp), AVG(ram),
-                   AVG(net_down), AVG(net_up), AVG(fan), MAX(fan)
+                   AVG(net_down), AVG(net_up), AVG(fan), MAX(fan), AVG(power), MAX(power)
             FROM samples WHERE ts >= ?
             GROUP BY b ORDER BY b
         """, (since,)).fetchall()
@@ -126,8 +133,9 @@ def get_history(range_key: str) -> Dict[str, Any]:
         {
             "ts": b, "cpu": r(cpu), "cpu_max": r(cpu_max), "temp": r(temp), "temp_max": r(temp_max),
             "ram": r(ram), "net_down": r(down), "net_up": r(up), "fan": r(fan, 2), "fan_max": fan_max,
+            "power": r(power, 2), "power_max": r(power_max, 2),
         }
-        for b, cpu, cpu_max, temp, temp_max, ram, down, up, fan, fan_max in rows
+        for b, cpu, cpu_max, temp, temp_max, ram, down, up, fan, fan_max, power, power_max in rows
     ]
     return {"range": range_key, "bucket_seconds": bucket, "points": points}
 
