@@ -120,6 +120,8 @@
     });
 
     renderUpdater(updater);
+    renderNotifications(data.notifications);
+    renderWolSettings(data.wol_devices);
 
     renderKv($('history-info'), [
       ['Speicherplatz', fmtBytes(history.size_bytes)],
@@ -152,6 +154,68 @@
       ['GitHub-Token', u.token_set ? 'Hinterlegt' : 'Nicht hinterlegt (nur für private Repos nötig)', u.token_set ? 'good' : ''],
       ['Letzte Prüfung', fmtDate(u.last_check_timestamp)]
     ]);
+  }
+
+  const RULE_KEYS = ['cpu_temp', 'disk_percent', 'nvme', 'services', 'updater', 'workloads', 'reboot'];
+
+  function renderNotifications(n) {
+    $('notify-enabled').checked = n.enabled;
+    $('notify-url').value = n.ntfy_url;
+    $('notify-token').value = '';
+    $('notify-token').placeholder = n.token_set ? '•••••••• gesetzt – leer = unverändert' : 'optional';
+    $('notify-token-clear').hidden = !n.token_set;
+    RULE_KEYS.forEach(k => {
+      const el = $(`rule-${k}`);
+      if (el.type === 'checkbox') el.checked = !!n.rules[k]; else el.value = n.rules[k];
+    });
+  }
+
+  function renderWolSettings(devices) {
+    const list = $('wol-settings-list');
+    list.innerHTML = '';
+    if (!devices.length) {
+      const p = document.createElement('p');
+      p.className = 'field-hint';
+      p.textContent = 'Noch keine Geräte.';
+      list.appendChild(p);
+    }
+    devices.forEach(d => {
+      const item = document.createElement('div');
+      item.className = 'wol-item';
+      const main = document.createElement('div');
+      main.className = 'workload-main';
+      const n = document.createElement('span');
+      n.className = 'workload-name';
+      n.textContent = d.name;
+      const sub = document.createElement('span');
+      sub.className = 'workload-sub';
+      sub.textContent = `${d.mac} · Broadcast ${d.broadcast}`;
+      main.append(n, sub);
+      const del = document.createElement('button');
+      del.className = 'btn-danger';
+      del.textContent = 'Entfernen';
+      confirmClick(del, 'Sicher?', async () => {
+        try {
+          await api(`/api/settings/wol/${encodeURIComponent(d.id)}/delete`, {});
+          data.wol_devices = data.wol_devices.filter(x => x.id !== d.id);
+          renderWolSettings(data.wol_devices);
+          toast(`${d.name} entfernt.`, 'success');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      item.append(main, del);
+      list.appendChild(item);
+    });
+  }
+
+  function notifyPayload(token) {
+    const rules = {};
+    RULE_KEYS.forEach(k => {
+      const el = $(`rule-${k}`);
+      rules[k] = el.type === 'checkbox' ? el.checked : Number(el.value || 0);
+    });
+    return { enabled: $('notify-enabled').checked, ntfy_url: $('notify-url').value.trim(), token, rules };
   }
 
   // ---------------------------------------------------------------------------
@@ -258,6 +322,73 @@
         render();
       } catch (err) {
         setMsg($('history-msg'), err.message, 'error');
+      }
+    });
+
+    $('notify-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = $('notify-msg');
+      const token = $('notify-token').value.trim();
+      try {
+        const res = await api('/api/settings/notifications', notifyPayload(token ? token : null));
+        data.notifications = res.notifications;
+        renderNotifications(res.notifications);
+        setMsg(msg, 'Gespeichert.', 'success');
+      } catch (err) {
+        setMsg(msg, err.message, 'error');
+      }
+    });
+
+    $('notify-test').addEventListener('click', async () => {
+      const msg = $('notify-msg'), btn = $('notify-test');
+      btn.disabled = true;
+      setMsg(msg, 'Speichere & sende…');
+      try {
+        // Save first so the test uses what is in the form
+        const token = $('notify-token').value.trim();
+        const saved = await api('/api/settings/notifications', notifyPayload(token ? token : null));
+        renderNotifications(saved.notifications);
+        const res = await api('/api/settings/notifications/test', {});
+        setMsg(msg, `${res.message} Schau aufs Handy.`, 'success');
+      } catch (err) {
+        setMsg(msg, err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('notify-random').addEventListener('click', () => {
+      const bytes = new Uint8Array(9);
+      crypto.getRandomValues(bytes);
+      const topic = 'picore-' + [...bytes].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 16);
+      $('notify-url').value = `https://ntfy.sh/${topic}`;
+      setMsg($('notify-msg'), 'Dieses Thema in der ntfy-App abonnieren, dann speichern.', 'warning');
+    });
+
+    confirmClick($('notify-token-clear'), 'Wirklich entfernen?', async () => {
+      try {
+        const res = await api('/api/settings/notifications', notifyPayload(''));
+        renderNotifications(res.notifications);
+        setMsg($('notify-msg'), 'Token entfernt.', 'success');
+      } catch (err) {
+        setMsg($('notify-msg'), err.message, 'error');
+      }
+    });
+
+    $('wol-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        const res = await api('/api/settings/wol', {
+          name: $('wol-name').value.trim(),
+          mac: $('wol-mac').value.trim(),
+          broadcast: $('wol-broadcast').value.trim()
+        });
+        data.wol_devices.push(res.device);
+        renderWolSettings(data.wol_devices);
+        ['wol-name', 'wol-mac', 'wol-broadcast'].forEach(id => { $(id).value = ''; });
+        toast(`${res.device.name} hinzugefügt.`, 'success');
+      } catch (err) {
+        toast(err.message, 'error');
       }
     });
 

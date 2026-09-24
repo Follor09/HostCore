@@ -25,6 +25,8 @@ import history
 import homelab
 import auth
 import settings_store
+import alerts
+import wol
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -36,10 +38,12 @@ async def lifespan(app: FastAPI):
     updater.refresh_git_info()
     poller_task = asyncio.create_task(updater.background_update_poller())
     history_task = asyncio.create_task(history.background_sampler())
+    alerts_task = asyncio.create_task(alerts.background_alerts())
     yield
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
+    alerts_task.cancel()
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
@@ -79,7 +83,7 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = path == "/settings" or path.startswith("/api/settings")
+    always_private = path == "/settings" or path.startswith(("/api/settings", "/api/workloads/"))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
@@ -210,6 +214,8 @@ def _settings_payload(user: str) -> dict:
             "token_set": os.path.exists(os.path.join(BASE_DIR, ".git", "github-credentials")),
         },
         "history": history.get_stats(),
+        "notifications": alerts.public_config(),
+        "wol_devices": wol.list_devices(),
         "system": {
             "hostname": platform.node(),
             "model": system_info.get_pi_model(),
@@ -279,6 +285,99 @@ async def api_settings_services(req: HiddenServicesRequest):
 async def api_settings_history_clear():
     await asyncio.to_thread(history.clear)
     return {"ok": True, "message": "Verlauf gelöscht."}
+
+
+# ---------------------------------------------------------------------------
+# Alerts & notifications
+# ---------------------------------------------------------------------------
+class NotificationsRequest(BaseModel):
+    enabled: bool
+    ntfy_url: str = ""
+    token: Optional[str] = None  # None = keep the stored token, "" = remove it
+    rules: dict = {}
+
+
+@app.get("/api/alerts")
+async def api_alerts():
+    return alerts.get_alerts()
+
+
+@app.post("/api/settings/notifications")
+async def api_settings_notifications(req: NotificationsRequest):
+    try:
+        alerts.save_config(req.enabled, req.ntfy_url, req.token, req.rules)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "notifications": alerts.public_config()}
+
+
+@app.post("/api/settings/notifications/test")
+async def api_settings_notifications_test():
+    try:
+        await alerts.send("🔔 Test von PiCore", f"Benachrichtigungen von {platform.node()} funktionieren.",
+                          priority=3, tags=["bell"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Senden fehlgeschlagen: {e}")
+    return {"ok": True, "message": "Testnachricht gesendet."}
+
+
+# ---------------------------------------------------------------------------
+# Wake-on-LAN
+# ---------------------------------------------------------------------------
+class WolDeviceRequest(BaseModel):
+    name: str
+    mac: str
+    broadcast: str = ""
+
+
+@app.get("/api/wol")
+async def api_wol_devices():
+    return {"devices": wol.list_devices()}
+
+
+@app.post("/api/wol/{device_id}/wake")
+async def api_wol_wake(device_id: str):
+    try:
+        device = await asyncio.to_thread(wol.wake, device_id)
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Wake-on-LAN sent to {device['name']} ({device['mac']})")
+    return {"ok": True, "message": f"Weckruf an {device['name']} gesendet."}
+
+
+@app.post("/api/settings/wol")
+async def api_settings_wol_add(req: WolDeviceRequest):
+    try:
+        device = wol.add_device(req.name, req.mac, req.broadcast)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "device": device}
+
+
+@app.post("/api/settings/wol/{device_id}/delete")
+async def api_settings_wol_delete(device_id: str):
+    wol.remove_device(device_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Docker container control
+# ---------------------------------------------------------------------------
+@app.post("/api/workloads/docker/{name}/{action}")
+async def api_docker_action(name: str, action: str, request: Request):
+    result = await asyncio.to_thread(homelab.docker_action, name, action)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    logger.info(f"docker {action} {name} by '{request.state.user}'")
+    return result
+
+
+@app.get("/api/workloads/docker/{name}/logs")
+async def api_docker_logs(name: str, lines: int = 200):
+    result = await asyncio.to_thread(homelab.docker_logs, name, lines)
+    if not result["ok"]:
+        raise HTTPException(status_code=404, detail=result["message"])
+    return result
 
 
 class CommandRequest(BaseModel):

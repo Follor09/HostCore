@@ -100,8 +100,8 @@ def _updater_status(states: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
     return {"id": "updater", "name": "Auto-Updater", "status": status, "detail": detail}
 
 
-def get_services_status() -> List[Dict[str, Any]]:
-    """Return status list of tracked homelab services."""
+def get_services_status(include_hidden: bool = False) -> List[Dict[str, Any]]:
+    """Return status list of tracked homelab services (alerts also watch hidden ones)."""
     all_units = [f"{u}.service" for s in TRACKED_SERVICES for u in s["units"]]
     states = get_unit_states(all_units + [UPDATER_TIMER, UPDATER_SERVICE])
 
@@ -130,7 +130,7 @@ def get_services_status() -> List[Dict[str, Any]]:
 
     # Tiles hidden on the settings page
     import settings_store
-    hidden = set(settings_store.get("hidden_services", []))
+    hidden = set() if include_hidden else set(settings_store.get("hidden_services", []))
     results = [r for r in results if r["id"] not in hidden]
 
     for r in results:

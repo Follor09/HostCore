@@ -67,6 +67,22 @@
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
         <span>Anmelden</span>
       </a>
+      <div class="alerts-menu">
+        <button class="icon-button" id="btn-alerts" aria-haspopup="true" aria-expanded="false" aria-controls="alerts-popover" title="Warnungen">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <span class="alert-badge" id="alert-badge" hidden>0</span>
+        </button>
+        <div class="alerts-popover" id="alerts-popover" hidden>
+          <div class="alerts-pop-head">
+            <strong>Warnungen</strong>
+            <a href="/settings#benachrichtigungen">Einstellungen</a>
+          </div>
+          <div class="alerts-list" id="alerts-active"></div>
+          <div class="alerts-pop-sub">Zuletzt</div>
+          <div class="alerts-list" id="alerts-recent"></div>
+          <p class="alerts-pop-note" id="alerts-note"></p>
+        </div>
+      </div>
       <a class="icon-button" href="/settings" title="Einstellungen" aria-label="Einstellungen">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
       </a>
@@ -467,6 +483,24 @@
         <ul class="updates-list" id="updates-list"></ul>
         <p class="updates-footer" id="updates-footer"></p>
       </div>
+
+      <!-- Metric 8: Wake-on-LAN -->
+      <div class="glass-card metric-card wol-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-emerald">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><path d="M12 2v10"></path></svg>
+            </div>
+            <div>
+              <h3>Wake-on-LAN</h3>
+              <p class="card-subtitle">Geräte im Netzwerk wecken</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="wol-count">0</div>
+        </div>
+        <div class="wol-list" id="wol-list"></div>
+        <a class="wol-manage" href="/settings#wake-on-lan">Geräte verwalten →</a>
+      </div>
     </section>
 
     <!-- Metrics History (24h / 7 Tage) -->
@@ -772,6 +806,27 @@
         <button class="btn-confirm btn-upgrade" id="btn-apt-upgrade">Update &amp; Upgrade installieren</button>
       </div>
       <p class="sheet-note">apt läuft als eigener Systemdienst weiter – auch wenn du dieses Fenster schließt oder das Dashboard neu startet.</p>
+    </div>
+  </div>
+
+  <!-- Docker container logs -->
+  <div class="modal-backdrop" id="logs-modal" aria-hidden="true">
+    <div class="modal-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="logs-modal-title">Container-Log</h3>
+          <p class="card-subtitle">Letzte 300 Zeilen</p>
+        </div>
+        <div class="sheet-head-actions">
+          <button class="mini-icon-btn" id="logs-modal-refresh" title="Neu laden">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
+          <button class="mini-icon-btn" id="logs-modal-close" title="Schließen (Esc)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+      <pre class="apt-log container-log" id="logs-modal-body"></pre>
     </div>
   </div>
 

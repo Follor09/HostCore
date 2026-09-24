@@ -22,6 +22,9 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
 - **Container & Pods:** Docker-Container und Kubernetes-Pods (k3s / kubectl) mit Status, Neustarts und Fehler-Hervorhebung.
   - Docker braucht Zugriff auf den Socket: `sudo usermod -aG docker $USER`
   - k3s braucht eine lesbare kubeconfig: `mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER ~/.kube/config`
+- **Warnungen & Push-Benachrichtigungen:** Glocke im Header mit aktiven Warnungen; optional Push aufs Handy über [ntfy](https://ntfy.sh) – bei CPU-Temperatur, vollem Laufwerk, NVMe-Problemen, Dienst-Fehlern, fehlgeschlagenem Auto-Update, abgestürzten Containern/Pods. Einrichtung unter *Einstellungen → Benachrichtigungen*.
+- **Container-Steuerung:** Docker-Container starten, stoppen, neu starten (mit Bestätigung) und Logs ansehen.
+- **Wake-on-LAN:** PCs, NAS & Co. per Klick wecken; Geräte unter *Einstellungen → Wake-on-LAN* verwalten.
 - **Server-Dienste & Homelab-Ports:**
   - Automatische Überwachung von: **SSH** (:22), **Docker**, **Webserver** (:80), **NetBird VPN** (wt0), **Kubernetes** (k3s / k8s / microk8s, :6443) und dem **Auto-Updater** – jeweils mit Status *Aktiv*, *Inaktiv* oder *Fehler*.
 - **Laufwerke & Speicher-Explorer:**
@@ -105,6 +108,8 @@ Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem P
 - **Konto:** Benutzername/Passwort ändern, „Ansehen ohne Login“ umschalten, alle anderen Geräte abmelden
 - **Wetter:** Ort festlegen
 - **Dienste:** auswählen, welche Kacheln im Dienste-Widget erscheinen
+- **Benachrichtigungen:** ntfy-URL, Schwellwerte, Regeln, Testnachricht
+- **Wake-on-LAN:** Geräte hinzufügen / entfernen
 - **Auto-Update:** Repo, Branch, Commit, Timer-Status, Token-Status, „Jetzt prüfen“
 - **Verlauf:** Größe & Zeitraum der Messdaten, „Verlauf löschen“
 - **System:** Hostname, Modell, OS, Kernel, Python, Laufzeit, IP-Adressen

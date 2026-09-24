@@ -250,6 +250,43 @@ def _docker() -> Dict[str, Any]:
     return {"available": True, "containers": containers}
 
 
+DOCKER_ACTIONS = ("start", "stop", "restart")
+
+
+def _known_container(name: str) -> bool:
+    """Only act on containers docker itself reports (the name comes from the browser)."""
+    return any(c["name"] == name for c in _docker().get("containers", []))
+
+
+def docker_action(name: str, action: str) -> Dict[str, Any]:
+    if action not in DOCKER_ACTIONS:
+        return {"ok": False, "message": "Unbekannte Aktion."}
+    if not _known_container(name):
+        return {"ok": False, "message": f"Container '{name}' nicht gefunden."}
+    try:
+        res = _run(["docker", action, "--", name], timeout=90)
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+    _cache.invalidate("docker")
+    if res.returncode != 0:
+        return {"ok": False, "message": res.stderr.strip()[:200] or f"docker {action} fehlgeschlagen"}
+    verb = {"start": "gestartet", "stop": "gestoppt", "restart": "neu gestartet"}[action]
+    return {"ok": True, "message": f"{name} {verb}."}
+
+
+def docker_logs(name: str, lines: int = 200) -> Dict[str, Any]:
+    if not _known_container(name):
+        return {"ok": False, "message": f"Container '{name}' nicht gefunden."}
+    lines = max(10, min(int(lines), 1000))
+    try:
+        # docker writes the container's stderr to our stderr: merge both, in order
+        res = subprocess.run(["docker", "logs", "--tail", str(lines), "--timestamps", "--", name],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15, errors="replace")
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+    return {"ok": True, "name": name, "log": res.stdout[-200_000:]}
+
+
 def _kube_cmd() -> Optional[List[str]]:
     if shutil.which("kubectl"):
         return ["kubectl"]

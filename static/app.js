@@ -1392,9 +1392,9 @@
     $('nvme-health-tag').title = nvme.model || '';
   }
 
-  function workloadItem(level, name, sub, sideTop, sideBottom) {
+  function workloadItem(level, name, sub, sideTop, sideBottom, actions) {
     const item = document.createElement('div');
-    item.className = `workload-item ${level}`;
+    item.className = `workload-item ${level}${actions ? ' has-actions' : ''}`;
     const dot = document.createElement('span');
     dot.className = `service-dot ${level}`;
     const main = document.createElement('div');
@@ -1416,7 +1416,215 @@
       side.appendChild(span);
     });
     item.append(dot, main, side);
+    if (actions) item.appendChild(actions);
     return item;
+  }
+
+  // ---- Docker container actions (start / stop / restart) + logs ----
+  const WL_ICONS = {
+    logs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>',
+    start: '<polygon points="6 3 20 12 6 21 6 3"></polygon>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"></rect>',
+    restart: '<path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>'
+  };
+  const WL_LABELS = { logs: 'Log anzeigen', start: 'Starten', stop: 'Stoppen', restart: 'Neu starten' };
+
+  function containerActions(c) {
+    const box = document.createElement('div');
+    box.className = 'workload-actions';
+    const running = c.state === 'running';
+    const list = running ? ['logs', 'restart', 'stop'] : ['logs', 'start'];
+    list.forEach(action => {
+      const btn = document.createElement('button');
+      btn.className = 'wl-btn';
+      btn.title = `${WL_LABELS[action]}: ${c.name}`;
+      btn.setAttribute('aria-label', btn.title);
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${WL_ICONS[action]}</svg>`;
+      btn.addEventListener('click', () => {
+        if (action === 'logs') return openContainerLogs(c.name);
+        // Stop / restart interrupt a running service: second click within 4s confirms
+        if (action !== 'start' && !btn.classList.contains('confirming')) {
+          btn.classList.add('confirming');
+          btn.title = `${WL_LABELS[action]}? Nochmal klicken`;
+          setTimeout(() => { btn.classList.remove('confirming'); btn.title = `${WL_LABELS[action]}: ${c.name}`; }, 4000);
+          return;
+        }
+        runContainerAction(c.name, action, box);
+      });
+      box.appendChild(btn);
+    });
+    return box;
+  }
+
+  async function runContainerAction(name, action, box) {
+    box.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    try {
+      const res = await fetch(`/api/workloads/docker/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Aktion fehlgeschlagen.');
+      showToast(data.message, 'success');
+      loadHomelab();
+    } catch (err) {
+      showToast(err.message, 'error');
+      box.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    }
+  }
+
+  let logsContainer = null;
+
+  async function loadContainerLogs() {
+    const body = $('logs-modal-body');
+    body.textContent = 'Lade…';
+    try {
+      const res = await fetch(`/api/workloads/docker/${encodeURIComponent(logsContainer)}/logs?lines=300`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Log konnte nicht geladen werden.');
+      body.textContent = data.log || '(keine Ausgabe)';
+      body.scrollTop = body.scrollHeight;
+    } catch (err) {
+      body.textContent = err.message;
+    }
+  }
+
+  function openContainerLogs(name) {
+    logsContainer = name;
+    $('logs-modal-title').textContent = `Log: ${name}`;
+    const modal = $('logs-modal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    $('logs-modal-close').focus();
+    loadContainerLogs();
+  }
+
+  function closeContainerLogs() {
+    const modal = $('logs-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  // ---- Alerts bell ----
+  function alertItem(a, withTime) {
+    const item = document.createElement('div');
+    item.className = 'alert-item';
+    const dot = document.createElement('span');
+    dot.className = `service-dot ${a.level === 'good' ? 'active' : a.level === 'info' ? 'inactive' : 'error'}`;
+    const title = document.createElement('strong');
+    title.textContent = a.title;
+    const msg = document.createElement('p');
+    msg.textContent = a.message;
+    item.append(dot, title, msg);
+    if (withTime) {
+      const t = document.createElement('time');
+      t.textContent = relTime(a.ts || a.since);
+      item.appendChild(t);
+    }
+    return item;
+  }
+
+  function renderAlerts(data) {
+    const badge = $('alert-badge');
+    const n = data.active.length;
+    badge.hidden = n === 0;
+    badge.textContent = String(n);
+    $('btn-alerts').title = n ? `${n} aktive Warnung${n === 1 ? '' : 'en'}` : 'Keine Warnungen';
+
+    const active = $('alerts-active'), recent = $('alerts-recent');
+    active.innerHTML = '';
+    recent.innerHTML = '';
+    if (!n) {
+      const p = document.createElement('p');
+      p.className = 'alerts-empty';
+      p.textContent = 'Alles in Ordnung – keine aktiven Warnungen.';
+      active.appendChild(p);
+    }
+    data.active.forEach(a => active.appendChild(alertItem(a, true)));
+    data.recent.slice(0, 6).forEach(e => recent.appendChild(alertItem(e, true)));
+    if (!data.recent.length) {
+      const p = document.createElement('p');
+      p.className = 'alerts-empty';
+      p.textContent = 'Noch keine Ereignisse.';
+      recent.appendChild(p);
+    }
+    $('alerts-note').textContent = data.notifications_enabled
+      ? 'Push-Benachrichtigungen sind aktiv.'
+      : 'Push aufs Handy ist aus – in den Einstellungen einrichten.';
+  }
+
+  async function loadAlerts() {
+    try {
+      const res = await fetch('/api/alerts');
+      if (res.ok) renderAlerts(await res.json());
+    } catch (e) { /* ignore */ }
+  }
+
+  function initAlertsMenu() {
+    const btn = $('btn-alerts'), pop = $('alerts-popover');
+    if (!btn) return;
+    const setOpen = open => {
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+      if (open) loadAlerts();
+    };
+    btn.addEventListener('click', e => { e.stopPropagation(); setOpen(pop.hidden); });
+    document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target)) setOpen(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) { setOpen(false); btn.focus(); } });
+    loadAlerts();
+    setInterval(loadAlerts, 30000);
+  }
+
+  // ---- Wake-on-LAN ----
+  function renderWol(devices) {
+    const list = $('wol-list');
+    if (!list) return;
+    $('wol-count').textContent = String(devices.length);
+    list.innerHTML = '';
+    if (!devices.length) {
+      const p = document.createElement('p');
+      p.className = 'wol-empty';
+      p.textContent = 'Noch keine Geräte. Füge PC, NAS & Co. in den Einstellungen hinzu.';
+      list.appendChild(p);
+      return;
+    }
+    devices.forEach(d => {
+      const item = document.createElement('div');
+      item.className = 'wol-item';
+      const main = document.createElement('div');
+      main.className = 'workload-main';
+      const n = document.createElement('span');
+      n.className = 'workload-name';
+      n.textContent = d.name;
+      const m = document.createElement('span');
+      m.className = 'workload-sub';
+      m.textContent = d.mac;
+      main.append(n, m);
+      const btn = document.createElement('button');
+      btn.className = 'btn-wake';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><path d="M12 2v10"></path></svg>';
+      btn.appendChild(document.createTextNode('Wecken'));
+      btn.title = `${d.name} per Wake-on-LAN starten`;
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/wol/${encodeURIComponent(d.id)}/wake`, { method: 'POST' });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || 'Senden fehlgeschlagen.');
+          showToast(data.message, 'success');
+        } catch (err) {
+          showToast(err.message, 'error');
+        } finally {
+          setTimeout(() => { btn.disabled = false; }, 1500);
+        }
+      });
+      item.append(main, btn);
+      list.appendChild(item);
+    });
+  }
+
+  async function loadWol() {
+    try {
+      const res = await fetch('/api/wol');
+      if (res.ok) renderWol((await res.json()).devices);
+    } catch (e) { /* ignore */ }
   }
 
   function workloadMessage(list, source, notInstalled) {
@@ -1458,7 +1666,7 @@
       $('docker-summary').textContent = summarize(docker.containers);
       if (!docker.containers.length) workloadMessage(dList, { available: false }, 'Keine Container vorhanden.');
       docker.containers.forEach(c => dList.appendChild(
-        workloadItem(c.level, c.name, c.image, c.status, c.ports.split(',')[0])));
+        workloadItem(c.level, c.name, c.image, c.status, c.ports.split(',')[0], containerActions(c))));
     } else {
       $('docker-summary').textContent = '';
       workloadMessage(dList, docker, 'Docker ist nicht installiert.');
@@ -1502,8 +1710,18 @@
       });
     }
     initUpdatesSheet();
+    initAlertsMenu();
     loadHomelab();
+    loadWol();
     setInterval(loadHomelab, 20000);
+    setInterval(loadWol, 60000);
+
+    $('logs-modal-close').addEventListener('click', closeContainerLogs);
+    $('logs-modal-refresh').addEventListener('click', loadContainerLogs);
+    $('logs-modal').addEventListener('click', e => { if (e.target.id === 'logs-modal') closeContainerLogs(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('logs-modal').classList.contains('open')) closeContainerLogs();
+    });
   }
 
   // ---------------------------------------------------------------------------
