@@ -11,6 +11,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OWNER="$(stat -c %U "$DIR")"
 as_owner() { sudo -u "$OWNER" -H -- "$@"; }
 
+if ! as_owner env GIT_TERMINAL_PROMPT=0 git -C "$DIR" ls-remote origin >/dev/null 2>&1; then
+    echo "🔑 Cannot read the GitHub repo (private?). A token is needed for auto-updates."
+    if [ -t 0 ]; then "$DIR/set-token.sh"; else echo "   Run ./set-token.sh later."; fi
+fi
+
 echo "📦 Python venv & dependencies (user: $OWNER, dir: $DIR)..."
 # Recreate a venv that is missing or broken (e.g. copied over from a Mac)
 if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
@@ -20,7 +25,7 @@ if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
     as_owner python3 -m venv "$DIR/venv"
 fi
 as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
-chmod +x "$DIR/update.sh" "$DIR/start.sh"
+chmod +x "$DIR/update.sh" "$DIR/start.sh" "$DIR/set-token.sh"
 
 echo "⚙️  Installing systemd units..."
 for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer; do

@@ -77,4 +77,14 @@ sudo ~/pi-dashboard/update.sh                # Sofort manuell aktualisieren
 systemctl list-timers pi-dashboard-update    # Nächste Prüfung
 ```
 
-> **Privates Repo?** Der Pi braucht Lesezugriff: am einfachsten ein [Deploy Key](https://docs.github.com/de/authentication/connecting-to-github-with-ssh/managing-deploy-keys) (`ssh-keygen` auf dem Pi, Public Key unter *Repo → Settings → Deploy keys* eintragen) und per SSH-URL `git@github.com:USER/pi-dashboard.git` klonen.
+### 🔑 Privates Repo: GitHub-Token hinterlegen
+
+Der Pi braucht Lesezugriff auf das Repo. Token erstellen unter [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):
+*Repository access* → nur dieses Repo, *Permissions* → **Contents: Read-only**.
+
+Dann auf dem Pi:
+```bash
+~/pi-dashboard/set-token.sh
+```
+
+Der Token wird geprüft und in `.git/github-credentials` gespeichert (nur für deinen Benutzer lesbar, wird nie committed). `install.sh` fragt automatisch danach, falls das Repo nicht lesbar ist. Bei abgelaufenem Token einfach `set-token.sh` erneut ausführen.
