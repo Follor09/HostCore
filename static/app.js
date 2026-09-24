@@ -438,7 +438,17 @@
     services.forEach(srv => {
       const status = srv.status || (srv.running ? 'active' : 'inactive');
       const tile = document.createElement('div');
-      tile.className = `service-tile ${status}`;
+      tile.className = `service-tile ${status}${srv.unit ? ' clickable' : ''}`;
+      if (srv.unit) {
+        tile.tabIndex = 0;
+        tile.setAttribute('role', 'button');
+        tile.title = `${srv.name}: steuern & Log ansehen`;
+        tile.addEventListener('click', () => openServiceSheet(srv));
+        tile.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openServiceSheet(srv); }
+        });
+      }
+      if (serviceSheet.srv && serviceSheet.srv.id === srv.id) updateServiceSheet(srv);
 
       tile.innerHTML = `
         <div class="service-info">
@@ -452,6 +462,110 @@
       `;
 
       els.servicesContainer.appendChild(tile);
+    });
+  }
+
+  // ---- Service sheet: start / stop / restart + journal ----
+  const serviceSheet = { srv: null };
+  const SERVICE_WARNINGS = {
+    ssh: 'Achtung: Wenn du SSH stoppst, kannst du dich nicht mehr per SSH verbinden – nur noch über dieses Dashboard.',
+    docker: 'Stoppen oder Neustarten von Docker hält alle Container an.',
+    netbird: 'Wenn du über NetBird verbunden bist, verlierst du beim Stoppen die Verbindung zum Dashboard.',
+    kubernetes: 'Stoppen hält alle Pods auf diesem Node an.'
+  };
+  const SERVICE_ACTION_LABELS = { start: 'Starten', stop: 'Stoppen', restart: 'Neu starten', run: 'Update jetzt ausführen' };
+
+  function updateServiceSheet(srv) {
+    serviceSheet.srv = srv;
+    $('service-modal-title').textContent = srv.name;
+    $('service-modal-sub').textContent = `${srv.unit} · ${srv.detail}`;
+    const levels = { active: 'good', inactive: '', error: 'critical' };
+    setHealthTag($('service-modal-tag'), levels[srv.status] ?? '', srv.status_text);
+
+    const warn = $('service-modal-warning');
+    warn.hidden = !SERVICE_WARNINGS[srv.id];
+    warn.textContent = SERVICE_WARNINGS[srv.id] || '';
+
+    const box = $('service-modal-actions');
+    const running = srv.status === 'active';
+    if (box.dataset.for !== `${srv.id}:${running}`) {
+      box.dataset.for = `${srv.id}:${running}`;
+      box.innerHTML = '';
+      srv.actions.forEach(action => {
+        const btn = document.createElement('button');
+        const destructive = action === 'stop' || action === 'restart';
+        btn.className = destructive ? 'btn-danger' : 'btn-primary';
+        btn.textContent = SERVICE_ACTION_LABELS[action];
+        btn.disabled = (action === 'start' && running) || (action === 'stop' && !running);
+        btn.addEventListener('click', async () => {
+          // Stop / restart need a second click within 5 s
+          if (destructive && !btn.classList.contains('confirming')) {
+            btn.classList.add('confirming');
+            btn.textContent = `Wirklich ${SERVICE_ACTION_LABELS[action].toLowerCase()}?`;
+            setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = SERVICE_ACTION_LABELS[action]; }, 5000);
+            return;
+          }
+          btn.classList.remove('confirming');
+          btn.textContent = SERVICE_ACTION_LABELS[action];
+          box.querySelectorAll('button').forEach(b => { b.disabled = true; });
+          try {
+            const res = await fetch(`/api/services/${encodeURIComponent(srv.id)}/${action}`, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || 'Aktion fehlgeschlagen.');
+            showToast(data.message, 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            box.dataset.for = '';  // rebuild with fresh state on the next live update
+            setTimeout(loadServiceJournal, 2500);
+          }
+        });
+        box.appendChild(btn);
+      });
+    }
+  }
+
+  async function loadServiceJournal() {
+    const srv = serviceSheet.srv;
+    if (!srv || !$('service-modal').classList.contains('open')) return;
+    const log = $('service-modal-log'), hint = $('service-modal-hint');
+    try {
+      const res = await fetch(`/api/services/${encodeURIComponent(srv.id)}/journal`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Journal konnte nicht geladen werden.');
+      log.textContent = data.log;
+      log.scrollTop = log.scrollHeight;
+      hint.hidden = !data.hint;
+      hint.textContent = data.hint || '';
+    } catch (err) {
+      log.textContent = err.message;
+    }
+  }
+
+  function openServiceSheet(srv) {
+    $('service-modal-actions').dataset.for = '';
+    updateServiceSheet(srv);
+    $('service-modal-log').textContent = 'Lade…';
+    const modal = $('service-modal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    $('service-modal-close').focus();
+    loadServiceJournal();
+  }
+
+  function closeServiceSheet() {
+    const modal = $('service-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    serviceSheet.srv = null;
+  }
+
+  function initServiceSheet() {
+    $('service-modal-close').addEventListener('click', closeServiceSheet);
+    $('service-modal-refresh').addEventListener('click', loadServiceJournal);
+    $('service-modal').addEventListener('click', e => { if (e.target.id === 'service-modal') closeServiceSheet(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('service-modal').classList.contains('open')) closeServiceSheet();
     });
   }
 
@@ -1640,6 +1754,7 @@
       });
     }
     initUpdatesSheet();
+    initServiceSheet();
     loadHomelab();
     loadWol();
     setInterval(loadHomelab, 20000);

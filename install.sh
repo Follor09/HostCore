@@ -46,6 +46,13 @@ SUDOERS=/etc/sudoers.d/pi-dashboard-restart
     echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL restart raspberry-dashboard"
     echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-apt@update.service"
     echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-apt@upgrade.service"
+    # Service tiles: start/stop/restart exactly the units the dashboard tracks, plus "run update now"
+    echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL start --no-block pi-dashboard-update.service"
+    for unit in $(as_owner env PYTHONDONTWRITEBYTECODE=1 "$DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$DIR'); import services_manager as s; print(' '.join(s.controllable_units()))"); do
+        for action in start stop restart; do
+            echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL $action --no-block $unit"
+        done
+    done
     if [ -e /dev/nvme0 ] && command -v smartctl >/dev/null; then
         echo "$OWNER ALL=(root) NOPASSWD: $(command -v smartctl) -j -a /dev/nvme0"
     fi

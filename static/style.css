@@ -1808,6 +1808,44 @@ a.icon-button {
   color: var(--text-main);
 }
 
+/* Service tiles open a control sheet */
+.service-tile.clickable {
+  cursor: pointer;
+}
+
+.service-tile.clickable:hover {
+  border-color: rgba(0, 240, 255, 0.35);
+}
+
+.service-tile.clickable:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.service-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.service-actions button {
+  flex: 1;
+  min-width: 120px;
+}
+
+.service-warning {
+  font-size: 0.78rem;
+  color: var(--accent-amber);
+  background: rgba(255, 183, 3, 0.08);
+  border: 1px solid rgba(255, 183, 3, 0.25);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.service-warning[hidden] {
+  display: none;
+}
+
 /* Container action buttons + log modal */
 .workload-item.has-actions {
   grid-template-columns: auto 1fr auto auto;

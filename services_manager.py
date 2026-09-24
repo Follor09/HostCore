@@ -6,10 +6,11 @@ Replaces GPIO for headless and server Raspberry Pi setups.
 
 import os
 import platform
+import shutil
 import socket
 import subprocess
 import psutil
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Homelab services to monitor. A service counts as running if any of its
 # systemd units is active or its TCP port is listening.
@@ -45,7 +46,7 @@ def get_unit_states(units: List[str]) -> Dict[str, Dict[str, str]]:
         return {}
     try:
         res = subprocess.run(
-            ["systemctl", "show", "--property=Id,ActiveState,Result", "--", *units],
+            ["systemctl", "show", "--property=Id,ActiveState,Result,LoadState", "--", *units],
             capture_output=True, text=True, timeout=2
         )
     except Exception:
@@ -73,6 +74,17 @@ def _units_status(unit_names: List[str], states: Dict[str, Dict[str, str]]) -> t
         if st.get("ActiveState") == "failed":
             failed = True
     return ("error" if failed else "inactive"), ""
+
+
+def _installed_unit(unit_names: List[str], states: Dict[str, Dict[str, str]]) -> Optional[str]:
+    """The unit to control: the running one, else the first that is installed on this system."""
+    _, active = _units_status(unit_names, states)
+    if active:
+        return f"{active}.service"
+    for name in unit_names:
+        if states.get(f"{name}.service", {}).get("LoadState") == "loaded":
+            return f"{name}.service"
+    return None
 
 
 def _interface_ip(name: str) -> str:
@@ -124,9 +136,12 @@ def get_services_status() -> List[Dict[str, Any]]:
         else:
             detail = f"{active_unit or s['units'][0]}.service"
 
-        results.append({"id": s["id"], "name": s["name"], "status": status, "detail": detail})
+        unit = _installed_unit(s["units"], states)
+        results.append({"id": s["id"], "name": s["name"], "status": status, "detail": detail,
+                        "unit": unit, "actions": list(SERVICE_ACTIONS) if unit else []})
 
-    results.append(_updater_status(states))
+    results.append({**_updater_status(states), "unit": UPDATER_SERVICE,
+                    "actions": ["run"] if states.get(UPDATER_SERVICE, {}).get("LoadState") == "loaded" else []})
 
     # Tiles hidden on the settings page
     import settings_store
@@ -137,6 +152,77 @@ def get_services_status() -> List[Dict[str, Any]]:
         r["running"] = r["status"] == "active"
         r["status_text"] = STATUS_TEXT[r["status"]]
     return results
+
+
+# ---------------------------------------------------------------------------
+# Control: start / stop / restart via narrow sudo rules written by install.sh
+# ---------------------------------------------------------------------------
+SERVICE_ACTIONS = ("start", "stop", "restart")
+
+
+def controllable_units() -> List[str]:
+    """Every unit install.sh writes sudo rules for (keep in sync via this function)."""
+    return [f"{u}.service" for s in TRACKED_SERVICES for u in s["units"]]
+
+
+def _resolve_unit(service_id: str) -> Optional[str]:
+    """Map a tile id from the browser to a unit - the browser never names units itself."""
+    if service_id == "updater":
+        return UPDATER_SERVICE
+    svc = next((s for s in TRACKED_SERVICES if s["id"] == service_id), None)
+    if not svc:
+        return None
+    states = get_unit_states([f"{u}.service" for u in svc["units"]])
+    return _installed_unit(svc["units"], states)
+
+
+def service_action(service_id: str, action: str) -> Dict[str, Any]:
+    if platform.system() != "Linux":
+        return {"ok": False, "message": "Nur auf dem Raspberry Pi verfügbar."}
+    unit = _resolve_unit(service_id)
+    if not unit:
+        return {"ok": False, "message": "Dienst ist auf diesem System nicht installiert."}
+    if service_id == "updater":
+        if action != "run":
+            return {"ok": False, "message": "Unbekannte Aktion."}
+        action = "start"
+    elif action not in SERVICE_ACTIONS:
+        return {"ok": False, "message": "Unbekannte Aktion."}
+
+    systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
+    try:
+        # Exactly the command form allowed in /etc/sudoers.d/pi-dashboard-restart
+        res = subprocess.run(["sudo", "-n", systemctl, action, "--no-block", unit],
+                             capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "password" in err.lower() or "not allowed" in err.lower():
+            return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
+        return {"ok": False, "message": err[:200] or f"systemctl {action} fehlgeschlagen"}
+    verb = {"start": "wird gestartet", "stop": "wird gestoppt", "restart": "wird neu gestartet"}[action]
+    return {"ok": True, "message": f"{unit} {verb}…", "unit": unit}
+
+
+def service_journal(service_id: str, lines: int = 150) -> Dict[str, Any]:
+    if platform.system() != "Linux":
+        return {"ok": False, "message": "Nur auf dem Raspberry Pi verfügbar."}
+    unit = _resolve_unit(service_id)
+    if not unit:
+        return {"ok": False, "message": "Dienst ist auf diesem System nicht installiert."}
+    try:
+        res = subprocess.run(["journalctl", "-u", unit, "-n", str(max(10, min(lines, 500))),
+                              "--no-pager", "-o", "short-iso"],
+                             capture_output=True, text=True, timeout=10, errors="replace")
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+    log = res.stdout.strip()
+    hint = ""
+    if "insufficient permissions" in (res.stdout + res.stderr).lower() or not log or log.startswith("-- No entries"):
+        user = os.environ.get("USER", "$USER")
+        hint = f"Für alle Log-Zeilen: sudo usermod -aG systemd-journal {user} && sudo systemctl restart raspberry-dashboard"
+    return {"ok": True, "unit": unit, "log": log or "(keine Einträge)", "hint": hint}
 
 
 def available_services() -> List[Dict[str, str]]:

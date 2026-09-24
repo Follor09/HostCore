@@ -80,7 +80,8 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = path == "/settings" or path.startswith(("/api/settings", "/api/workloads/"))
+    always_private = (path == "/settings" or path.startswith(("/api/settings", "/api/workloads/"))
+                      or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
@@ -281,6 +282,26 @@ async def api_settings_services(req: HiddenServicesRequest):
 async def api_settings_history_clear():
     await asyncio.to_thread(history.clear)
     return {"ok": True, "message": "Verlauf gelöscht."}
+
+
+# ---------------------------------------------------------------------------
+# systemd service control (tiles in the "Server-Dienste" widget)
+# ---------------------------------------------------------------------------
+@app.post("/api/services/{service_id}/{action}")
+async def api_service_action(service_id: str, action: str, request: Request):
+    result = await asyncio.to_thread(services_manager.service_action, service_id, action)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    logger.info(f"systemctl {action} {result['unit']} by '{request.state.user}'")
+    return result
+
+
+@app.get("/api/services/{service_id}/journal")
+async def api_service_journal(service_id: str, lines: int = 150):
+    result = await asyncio.to_thread(services_manager.service_journal, service_id, lines)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
 
 
 # ---------------------------------------------------------------------------
