@@ -31,7 +31,7 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
   - Übersicht über alle eingehängten Datenträger (SD-Karte, NVMe-SSDs, externe USB-Festplatten unter `/media` und Dateisysteme).
 - **System-Journal & Diagnose:**
   - **System-Logs:** Liest `journalctl -n 30` und `dmesg` direkt im Dashboard aus.
-  - **Top laufende Prozesse:** PID, CPU%, Memory%, Benutzer.
+  - **Prozesse:** Top-Prozesse live, Suche nach Name oder PID, eigene Prozesse beenden (SIGTERM, bei Bedarf erzwingen mit SIGKILL). Root-Prozesse nur über das Web-Terminal.
   - **Diagnose-Terminal:** Schnell-Befehle (`docker ps`, `ping 1.1.1.1`, `free -h`, `df -h`, `vcgencmd temp`, `vcgencmd get_throttled`).
   - **Geführter Neustart / Herunterfahren:** Mit Bestätigungs-Modal.
   - **Smart-Display & Wetter:** Uhrzeit, Uptime und Open-Meteo Wetter.

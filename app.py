@@ -285,6 +285,28 @@ async def api_settings_history_clear():
 
 
 # ---------------------------------------------------------------------------
+# Processes: search + end (own processes only)
+# ---------------------------------------------------------------------------
+class SignalRequest(BaseModel):
+    create_time: float
+    force: bool = False
+
+
+@app.get("/api/processes/search")
+async def api_process_search(q: str = ""):
+    return {"processes": await asyncio.to_thread(system_info.search_processes, q)}
+
+
+@app.post("/api/processes/{pid}/signal")
+async def api_process_signal(pid: int, req: SignalRequest, request: Request):
+    result = await asyncio.to_thread(system_info.signal_process, pid, req.create_time, req.force)
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    logger.info(f"{'SIGKILL' if req.force else 'SIGTERM'} pid {pid} by '{request.state.user}': {result['message']}")
+    return result
+
+
+# ---------------------------------------------------------------------------
 # systemd service control (tiles in the "Server-Dienste" widget)
 # ---------------------------------------------------------------------------
 @app.post("/api/services/{service_id}/{action}")

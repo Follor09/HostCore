@@ -605,6 +605,10 @@
 
         <!-- Tab 1: Top Processes -->
         <div class="tab-pane active" id="pane-processes">
+          <div class="proc-toolbar">
+            <input type="search" id="proc-search" placeholder="Prozess suchen (Name oder PID)…" autocomplete="off" spellcheck="false" aria-label="Prozess suchen">
+            <span class="sub-label" id="proc-mode">Top 6 nach CPU</span>
+          </div>
           <div class="table-responsive">
             <table class="processes-table">
               <thead>
@@ -614,11 +618,12 @@
                   <th>CPU %</th>
                   <th>MEM %</th>
                   <th>Benutzer</th>
+                  <th class="proc-action-col"><span class="visually-hidden">Aktion</span></th>
                 </tr>
               </thead>
               <tbody id="processes-tbody">
                 <tr>
-                  <td colspan="5" class="table-loading">Lade aktive Prozesse...</td>
+                  <td colspan="6" class="table-loading">Lade aktive Prozesse...</td>
                 </tr>
               </tbody>
             </table>

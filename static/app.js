@@ -690,12 +690,18 @@
   // ---------------------------------------------------------------------------
   // Top Processes Table
   // ---------------------------------------------------------------------------
-  function renderProcesses(procs) {
+  // While a search is active the live WebSocket list is ignored and search results refresh instead
+  const procState = { query: '', timer: null };
+
+  function renderProcesses(procs, fromSearch = false) {
     if (!els.processesTbody) return;
+    if (procState.query && !fromSearch) return;
+    // Don't wipe a pending "Sicher?" / "Erzwingen" confirmation with the next live update
+    if (!fromSearch && els.processesTbody.querySelector('.proc-kill.confirming, .proc-kill[data-force="1"]')) return;
     els.processesTbody.innerHTML = '';
 
     if (!procs || procs.length === 0) {
-      els.processesTbody.innerHTML = '<tr><td colspan="5" class="table-loading">Keine Prozesse gefunden</td></tr>';
+      els.processesTbody.innerHTML = `<tr><td colspan="6" class="table-loading">${procState.query ? 'Kein passender Prozess' : 'Keine Prozesse gefunden'}</td></tr>`;
       return;
     }
 
@@ -707,8 +713,90 @@
         <td><span style="color: ${p.cpu_percent > 30 ? 'var(--accent-amber)' : 'inherit'};">${p.cpu_percent}%</span></td>
         <td>${p.memory_percent}%</td>
         <td><span style="color: var(--text-dim);">${escapeHtml(p.username || '-')}</span></td>
+        <td></td>
       `;
+      tr.lastElementChild.appendChild(processAction(p));
       els.processesTbody.appendChild(tr);
+    });
+  }
+
+  function processAction(p) {
+    if (!p.killable) {
+      const lock = document.createElement('span');
+      lock.className = 'proc-locked';
+      lock.textContent = '–';
+      lock.title = 'Gehört einem anderen Benutzer oder ist geschützt – nur über das Web-Terminal mit sudo beendbar.';
+      return lock;
+    }
+    const btn = document.createElement('button');
+    btn.className = 'proc-kill';
+    btn.textContent = 'Beenden';
+    btn.title = `${p.name} (${p.pid}) beenden`;
+    btn.addEventListener('click', async () => {
+      const force = btn.dataset.force === '1';
+      if (!btn.classList.contains('confirming')) {
+        btn.classList.add('confirming');
+        btn.textContent = force ? 'Erzwingen?' : 'Sicher?';
+        setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = force ? 'Erzwingen' : 'Beenden'; }, 4000);
+        return;
+      }
+      btn.classList.remove('confirming');
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        const res = await fetch(`/api/processes/${p.pid}/signal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ create_time: p.create_time, force })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Beenden fehlgeschlagen.');
+        showToast(data.message, data.gone ? 'success' : 'info');
+        if (!data.gone) {
+          // Ignored SIGTERM: offer SIGKILL on the same button
+          btn.dataset.force = '1';
+          btn.textContent = 'Erzwingen';
+          btn.disabled = false;
+          return;
+        }
+        if (procState.query) searchProcesses();
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = force ? 'Erzwingen' : 'Beenden';
+      }
+    });
+    return btn;
+  }
+
+  async function searchProcesses() {
+    clearTimeout(procState.timer);
+    if (!procState.query) return;
+    try {
+      const res = await fetch(`/api/processes/search?q=${encodeURIComponent(procState.query)}`);
+      if (res.ok) renderProcesses((await res.json()).processes, true);
+    } catch (e) { /* keep last result */ }
+    // Don't rebuild while the user is confirming a kill
+    procState.timer = setTimeout(function refresh() {
+      if (document.querySelector('#processes-tbody .proc-kill.confirming, #processes-tbody .proc-kill[data-force="1"]')) {
+        procState.timer = setTimeout(refresh, 3000);
+      } else {
+        searchProcesses();
+      }
+    }, 3000);
+  }
+
+  function initProcessSearch() {
+    const input = document.getElementById('proc-search');
+    if (!input) return;
+    let debounce = null;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        procState.query = input.value.trim();
+        document.getElementById('proc-mode').textContent = procState.query ? 'Suchergebnis' : 'Top 6 nach CPU';
+        if (procState.query) searchProcesses(); else clearTimeout(procState.timer);
+      }, 250);
     });
   }
 
@@ -1755,6 +1843,7 @@
     }
     initUpdatesSheet();
     initServiceSheet();
+    initProcessSearch();
     loadHomelab();
     loadWol();
     setInterval(loadHomelab, 20000);

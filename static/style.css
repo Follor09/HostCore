@@ -2852,6 +2852,76 @@ a.icon-button {
   font-family: var(--font-mono);
 }
 
+.proc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.proc-toolbar input {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+}
+
+.proc-toolbar input:focus {
+  border-color: var(--border-focus);
+}
+
+.proc-action-col {
+  width: 1%;
+}
+
+.proc-kill {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 42, 95, 0.3);
+  background: rgba(255, 42, 95, 0.08);
+  color: var(--accent-rose);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.proc-kill:hover {
+  background: rgba(255, 42, 95, 0.18);
+}
+
+.proc-kill.confirming {
+  background: var(--accent-amber);
+  border-color: transparent;
+  color: #1a1200;
+}
+
+.proc-kill:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.proc-locked {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  cursor: help;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .table-loading {
   text-align: center;
   color: var(--text-muted);

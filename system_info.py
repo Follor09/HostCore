@@ -271,25 +271,78 @@ def get_uptime() -> dict:
     }
 
 
-def get_top_processes(limit: int = 8) -> list:
-    """Return top running processes sorted by CPU and memory usage."""
+_OWN_USER = None
+
+
+def _own_user() -> str:
+    global _OWN_USER
+    if _OWN_USER is None:
+        try:
+            _OWN_USER = psutil.Process().username()
+        except Exception:
+            _OWN_USER = ""
+    return _OWN_USER
+
+
+def _protected_pids() -> set:
+    """Never offer to kill init, the dashboard itself or its parent (systemd / shell)."""
+    return {1, os.getpid(), os.getppid()}
+
+
+def _process_list() -> list:
     procs = []
-    for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'username']):
+    own, protected = _own_user(), _protected_pids()
+    for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'username', 'create_time']):
         try:
             info = p.info
-            if info['cpu_percent'] is None:
-                info['cpu_percent'] = 0.0
-            if info['memory_percent'] is None:
-                info['memory_percent'] = 0.0
-            info['cpu_percent'] = round(info['cpu_percent'], 1)
-            info['memory_percent'] = round(info['memory_percent'], 1)
+            info['cpu_percent'] = round(info['cpu_percent'] or 0.0, 1)
+            info['memory_percent'] = round(info['memory_percent'] or 0.0, 1)
+            # The dashboard runs as a normal user: it can only signal its own processes
+            info['killable'] = info['username'] == own and info['pid'] not in protected
             procs.append(info)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
-
     # Sort descending by CPU, then memory
     procs.sort(key=lambda x: (x['cpu_percent'], x['memory_percent']), reverse=True)
-    return procs[:limit]
+    return procs
+
+
+def get_top_processes(limit: int = 8) -> list:
+    """Return top running processes sorted by CPU and memory usage."""
+    return _process_list()[:limit]
+
+
+def search_processes(query: str, limit: int = 50) -> list:
+    q = query.strip().lower()
+    if not q:
+        return []
+    return [p for p in _process_list()
+            if q in (p['name'] or '').lower() or str(p['pid']) == q][:limit]
+
+
+def signal_process(pid: int, create_time: float, force: bool = False) -> dict:
+    """SIGTERM (or SIGKILL with force) one of our own processes.
+    create_time guards against the PID having been reused by another process meanwhile."""
+    if pid in _protected_pids():
+        return {"ok": False, "message": "Dieser Prozess ist geschützt."}
+    try:
+        proc = psutil.Process(pid)
+        if abs(proc.create_time() - create_time) > 0.01:
+            return {"ok": False, "message": "Prozess existiert nicht mehr (PID wurde neu vergeben)."}
+        if proc.username() != _own_user():
+            return {"ok": False, "message": f"Gehört Benutzer '{proc.username()}' – dafür das Web-Terminal mit sudo nutzen."}
+        name = proc.name()
+        proc.kill() if force else proc.terminate()
+    except psutil.NoSuchProcess:
+        return {"ok": True, "message": "Prozess ist bereits beendet.", "gone": True}
+    except psutil.AccessDenied:
+        return {"ok": False, "message": "Keine Berechtigung."}
+    try:
+        proc.wait(timeout=3)
+        return {"ok": True, "message": f"{name} ({pid}) beendet.", "gone": True}
+    except psutil.TimeoutExpired:
+        return {"ok": True, "gone": False,
+                "message": f"{name} ({pid}) reagiert nicht auf SIGTERM." if not force else f"{name} ({pid}) läuft noch."}
 
 
 def _read_sysfs(path: str) -> str:
