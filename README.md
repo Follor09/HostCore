@@ -100,6 +100,17 @@ Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem P
 - Aktionen (Updates, Neustart, Befehle …) werden nur von der eigenen Seite akzeptiert (CSRF-Schutz).
 - Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
 
+### ⚙️ Einstellungen (`/settings`, Zahnrad oben rechts)
+
+- **Konto:** Benutzername/Passwort ändern, „Ansehen ohne Login“ umschalten, alle anderen Geräte abmelden
+- **Wetter:** Ort festlegen
+- **Dienste:** auswählen, welche Kacheln im Dienste-Widget erscheinen
+- **Auto-Update:** Repo, Branch, Commit, Timer-Status, Token-Status, „Jetzt prüfen“
+- **Verlauf:** Größe & Zeitraum der Messdaten, „Verlauf löschen“
+- **System:** Hostname, Modell, OS, Kernel, Python, Laufzeit, IP-Adressen
+
+Die Einstellungsseite braucht immer ein Login – auch wenn „Ansehen ohne Login“ aktiv ist.
+
 ### 🔑 Privates Repo: GitHub-Token hinterlegen
 
 Der Pi braucht Lesezugriff auf das Repo. Token erstellen unter [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new):

@@ -130,3 +130,20 @@ def get_history(range_key: str) -> Dict[str, Any]:
         for b, cpu, cpu_max, temp, temp_max, ram, down, up, fan, fan_max in rows
     ]
     return {"range": range_key, "bucket_seconds": bucket, "points": points}
+
+
+def get_stats() -> Dict[str, Any]:
+    if not os.path.exists(DB_PATH):
+        return {"size_bytes": 0, "samples": 0, "oldest": None, "newest": None}
+    with _connect() as conn:
+        count, oldest, newest = conn.execute("SELECT COUNT(*), MIN(ts), MAX(ts) FROM samples").fetchone()
+    return {"size_bytes": os.path.getsize(DB_PATH), "samples": count, "oldest": oldest, "newest": newest,
+            "retention_days": RETENTION_SECONDS // 86400, "interval_seconds": SAMPLE_INTERVAL}
+
+
+def clear() -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM samples")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("VACUUM")  # actually give the space back
+    conn.close()

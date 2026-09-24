@@ -5,7 +5,8 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 """
 
 import asyncio
-import json
+import platform
+import time
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -23,6 +24,7 @@ import updater
 import history
 import homelab
 import auth
+import settings_store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -77,7 +79,8 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    if user is None and not (is_read and auth.public_view()):
+    always_private = path == "/settings" or path.startswith("/api/settings")
+    if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
         return RedirectResponse("/login", status_code=303)
@@ -132,15 +135,27 @@ async def api_login(req: LoginRequest, request: Request):
 
     auth.record_success(ip)
     logger.info(f"Login '{req.username}' from {ip}")
-    token, ttl = auth.make_session(req.username.strip(), req.remember)
     response = JSONResponse({"ok": True, "user": req.username.strip()})
+    _set_session_cookie(response, request, req.username.strip(), req.remember)
+    return response
+
+
+def _set_session_cookie(response, request: Request, username: str, remember: bool) -> None:
+    token, ttl = auth.make_session(username, remember)
     response.set_cookie(
         auth.COOKIE_NAME, token,
-        max_age=ttl if req.remember else None,  # without "remember": ends with the browser
+        max_age=ttl if remember else None,  # without "remember": ends with the browser
         httponly=True, samesite="strict", path="/",
         secure=request.url.scheme == "https",
     )
-    return response
+
+
+def _session_is_remembered(request: Request) -> bool:
+    try:
+        expiry = int(request.cookies.get(auth.COOKIE_NAME, "").split("|")[1])
+    except (IndexError, ValueError):
+        return False
+    return expiry - time.time() > auth.SESSION_TTL
 
 
 @app.post("/api/auth/logout")
@@ -148,6 +163,122 @@ async def api_logout():
     response = JSONResponse({"ok": True})
     response.delete_cookie(auth.COOKIE_NAME, path="/")
     return response
+
+
+# ---------------------------------------------------------------------------
+# Settings page API
+# ---------------------------------------------------------------------------
+class AccountRequest(BaseModel):
+    current_password: str
+    username: str
+    new_password: str = ""
+
+
+class PublicViewRequest(BaseModel):
+    enabled: bool
+
+
+class HiddenServicesRequest(BaseModel):
+    hidden: list[str]
+
+
+def _os_name() -> str:
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return f"{platform.system()} {platform.release()}"
+
+
+def _settings_payload(user: str) -> dict:
+    import services_manager as sm
+    updater.refresh_git_info()
+    states = sm.get_unit_states([sm.UPDATER_TIMER, sm.UPDATER_SERVICE])
+    return {
+        "account": {"username": user, "public_view": auth.public_view()},
+        "weather": load_weather_location(),
+        "services": {"available": sm.available_services(),
+                     "hidden": settings_store.get("hidden_services", [])},
+        "updater": {
+            **{k: updater.update_state.get(k) for k in
+               ("is_git_repo", "branch", "current_commit", "commit_message", "remote_url",
+                "update_available", "commits_behind", "last_check_timestamp")},
+            "timer": sm._updater_status(states),
+            "token_set": os.path.exists(os.path.join(BASE_DIR, ".git", "github-credentials")),
+        },
+        "history": history.get_stats(),
+        "system": {
+            "hostname": platform.node(),
+            "model": system_info.get_pi_model(),
+            "os": _os_name(),
+            "kernel": platform.release(),
+            "architecture": platform.machine(),
+            "python": platform.python_version(),
+            "uptime": system_info.get_uptime()["formatted"],
+            "ip": system_info.get_ip_addresses(),
+        },
+    }
+
+
+@app.get("/api/settings")
+async def api_settings(request: Request):
+    return await asyncio.to_thread(_settings_payload, request.state.user)
+
+
+@app.post("/api/settings/account")
+async def api_settings_account(req: AccountRequest, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    wait = auth.lockout_remaining(ip)
+    if wait:
+        raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+    if not await asyncio.to_thread(auth.verify_login, request.state.user, req.current_password):
+        auth.record_failure(ip)
+        raise HTTPException(status_code=403, detail="Aktuelles Passwort ist falsch.")
+    auth.record_success(ip)
+
+    username = req.username.strip()
+    if not auth.USERNAME_RE.match(username):
+        raise HTTPException(status_code=400, detail="Benutzername: 1–32 Zeichen aus Buchstaben, Ziffern, . _ -")
+    if req.new_password and len(req.new_password) < auth.MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Neues Passwort: mindestens {auth.MIN_PASSWORD_LENGTH} Zeichen.")
+
+    # Keeps the current password if no new one is given; either way all other sessions end
+    await asyncio.to_thread(auth.set_password, username, req.new_password or req.current_password)
+    logger.info(f"Account changed by '{request.state.user}' from {ip} (username now '{username}')")
+    response = JSONResponse({"ok": True, "message": "Gespeichert. Alle anderen Geräte wurden abgemeldet.", "user": username})
+    _set_session_cookie(response, request, username, _session_is_remembered(request))
+    return response
+
+
+@app.post("/api/settings/public-view")
+async def api_settings_public_view(req: PublicViewRequest):
+    auth.set_public_view(req.enabled)
+    return {"ok": True, "public_view": req.enabled}
+
+
+@app.post("/api/settings/logout-others")
+async def api_settings_logout_others(request: Request):
+    auth.rotate_secret()
+    response = JSONResponse({"ok": True, "message": "Alle anderen Geräte wurden abgemeldet."})
+    _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
+    return response
+
+
+@app.post("/api/settings/services")
+async def api_settings_services(req: HiddenServicesRequest):
+    import services_manager as sm
+    valid = {s["id"] for s in sm.available_services()}
+    settings_store.set("hidden_services", [s for s in req.hidden if s in valid])
+    return {"ok": True}
+
+
+@app.post("/api/settings/history/clear")
+async def api_settings_history_clear():
+    await asyncio.to_thread(history.clear)
+    return {"ok": True, "message": "Verlauf gelöscht."}
 
 
 class CommandRequest(BaseModel):
@@ -159,32 +290,18 @@ class WeatherLocationRequest(BaseModel):
 
 
 # Weather location, persisted in settings.json (untracked, so it survives git updates)
-SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
 DEFAULT_WEATHER_LOCATION = {"city": "Berlin", "lat": 52.52, "lon": 13.41}
 
 
 def load_weather_location() -> dict:
-    try:
-        with open(SETTINGS_FILE, "r") as f:
-            loc = json.load(f).get("weather_location")
-            if loc and {"city", "lat", "lon"} <= loc.keys():
-                return loc
-    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
-        pass
+    loc = settings_store.get("weather_location")
+    if isinstance(loc, dict) and {"city", "lat", "lon"} <= loc.keys():
+        return loc
     return dict(DEFAULT_WEATHER_LOCATION)
 
 
 def save_weather_location(loc: dict) -> None:
-    try:
-        with open(SETTINGS_FILE, "r") as f:
-            settings = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        settings = {}
-    settings["weather_location"] = loc
-    tmp = SETTINGS_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(settings, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, SETTINGS_FILE)
+    settings_store.set("weather_location", loc)
 
 
 # Cached weather response to prevent rate limiting
@@ -226,21 +343,26 @@ def interpret_wmo_code(code: int) -> tuple[str, str]:
     return mapping.get(code, ("Heiter", "cloud-sun"))
 
 
-@app.get("/")
-async def get_index():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if not os.path.exists(index_path):
-        return JSONResponse({"status": "Dashboard frontend loading..."})
-
-    # Append each asset's mtime as ?v=... so browsers never mix a new page
-    # with a cached old style.css / app.js after an auto-update.
-    with open(index_path, "r", encoding="utf-8") as f:
+def _serve_page(name: str) -> HTMLResponse:
+    """Serve an HTML page with each asset's mtime appended as ?v=..., so browsers never
+    mix a new page with a cached old style.css / *.js after an auto-update."""
+    with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
         html = f.read()
-    for asset in ("style.css", "app.js"):
+    for asset in ("style.css", "app.js", "settings.js"):
         path = os.path.join(STATIC_DIR, asset)
         if os.path.exists(path):
             html = html.replace(f"/static/{asset}\"", f"/static/{asset}?v={int(os.path.getmtime(path))}\"")
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/")
+async def get_index():
+    return _serve_page("index.html")
+
+
+@app.get("/settings")
+async def get_settings_page():
+    return _serve_page("settings.html")
 
 
 @app.get("/api/system")

@@ -110,6 +110,19 @@ def set_password(username: str, password: str) -> None:
     _save_config(cfg)
 
 
+def set_public_view(enabled: bool) -> None:
+    cfg = load_config()
+    cfg["public_view"] = bool(enabled)
+    _save_config(cfg)
+
+
+def rotate_secret() -> None:
+    """New signing secret: every existing session cookie stops working."""
+    cfg = load_config()
+    cfg["secret"] = secrets.token_hex(32)
+    _save_config(cfg)
+
+
 # ---------------------------------------------------------------------------
 # Sessions (signed cookie: "username|expiry|signature")
 # ---------------------------------------------------------------------------
@@ -193,9 +206,8 @@ def _cli() -> int:
         if not cfg or not cfg.get("password_hash"):
             print("❌ Zuerst ein Passwort setzen: ./set-password.sh")
             return 1
-        cfg["public_view"] = args.state == "on"
-        _save_config(cfg)
-        print("✅ Ansehen ohne Login: " + ("an (Aktionen brauchen weiterhin Login)" if cfg["public_view"] else "aus"))
+        set_public_view(args.state == "on")
+        print("✅ Ansehen ohne Login: " + ("an (Aktionen brauchen weiterhin Login)" if args.state == "on" else "aus"))
         return 0
 
     # set-password

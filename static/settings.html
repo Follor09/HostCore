@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Einstellungen | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber settings-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">Einstellungen</h1>
+    </div>
+    <div class="header-right">
+      <div class="user-chip" id="user-chip" hidden>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="user-name"></span>
+        <button class="user-logout" id="btn-logout" title="Abmelden">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="settings-layout">
+    <nav class="settings-nav" aria-label="Bereiche">
+      <a href="#konto" class="active">Konto</a>
+      <a href="#wetter">Wetter</a>
+      <a href="#dienste">Dienste</a>
+      <a href="#auto-update">Auto-Update</a>
+      <a href="#verlauf">Verlauf</a>
+      <a href="#system">System</a>
+    </nav>
+
+    <div class="settings-sections">
+      <!-- Konto -->
+      <section class="glass-card settings-section" id="konto">
+        <h2>Konto</h2>
+        <p class="section-desc">Zugangsdaten für das Dashboard. Beim Speichern werden alle anderen Geräte abgemeldet.</p>
+
+        <form class="settings-form" id="account-form" autocomplete="off">
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Benutzername</span>
+              <input type="text" id="acc-username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required>
+            </label>
+            <span></span>
+            <label class="login-field">
+              <span>Neues Passwort <em>(leer lassen = unverändert)</em></span>
+              <input type="password" id="acc-new" autocomplete="new-password">
+            </label>
+            <label class="login-field">
+              <span>Neues Passwort wiederholen</span>
+              <input type="password" id="acc-new2" autocomplete="new-password">
+            </label>
+            <label class="login-field">
+              <span>Aktuelles Passwort <em>(zur Bestätigung)</em></span>
+              <input type="password" id="acc-current" autocomplete="current-password" required>
+            </label>
+          </div>
+          <div class="form-actions">
+            <span class="form-msg" id="account-msg" role="status"></span>
+            <button type="submit" class="btn-primary" id="account-save">Speichern</button>
+          </div>
+        </form>
+
+        <div class="settings-row">
+          <div>
+            <strong>Ansehen ohne Login</strong>
+            <p>Für ein Wanddisplay: Jeder im Netzwerk sieht das Dashboard. Aktionen, Updates und diese Seite brauchen weiterhin ein Login.</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="public-view">
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+
+        <div class="settings-row">
+          <div>
+            <strong>Alle anderen Geräte abmelden</strong>
+            <p>Beendet jede Sitzung außer dieser – z.B. wenn ein Gerät verloren ging.</p>
+          </div>
+          <button class="btn-secondary" id="logout-others">Abmelden</button>
+        </div>
+      </section>
+
+      <!-- Wetter -->
+      <section class="glass-card settings-section" id="wetter">
+        <h2>Wetter</h2>
+        <p class="section-desc">Ort für das Wetter-Widget. Koordinaten werden über Open-Meteo ermittelt.</p>
+        <form class="inline-form" id="weather-form">
+          <label class="login-field grow">
+            <span>Ort</span>
+            <input type="text" id="weather-city-setting" maxlength="80" autocomplete="off" required>
+          </label>
+          <button type="submit" class="btn-primary">Speichern</button>
+        </form>
+        <p class="field-hint" id="weather-coords"></p>
+      </section>
+
+      <!-- Dienste -->
+      <section class="glass-card settings-section" id="dienste">
+        <h2>Dienste</h2>
+        <p class="section-desc">Welche Kacheln im Widget „Server-Dienste“ angezeigt werden. Änderungen werden sofort gespeichert.</p>
+        <div class="check-grid" id="services-checks"></div>
+      </section>
+
+      <!-- Auto-Update -->
+      <section class="glass-card settings-section" id="auto-update">
+        <h2>Auto-Update</h2>
+        <p class="section-desc">Der Pi prüft jede Minute GitHub und installiert neue Commits automatisch.</p>
+        <dl class="kv-grid" id="updater-info"></dl>
+        <div class="form-actions">
+          <span class="form-msg" id="updater-msg" role="status"></span>
+          <button class="btn-secondary" id="updater-check">Jetzt prüfen</button>
+        </div>
+      </section>
+
+      <!-- Verlauf -->
+      <section class="glass-card settings-section" id="verlauf">
+        <h2>Verlauf</h2>
+        <p class="section-desc">Messwerte für das Verlaufsdiagramm (CPU, Temperatur, RAM, Netzwerk, Lüfter).</p>
+        <dl class="kv-grid" id="history-info"></dl>
+        <div class="form-actions">
+          <span class="form-msg" id="history-msg" role="status"></span>
+          <button class="btn-danger" id="history-clear">Verlauf löschen</button>
+        </div>
+      </section>
+
+      <!-- System -->
+      <section class="glass-card settings-section" id="system">
+        <h2>System</h2>
+        <dl class="kv-grid" id="system-info"></dl>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/settings.js"></script>
+</body>
+</html>

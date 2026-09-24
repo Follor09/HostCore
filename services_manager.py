@@ -128,10 +128,21 @@ def get_services_status() -> List[Dict[str, Any]]:
 
     results.append(_updater_status(states))
 
+    # Tiles hidden on the settings page
+    import settings_store
+    hidden = set(settings_store.get("hidden_services", []))
+    results = [r for r in results if r["id"] not in hidden]
+
     for r in results:
         r["running"] = r["status"] == "active"
         r["status_text"] = STATUS_TEXT[r["status"]]
     return results
+
+
+def available_services() -> List[Dict[str, str]]:
+    """All tiles the services widget can show (for the settings page)."""
+    return [{"id": s["id"], "name": s["name"]} for s in TRACKED_SERVICES] + \
+           [{"id": "updater", "name": "Auto-Updater"}]
 
 
 def get_mounted_drives() -> List[Dict[str, Any]]:
