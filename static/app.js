@@ -1093,6 +1093,292 @@
   // ---------------------------------------------------------------------------
   // App Bootstrapper
   // ---------------------------------------------------------------------------
+  // Homelab Extras: Internet, Updates, NVMe health, Docker & Kubernetes
+  // ---------------------------------------------------------------------------
+  const $ = id => document.getElementById(id);
+  const PING_SLOTS = 180; // one hour at 20s
+
+  function setHealthTag(el, level, text) {
+    if (!el) return;
+    el.className = `health-tag ${level}`;
+    el.textContent = text;
+  }
+
+  function fmtMs(ms) {
+    return ms == null ? '–' : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
+  }
+
+  function relTime(ts) {
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 3600) return `vor ${Math.max(1, Math.round(s / 60))} Min.`;
+    if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
+    return `vor ${Math.round(s / 86400)} Tagen`;
+  }
+
+  // Latency line over the last hour; failed pings leave a gap plus a red tick at the bottom
+  function drawLatency(canvas, samples) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const { width, height } = canvas;
+    ctx.clearRect(0, 0, width, height);
+    if (!samples.length) return;
+
+    const vals = samples.map(p => p.ms).filter(v => v != null);
+    const max = Math.max(20, ...vals) * 1.2;
+    const step = width / (PING_SLOTS - 1);
+    const offset = PING_SLOTS - samples.length;
+    const y = v => height - 5 - (v / max) * (height - 10);
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    let drawing = false;
+    samples.forEach((p, i) => {
+      const x = (offset + i) * step;
+      if (p.ms == null) { drawing = false; return; }
+      if (drawing) ctx.lineTo(x, y(p.ms)); else ctx.moveTo(x, y(p.ms));
+      drawing = true;
+    });
+    ctx.stroke();
+
+    ctx.fillStyle = '#ff2a5f';
+    samples.forEach((p, i) => {
+      if (p.ms == null) ctx.fillRect((offset + i) * step - 1.5, height - 8, 3, 8);
+    });
+  }
+
+  function renderInternet(net) {
+    if (!net || net.status === 'unknown') return;
+    const labels = { online: ['good', 'Online'], degraded: ['warning', 'Gestört'], offline: ['critical', 'Offline'] };
+    const [level, text] = labels[net.status] || ['', net.status];
+    setHealthTag($('inet-status-tag'), level, text);
+    $('inet-latency').textContent = fmtMs(net.inet_ms);
+    $('inet-subtitle').textContent = `Ping zu ${net.internet_host}`;
+    $('inet-window').textContent = net.window_minutes >= 60 ? 'Letzte Stunde' : `Letzte ${Math.max(1, net.window_minutes)} Min.`;
+    $('inet-gw').textContent = fmtMs(net.gw_ms);
+    $('inet-gw').title = net.gateway ? `Router ${net.gateway}` : '';
+    $('inet-dns').textContent = fmtMs(net.dns_ms);
+    $('inet-loss').textContent = `${net.loss_percent}%`;
+    $('inet-outages').textContent = String(net.outages);
+    drawLatency($('inet-chart'), net.samples || []);
+  }
+
+  const SHIELD_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
+
+  function renderUpdates(up) {
+    const count = $('updates-count'), tags = $('updates-tags'), list = $('updates-list'), footer = $('updates-footer');
+    if (!count) return;
+    tags.innerHTML = '';
+    list.innerHTML = '';
+
+    const addTag = (level, text) => {
+      const t = document.createElement('span');
+      setHealthTag(t, level, text);
+      tags.appendChild(t);
+    };
+    const addEmpty = text => {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = text;
+      list.appendChild(li);
+    };
+
+    if (!up || !up.supported) {
+      count.textContent = '--';
+      addEmpty('Nur auf Debian / Raspberry Pi OS verfügbar.');
+      footer.textContent = '';
+      return;
+    }
+    if (up.error) {
+      count.textContent = '--';
+      addEmpty(`Fehler: ${up.error}`);
+      return;
+    }
+
+    count.textContent = String(up.count);
+    $('updates-subtitle').textContent = up.lists_updated ? `Paketlisten ${relTime(up.lists_updated)}` : 'apt-Pakete';
+    if (up.count === 0) addTag('good', 'Aktuell');
+    if (up.security_count) addTag('warning', `${up.security_count} Sicherheit`);
+    if (up.count && up.count > up.security_count) addTag('', `${up.count - up.security_count} weitere`);
+    if (up.reboot_required) addTag('critical', 'Neustart nötig');
+
+    const shown = 6;
+    up.packages.slice(0, shown).forEach(pkg => {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'pkg';
+      if (pkg.security) {
+        const icon = document.createElement('span');
+        icon.className = 'sec-icon';
+        icon.title = 'Sicherheitsupdate';
+        icon.innerHTML = SHIELD_ICON;
+        name.appendChild(icon);
+      }
+      name.appendChild(document.createTextNode(pkg.name));
+      const ver = document.createElement('span');
+      ver.className = 'ver';
+      ver.textContent = pkg.new;
+      ver.title = `${pkg.old} → ${pkg.new}`;
+      li.append(name, ver);
+      list.appendChild(li);
+    });
+    if (up.count > shown) addEmpty(`+ ${up.count - shown} weitere Pakete`);
+    if (up.count === 0) addEmpty('Alle Pakete sind auf dem neuesten Stand.');
+
+    footer.innerHTML = up.count ? 'Installieren: <code>sudo apt update &amp;&amp; sudo apt full-upgrade</code>' : '';
+  }
+
+  function renderNvme(nvme) {
+    const box = $('nvme-health');
+    if (!box) return;
+    const present = nvme && nvme.present;
+    box.hidden = !present;
+    document.querySelectorAll('[data-nvme]').forEach(el => { el.hidden = !present; });
+    $('arch-item').hidden = !!present;
+    if (!present) return;
+
+    $('nvme-temp').textContent = nvme.temp != null ? `${nvme.temp} °C` : '--';
+    const hint = $('nvme-hint');
+    if (!nvme.smart) {
+      setHealthTag($('nvme-health-tag'), '', 'Keine SMART-Daten');
+      hint.hidden = false;
+      hint.textContent = nvme.hint || '';
+      return;
+    }
+    hint.hidden = true;
+
+    const life = Math.max(0, 100 - (nvme.percentage_used ?? 0));
+    $('nvme-life-fill').style.width = `${life}%`;
+    $('nvme-life-txt').textContent = `${life}%`;
+    $('nvme-spare-txt').textContent = nvme.available_spare != null ? `${nvme.available_spare}%` : '--';
+    $('nvme-written').textContent = nvme.tb_written >= 1 ? `${nvme.tb_written} TB` : `${Math.round(nvme.tb_written * 1000)} GB`;
+    const h = nvme.power_on_hours;
+    $('nvme-hours').textContent = h == null ? '--' : h >= 48 ? `${Math.round(h / 24)} Tage` : `${h} Std.`;
+
+    const bad = nvme.passed === false || nvme.critical_warning || nvme.media_errors;
+    const worn = life < 20;
+    setHealthTag($('nvme-health-tag'), bad ? 'critical' : worn ? 'warning' : 'good',
+      bad ? 'Fehler' : worn ? 'Verschleiß hoch' : 'Gesund');
+    $('nvme-health-tag').title = nvme.model || '';
+  }
+
+  function workloadItem(level, name, sub, sideTop, sideBottom) {
+    const item = document.createElement('div');
+    item.className = `workload-item ${level}`;
+    const dot = document.createElement('span');
+    dot.className = `service-dot ${level}`;
+    const main = document.createElement('div');
+    main.className = 'workload-main';
+    const n = document.createElement('span');
+    n.className = 'workload-name';
+    n.textContent = name;
+    n.title = name;
+    const sb = document.createElement('span');
+    sb.className = 'workload-sub';
+    sb.textContent = sub;
+    sb.title = sub;
+    main.append(n, sb);
+    const side = document.createElement('div');
+    side.className = 'workload-side';
+    [sideTop, sideBottom].filter(Boolean).forEach(t => {
+      const span = document.createElement('span');
+      span.textContent = t;
+      side.appendChild(span);
+    });
+    item.append(dot, main, side);
+    return item;
+  }
+
+  function workloadMessage(list, source, notInstalled) {
+    const box = document.createElement('div');
+    if (!source.available) {
+      box.className = 'workload-empty';
+      box.textContent = notInstalled;
+    } else {
+      box.className = 'workload-hint';
+      box.textContent = source.error || '';
+      if (source.hint) {
+        box.appendChild(document.createElement('br'));
+        const code = document.createElement('code');
+        code.textContent = source.hint;
+        box.appendChild(code);
+      }
+    }
+    list.appendChild(box);
+  }
+
+  function summarize(items) {
+    const running = items.filter(i => i.level === 'active').length;
+    const errors = items.filter(i => i.level === 'error').length;
+    return `${running} / ${items.length} laufen${errors ? ` · ${errors} Fehler` : ''}`;
+  }
+
+  let lastWorkloads = null;
+
+  function renderWorkloads(w) {
+    if (w) lastWorkloads = w;
+    w = lastWorkloads;
+    const dList = $('docker-list'), kList = $('kube-list');
+    if (!w || !dList) return;
+    dList.innerHTML = '';
+    kList.innerHTML = '';
+
+    const docker = w.docker || {};
+    if (docker.containers) {
+      $('docker-summary').textContent = summarize(docker.containers);
+      if (!docker.containers.length) workloadMessage(dList, { available: false }, 'Keine Container vorhanden.');
+      docker.containers.forEach(c => dList.appendChild(
+        workloadItem(c.level, c.name, c.image, c.status, c.ports.split(',')[0])));
+    } else {
+      $('docker-summary').textContent = '';
+      workloadMessage(dList, docker, 'Docker ist nicht installiert.');
+    }
+
+    const kube = w.kubernetes || {};
+    if (kube.pods) {
+      const hideSystem = $('workloads-hide-system').checked;
+      const pods = kube.pods.filter(p => !hideSystem || !/^kube-|^cattle-|^longhorn-system$/.test(p.namespace) || p.level === 'error');
+      $('kube-summary').textContent = summarize(kube.pods);
+      if (!pods.length) workloadMessage(kList, { available: false }, 'Keine Pods (System-Pods ausgeblendet).');
+      pods.forEach(p => kList.appendChild(workloadItem(
+        p.level, p.name, `${p.namespace}${p.node ? ` · ${p.node}` : ''}`,
+        `${p.status} · ${p.ready}`, `${p.restarts} Neustarts · ${p.age}`)));
+    } else {
+      $('kube-summary').textContent = '';
+      workloadMessage(kList, kube, 'kubectl / k3s ist nicht installiert.');
+    }
+  }
+
+  async function loadHomelab() {
+    try {
+      const res = await fetch('/api/homelab');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderInternet(data.internet);
+      renderUpdates(data.updates);
+      renderNvme(data.nvme);
+      renderWorkloads(data.workloads);
+    } catch (e) {
+      console.warn('Homelab fetch failed:', e);
+    }
+  }
+
+  function initHomelab() {
+    const toggle = $('workloads-hide-system');
+    if (toggle) {
+      try { toggle.checked = localStorage.getItem('hideSystemPods') !== '0'; } catch (e) { /* ignore */ }
+      toggle.addEventListener('change', () => {
+        try { localStorage.setItem('hideSystemPods', toggle.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+        renderWorkloads();
+      });
+    }
+    loadHomelab();
+    setInterval(loadHomelab, 20000);
+  }
+
+  // ---------------------------------------------------------------------------
   // Metrics History Chart (24h / 7 Tage)
   // ---------------------------------------------------------------------------
   const HISTORY_METRICS = {
@@ -1463,6 +1749,7 @@
     loadWeather();
     loadDrives();
     initHistory();
+    initHomelab();
     connectWebSocket();
 
     setInterval(loadWeather, 600000);

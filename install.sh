@@ -32,10 +32,21 @@ for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard
     sed -e "s|__USER__|$OWNER|g" -e "s|__DIR__|$DIR|g" "$DIR/$unit" > "/etc/systemd/system/$unit"
 done
 
-# Lets the dashboard's "Update" button / webhook restart itself without a password
+# NVMe health: smartctl needs root, so allow exactly one read-only command
+if [ -e /dev/nvme0 ] && ! command -v smartctl >/dev/null; then
+    echo "💽 Installing smartmontools for NVMe health..."
+    apt-get install -y -qq smartmontools || echo "   ⚠️  smartmontools install failed, NVMe health stays limited"
+fi
+
+# Narrow sudo rules: restart the dashboard (Update button / webhook), read NVMe SMART data
 SYSTEMCTL="$(command -v systemctl)"
 SUDOERS=/etc/sudoers.d/pi-dashboard-restart
-echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL restart raspberry-dashboard" > "$SUDOERS.tmp"
+{
+    echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL restart raspberry-dashboard"
+    if [ -e /dev/nvme0 ] && command -v smartctl >/dev/null; then
+        echo "$OWNER ALL=(root) NOPASSWD: $(command -v smartctl) -j -a /dev/nvme0"
+    fi
+} > "$SUDOERS.tmp"
 visudo -cqf "$SUDOERS.tmp" && mv "$SUDOERS.tmp" "$SUDOERS" && chmod 440 "$SUDOERS"
 
 systemctl daemon-reload

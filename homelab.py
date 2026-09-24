@@ -1,0 +1,370 @@
+"""
+Homelab extras for the dashboard:
+- Internet monitor: pings router + internet and times DNS in the background
+- System updates: pending apt packages (security separately), reboot-required flag
+- NVMe health: temperature (hwmon) and SMART data (smartctl via a narrow sudo rule)
+- Workloads: Docker containers and Kubernetes pods
+Everything slow is cached so the Pi isn't hammered by open browser tabs.
+"""
+
+import asyncio
+import glob
+import json
+import os
+import platform
+import re
+import shutil
+import socket
+import subprocess
+import time
+from collections import deque
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
+
+IS_LINUX = platform.system() == "Linux"
+
+
+def _run(cmd: List[str], timeout: float = 5, env: Optional[dict] = None) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+class _Cache:
+    """Tiny TTL cache so each expensive probe runs at most once per interval."""
+
+    def __init__(self):
+        self._data: Dict[str, tuple] = {}
+
+    def get(self, key: str, ttl: float, fn: Callable[[], Any]) -> Any:
+        hit = self._data.get(key)
+        if hit and time.time() - hit[0] < ttl:
+            return hit[1]
+        value = fn()
+        self._data[key] = (time.time(), value)
+        return value
+
+
+_cache = _Cache()
+
+
+# ---------------------------------------------------------------------------
+# Internet monitor
+# ---------------------------------------------------------------------------
+PING_INTERVAL = 20                      # seconds
+PING_HISTORY = 3600 // PING_INTERVAL    # keep one hour
+INTERNET_HOST = "1.1.1.1"
+DNS_TEST_NAME = "github.com"
+
+_pings: deque = deque(maxlen=PING_HISTORY)
+
+
+def _default_gateway() -> str:
+    try:
+        if IS_LINUX:
+            out = _run(["ip", "route", "show", "default"], timeout=2).stdout
+            m = re.search(r"default via (\S+)", out)
+        else:
+            out = _run(["route", "-n", "get", "default"], timeout=2).stdout
+            m = re.search(r"gateway:\s*(\S+)", out)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
+def _ping(host: str) -> Optional[float]:
+    if not host:
+        return None
+    # -W is seconds on Linux, milliseconds on macOS
+    cmd = ["ping", "-c", "1", "-W", "2" if IS_LINUX else "2000", host]
+    try:
+        res = _run(cmd, timeout=4)
+        m = re.search(r"time[=<]([\d.]+)\s*ms", res.stdout)
+        return round(float(m.group(1)), 1) if res.returncode == 0 and m else None
+    except Exception:
+        return None
+
+
+def _dns_ms() -> Optional[float]:
+    start = time.perf_counter()
+    try:
+        socket.getaddrinfo(DNS_TEST_NAME, 443)
+        return round((time.perf_counter() - start) * 1000, 1)
+    except Exception:
+        return None
+
+
+def _probe() -> Dict[str, Any]:
+    gateway = _default_gateway()
+    return {"ts": int(time.time()), "gateway": gateway,
+            "gw_ms": _ping(gateway), "inet_ms": _ping(INTERNET_HOST), "dns_ms": _dns_ms()}
+
+
+async def background_net_monitor() -> None:
+    while True:
+        try:
+            _pings.append(await asyncio.to_thread(_probe))
+        except Exception:
+            pass
+        await asyncio.sleep(PING_INTERVAL)
+
+
+def get_internet_status() -> Dict[str, Any]:
+    samples = list(_pings)
+    if not samples:
+        return {"status": "unknown", "samples": []}
+
+    last = samples[-1]
+    ok = [s for s in samples if s["inet_ms"] is not None]
+    recent = samples[-15:]  # last ~5 minutes
+    recent_loss = 100 * sum(s["inet_ms"] is None for s in recent) / len(recent)
+
+    # An outage = a run of consecutive failed internet pings
+    outages, in_outage = 0, False
+    for s in samples:
+        failed = s["inet_ms"] is None
+        if failed and not in_outage:
+            outages += 1
+        in_outage = failed
+
+    if last["inet_ms"] is None and (len(samples) < 2 or samples[-2]["inet_ms"] is None):
+        status = "offline"
+    elif recent_loss >= 20 or last["inet_ms"] is None:
+        status = "degraded"
+    else:
+        status = "online"
+
+    return {
+        "status": status,
+        "gateway": last["gateway"],
+        "internet_host": INTERNET_HOST,
+        "gw_ms": last["gw_ms"],
+        "inet_ms": last["inet_ms"],
+        "dns_ms": last["dns_ms"],
+        "avg_ms": round(sum(s["inet_ms"] for s in ok) / len(ok), 1) if ok else None,
+        "loss_percent": round(100 * (len(samples) - len(ok)) / len(samples), 1),
+        "outages": outages,
+        "window_minutes": round(len(samples) * PING_INTERVAL / 60),
+        "samples": [{"ts": s["ts"], "ms": s["inet_ms"]} for s in samples],
+    }
+
+
+# ---------------------------------------------------------------------------
+# System updates (apt)
+# ---------------------------------------------------------------------------
+def _apt_updates() -> Dict[str, Any]:
+    if not IS_LINUX or not shutil.which("apt"):
+        return {"supported": False}
+    try:
+        out = _run(["apt", "list", "--upgradable"], timeout=30).stdout
+    except Exception as e:
+        return {"supported": True, "error": str(e)}
+
+    packages = []
+    for line in out.splitlines():
+        # name/suite version arch [upgradable from: old]
+        m = re.match(r"^(\S+?)/(\S+)\s+(\S+)\s+\S+\s+\[upgradable from: (\S+)\]", line)
+        if m:
+            packages.append({"name": m.group(1), "new": m.group(3), "old": m.group(4),
+                             "security": "security" in m.group(2)})
+    packages.sort(key=lambda p: (not p["security"], p["name"]))
+
+    lists = glob.glob("/var/lib/apt/lists/*_InRelease")
+    return {
+        "supported": True,
+        "count": len(packages),
+        "security_count": sum(p["security"] for p in packages),
+        "packages": packages[:50],
+        "lists_updated": int(max(os.path.getmtime(f) for f in lists)) if lists else None,
+        "reboot_required": os.path.exists("/var/run/reboot-required"),
+    }
+
+
+def get_updates() -> Dict[str, Any]:
+    return _cache.get("apt", 30 * 60, _apt_updates)
+
+
+# ---------------------------------------------------------------------------
+# NVMe health
+# ---------------------------------------------------------------------------
+NVME_DEVICE = "/dev/nvme0"
+
+
+def _nvme_temp() -> Optional[float]:
+    for hw in glob.glob("/sys/class/hwmon/hwmon*"):
+        try:
+            with open(f"{hw}/name") as f:
+                if f.read().strip() != "nvme":
+                    continue
+            with open(f"{hw}/temp1_input") as f:
+                return round(int(f.read().strip()) / 1000, 1)
+        except Exception:
+            continue
+    return None
+
+
+def _nvme_smart() -> Dict[str, Any]:
+    smartctl = shutil.which("smartctl") or "/usr/sbin/smartctl"
+    if not os.path.exists(smartctl):
+        return {"smart": False, "hint": "smartmontools nicht installiert (install.sh erneut ausführen)"}
+    try:
+        # sudo -n: never prompt; allowed by the sudoers rule install.sh writes
+        res = _run(["sudo", "-n", smartctl, "-j", "-a", NVME_DEVICE], timeout=10)
+        data = json.loads(res.stdout or "{}")
+    except Exception:
+        return {"smart": False, "hint": "SMART nicht lesbar (install.sh erneut ausführen)"}
+
+    log = data.get("nvme_smart_health_information_log")
+    if not log:
+        return {"smart": False, "hint": "SMART nicht lesbar (install.sh erneut ausführen)"}
+
+    return {
+        "smart": True,
+        "model": data.get("model_name", ""),
+        "passed": data.get("smart_status", {}).get("passed"),
+        "percentage_used": log.get("percentage_used"),
+        "available_spare": log.get("available_spare"),
+        "tb_written": round(log.get("data_units_written", 0) * 512000 / 1e12, 2),
+        "power_on_hours": log.get("power_on_hours"),
+        "media_errors": log.get("media_errors", 0),
+        "critical_warning": log.get("critical_warning", 0),
+        "smart_temp": log.get("temperature"),
+    }
+
+
+def get_nvme_health() -> Dict[str, Any]:
+    if not IS_LINUX or not os.path.exists(NVME_DEVICE):
+        return {"present": False}
+    smart = _cache.get("smart", 10 * 60, _nvme_smart)
+    temp = _nvme_temp()
+    return {"present": True, **smart, "temp": temp if temp is not None else smart.get("smart_temp")}
+
+
+# ---------------------------------------------------------------------------
+# Workloads: Docker + Kubernetes
+# ---------------------------------------------------------------------------
+def _docker() -> Dict[str, Any]:
+    if not shutil.which("docker"):
+        return {"available": False}
+    try:
+        res = _run(["docker", "ps", "-a", "--format", "{{json .}}"], timeout=8)
+    except Exception as e:
+        return {"available": True, "error": str(e)}
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "permission denied" in err.lower():
+            return {"available": True, "error": "Keine Berechtigung für Docker.",
+                    "hint": f"sudo usermod -aG docker {os.environ.get('USER', '$USER')} && sudo systemctl restart raspberry-dashboard"}
+        return {"available": True, "error": err[:200] or "docker ps fehlgeschlagen"}
+
+    containers = []
+    for line in res.stdout.splitlines():
+        try:
+            c = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        state = c.get("State", "")
+        health = "unhealthy" if "(unhealthy)" in c.get("Status", "") else ""
+        containers.append({
+            "name": c.get("Names", ""),
+            "image": c.get("Image", ""),
+            "state": state,
+            "status": c.get("Status", ""),
+            "ports": c.get("Ports", ""),
+            "level": "error" if health or (state == "exited" and not c.get("Status", "").startswith("Exited (0)"))
+                     or state in ("dead", "restarting") else "active" if state == "running" else "inactive",
+        })
+    containers.sort(key=lambda c: ({"error": 0, "active": 1, "inactive": 2}[c["level"]], c["name"]))
+    return {"available": True, "containers": containers}
+
+
+def _kube_cmd() -> Optional[List[str]]:
+    if shutil.which("kubectl"):
+        return ["kubectl"]
+    if shutil.which("k3s"):
+        return ["k3s", "kubectl"]
+    return None
+
+
+def _kube_env() -> Optional[dict]:
+    env = dict(os.environ)
+    if env.get("KUBECONFIG"):
+        return env
+    home_cfg = os.path.expanduser("~/.kube/config")
+    for cfg in (home_cfg, "/etc/rancher/k3s/k3s.yaml", "/etc/rancher/rke2/rke2.yaml"):
+        if os.path.exists(cfg) and os.access(cfg, os.R_OK):
+            env["KUBECONFIG"] = cfg
+            return env
+    return None
+
+
+def _age(ts: str) -> str:
+    try:
+        start = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return ""
+    s = int((datetime.now(timezone.utc) - start).total_seconds())
+    for unit, n in (("d", 86400), ("h", 3600), ("m", 60)):
+        if s >= n:
+            return f"{s // n}{unit}"
+    return f"{s}s"
+
+
+def _kubernetes() -> Dict[str, Any]:
+    cmd = _kube_cmd()
+    if not cmd:
+        return {"available": False}
+    env = _kube_env()
+    if env is None:
+        return {"available": True, "error": "Keine lesbare kubeconfig gefunden.",
+                "hint": "mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER ~/.kube/config"}
+    try:
+        res = _run(cmd + ["get", "pods", "-A", "-o", "json", "--request-timeout=5s"], timeout=10, env=env)
+    except Exception as e:
+        return {"available": True, "error": str(e)}
+    if res.returncode != 0:
+        return {"available": True, "error": res.stderr.strip()[:200] or "kubectl fehlgeschlagen"}
+
+    pods = []
+    for item in json.loads(res.stdout).get("items", []):
+        meta, status, spec = item.get("metadata", {}), item.get("status", {}), item.get("spec", {})
+        cstatuses = status.get("containerStatuses", []) or []
+        ready = sum(1 for c in cstatuses if c.get("ready"))
+        restarts = sum(c.get("restartCount", 0) for c in cstatuses)
+        phase = status.get("phase", "Unknown")
+        # A waiting reason like CrashLoopBackOff says more than the phase
+        reason = next((c["state"]["waiting"].get("reason") for c in cstatuses
+                       if c.get("state", {}).get("waiting")), None)
+        display = reason or phase
+        if phase == "Succeeded":
+            level = "inactive"
+        elif reason or phase in ("Failed", "Unknown") or (phase == "Running" and ready < len(cstatuses)):
+            level = "error" if reason not in ("ContainerCreating", "PodInitializing") else "inactive"
+        else:
+            level = "active" if phase == "Running" else "inactive"
+        pods.append({
+            "namespace": meta.get("namespace", ""),
+            "name": meta.get("name", ""),
+            "status": display,
+            "ready": f"{ready}/{len(cstatuses) or len(spec.get('containers', []))}",
+            "restarts": restarts,
+            "age": _age(meta.get("creationTimestamp", "")),
+            "node": spec.get("nodeName", ""),
+            "level": level,
+        })
+    pods.sort(key=lambda p: ({"error": 0, "active": 1, "inactive": 2}[p["level"]], p["namespace"], p["name"]))
+    return {"available": True, "pods": pods}
+
+
+def get_workloads() -> Dict[str, Any]:
+    return {
+        "docker": _cache.get("docker", 15, _docker),
+        "kubernetes": _cache.get("kube", 15, _kubernetes),
+    }
+
+
+def get_all() -> Dict[str, Any]:
+    return {
+        "internet": get_internet_status(),
+        "updates": get_updates(),
+        "nvme": get_nvme_health(),
+        "workloads": get_workloads(),
+    }

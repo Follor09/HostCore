@@ -308,14 +308,41 @@
           </div>
         </div>
 
-        <div class="disk-meta-stats">
+        <div class="nvme-health" id="nvme-health" hidden>
+          <div class="nvme-health-head">
+            <span class="sub-label">NVMe-Zustand</span>
+            <span class="health-tag" id="nvme-health-tag">–</span>
+          </div>
+          <div class="progress-bar-bg mini">
+            <div class="progress-bar-fill fill-emerald" id="nvme-life-fill" style="width: 0%"></div>
+          </div>
+          <div class="progress-legend">
+            <span>Lebensdauer: <b id="nvme-life-txt">--</b></span>
+            <span>Reserve: <b id="nvme-spare-txt">--</b></span>
+          </div>
+          <p class="nvme-hint" id="nvme-hint" hidden></p>
+        </div>
+
+        <div class="disk-meta-stats" id="disk-meta-stats">
           <div class="meta-stat-item">
             <span class="meta-label">Gesamtkapazität</span>
             <span class="meta-val" id="disk-total-txt">-- GB</span>
           </div>
-          <div class="meta-stat-item">
+          <div class="meta-stat-item" id="arch-item">
             <span class="meta-label">Architektur</span>
             <span class="meta-val" id="arch-val">ARM64</span>
+          </div>
+          <div class="meta-stat-item" data-nvme hidden>
+            <span class="meta-label">Temperatur</span>
+            <span class="meta-val" id="nvme-temp">--</span>
+          </div>
+          <div class="meta-stat-item" data-nvme hidden>
+            <span class="meta-label">Geschrieben</span>
+            <span class="meta-val" id="nvme-written">--</span>
+          </div>
+          <div class="meta-stat-item" data-nvme hidden>
+            <span class="meta-label">Betriebszeit</span>
+            <span class="meta-val" id="nvme-hours">--</span>
           </div>
         </div>
       </div>
@@ -401,6 +428,70 @@
           </div>
         </div>
       </div>
+
+      <!-- Metric 7: Internet-Monitor -->
+      <div class="glass-card metric-card internet-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-blue">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            </div>
+            <div>
+              <h3>Internet</h3>
+              <p class="card-subtitle" id="inet-subtitle">Ping zu 1.1.1.1</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="inet-latency">--</div>
+        </div>
+
+        <div class="inet-status-row">
+          <span class="health-tag" id="inet-status-tag">Messe…</span>
+          <span class="sub-label" id="inet-window">Letzte Stunde</span>
+        </div>
+
+        <div class="metric-chart-wrap">
+          <canvas id="inet-chart" width="280" height="65"></canvas>
+        </div>
+
+        <div class="disk-meta-stats inet-stats">
+          <div class="meta-stat-item">
+            <span class="meta-label">Router</span>
+            <span class="meta-val" id="inet-gw">--</span>
+          </div>
+          <div class="meta-stat-item">
+            <span class="meta-label">DNS</span>
+            <span class="meta-val" id="inet-dns">--</span>
+          </div>
+          <div class="meta-stat-item">
+            <span class="meta-label">Verlust</span>
+            <span class="meta-val" id="inet-loss">--</span>
+          </div>
+          <div class="meta-stat-item">
+            <span class="meta-label">Ausfälle</span>
+            <span class="meta-val" id="inet-outages">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metric 8: System-Updates (apt) -->
+      <div class="glass-card metric-card updates-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-amber">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path></svg>
+            </div>
+            <div>
+              <h3>System-Updates</h3>
+              <p class="card-subtitle" id="updates-subtitle">apt-Pakete</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="updates-count">--</div>
+        </div>
+
+        <div class="updates-tags" id="updates-tags"></div>
+        <ul class="updates-list" id="updates-list"></ul>
+        <p class="updates-footer" id="updates-footer"></p>
+      </div>
     </section>
 
     <!-- Metrics History (24h / 7 Tage) -->
@@ -442,6 +533,35 @@
         <summary>Als Tabelle anzeigen</summary>
         <div class="history-table-scroll"><table id="history-table"></table></div>
       </details>
+    </section>
+
+    <!-- Workloads: Docker-Container & Kubernetes-Pods -->
+    <section class="glass-card workloads-card" id="workloads-card">
+      <div class="history-head">
+        <div class="card-title-group">
+          <div class="card-icon-pill icon-cyan">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+          </div>
+          <div>
+            <h3>Container &amp; Pods</h3>
+            <p class="card-subtitle" id="workloads-subtitle">Docker &amp; Kubernetes</p>
+          </div>
+        </div>
+        <label class="toggle-label">
+          <input type="checkbox" id="workloads-hide-system" checked>
+          System-Pods ausblenden
+        </label>
+      </div>
+      <div class="workloads-grid">
+        <div class="workload-col">
+          <div class="workload-col-head"><span>Docker</span><span class="sub-label" id="docker-summary"></span></div>
+          <div class="workload-list" id="docker-list"></div>
+        </div>
+        <div class="workload-col">
+          <div class="workload-col-head"><span>Kubernetes</span><span class="sub-label" id="kube-summary"></span></div>
+          <div class="workload-list" id="kube-list"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Lower Section: Storage Explorer & System Journal Logs + Diagnostics/Processes -->
