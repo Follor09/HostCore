@@ -26,6 +26,7 @@ import homelab
 import auth
 import settings_store
 import wol
+import files
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -80,7 +81,7 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = (path == "/settings" or path.startswith(("/api/settings", "/api/workloads/"))
+    always_private = (path == "/settings" or path.startswith(("/api/settings", "/api/workloads/", "/api/files/"))
                       or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
@@ -304,6 +305,38 @@ async def api_process_signal(pid: int, req: SignalRequest, request: Request):
         raise HTTPException(status_code=400, detail=result["message"])
     logger.info(f"{'SIGKILL' if req.force else 'SIGTERM'} pid {pid} by '{request.state.user}': {result['message']}")
     return result
+
+
+# ---------------------------------------------------------------------------
+# File explorer + storage analysis (read-only, always requires login)
+# ---------------------------------------------------------------------------
+async def _files_call(fn, path: str):
+    try:
+        return await asyncio.to_thread(fn, path)
+    except files.FileAccessError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/files/list")
+async def api_files_list(path: str = "/"):
+    return await _files_call(files.list_dir, path)
+
+
+@app.get("/api/files/sizes")
+async def api_files_sizes(path: str):
+    return await _files_call(files.dir_sizes, path)
+
+
+@app.get("/api/files/largest")
+async def api_files_largest(path: str):
+    return await _files_call(files.largest_files, path)
+
+
+@app.get("/api/files/download")
+async def api_files_download(path: str, request: Request):
+    real = await _files_call(files.download_path, path)
+    logger.info(f"Download {real} by '{request.state.user}'")
+    return FileResponse(real, filename=os.path.basename(real))
 
 
 # ---------------------------------------------------------------------------

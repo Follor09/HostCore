@@ -596,7 +596,10 @@
             <span class="drive-label">${escapeHtml(d.label)}</span>
             <span class="drive-fstype">${escapeHtml(d.fstype)}</span>
           </div>
-          <span class="drive-percent-badge ${badgeClass}">${d.percent}%</span>
+          <div>
+            <button class="drive-open" data-mount="${escapeHtml(d.mount)}" title="Dateien durchsuchen & Speicher analysieren">Öffnen</button>
+            <span class="drive-percent-badge ${badgeClass}">${d.percent}%</span>
+          </div>
         </div>
         <div class="progress-bar-bg">
           <div class="progress-bar-fill fill-emerald" style="width: ${d.percent}%;"></div>
@@ -608,6 +611,229 @@
         </div>
       `;
       els.drivesListContainer.appendChild(item);
+    });
+  }
+
+  // ---- File explorer + storage analysis ----
+  const FILE_ICONS = {
+    dir: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path>',
+    lock: '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+    other: '<circle cx="12" cy="12" r="9"></circle>'
+  };
+  const filesState = { path: null, data: null, sizes: null, mode: 'list' };
+
+  function fmtSize(b) {
+    if (b == null) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+    return `${b >= 100 || i === 0 ? Math.round(b) : b.toFixed(1)} ${units[i]}`;
+  }
+
+  function fmtDate(ts) {
+    return ts ? new Date(ts * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '';
+  }
+
+  function fileIcon(kind) {
+    const span = document.createElement('span');
+    span.className = 'icon';
+    span.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${FILE_ICONS[kind] || FILE_ICONS.other}</svg>`;
+    return span;
+  }
+
+  function downloadLink(path, text) {
+    const a = document.createElement('a');
+    a.className = 'file-name';
+    a.href = `/api/files/download?path=${encodeURIComponent(path)}`;
+    a.setAttribute('download', '');
+    a.textContent = text;
+    a.title = `${path} herunterladen`;
+    return a;
+  }
+
+  function fileRow(e, maxSize) {
+    const row = document.createElement('div');
+    row.className = `file-row ${e.type}${e.locked ? ' locked' : ''}`;
+    row.appendChild(fileIcon(e.locked ? 'lock' : e.type === 'dir' ? 'dir' : e.type === 'file' ? 'file' : 'other'));
+
+    let name;
+    if (e.locked) {
+      name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = e.name;
+      name.title = 'Aus Sicherheitsgründen gesperrt';
+    } else if (e.type === 'dir') {
+      name = document.createElement('button');
+      name.className = 'file-name';
+      name.textContent = e.name + '/';
+      name.addEventListener('click', () => openFilesPath(e.path));
+    } else if (e.type === 'file') {
+      name = downloadLink(e.path, e.name);
+    } else {
+      name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = e.name;
+    }
+    const nameCell = document.createElement('div');
+    nameCell.style.minWidth = '0';
+    nameCell.appendChild(name);
+    if (e.sub) {
+      const sub = document.createElement('button');
+      sub.className = 'file-name file-sub';
+      sub.textContent = e.sub;
+      sub.title = 'Ordner öffnen';
+      sub.addEventListener('click', () => openFilesPath(e.sub));
+      nameCell.appendChild(sub);
+    }
+    row.appendChild(nameCell);
+
+    const barCell = document.createElement('div');
+    barCell.className = 'file-bar-cell';
+    const size = e.type === 'dir' ? e.dirSize : e.size;
+    if (maxSize && size != null) {
+      const bar = document.createElement('div');
+      bar.className = 'file-bar';
+      const fill = document.createElement('span');
+      fill.style.width = `${Math.max(1, size / maxSize * 100)}%`;
+      bar.appendChild(fill);
+      barCell.appendChild(bar);
+    }
+    row.appendChild(barCell);
+
+    const sz = document.createElement('span');
+    sz.className = 'file-size';
+    sz.textContent = fmtSize(size);
+    const dt = document.createElement('span');
+    dt.className = 'file-date';
+    dt.textContent = fmtDate(e.mtime);
+    row.append(sz, dt);
+    return row;
+  }
+
+  function renderBreadcrumb(path, root) {
+    const nav = $('files-breadcrumb');
+    nav.innerHTML = '';
+    const rel = path.slice(root.length).split('/').filter(Boolean);
+    const crumbs = [[root, root]];
+    let acc = root.replace(/\/$/, '');
+    rel.forEach(part => { acc += '/' + part; crumbs.push([part, acc]); });
+    crumbs.forEach(([label, target], i) => {
+      // No extra separator right after a root that already ends in "/"
+      if (i && !(i === 1 && root.endsWith('/'))) { const sep = document.createElement('span'); sep.textContent = '/'; nav.appendChild(sep); }
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.addEventListener('click', () => openFilesPath(target));
+      nav.appendChild(b);
+    });
+  }
+
+  function renderFiles() {
+    const list = $('files-list'), d = filesState.data;
+    list.innerHTML = '';
+    if (filesState.mode === 'largest') {
+      const files = filesState.largest.files;
+      if (!files.length) list.innerHTML = '<div class="files-empty">Keine lesbaren Dateien gefunden.</div>';
+      const max = files.length ? files[0].size : 0;
+      files.forEach(f => list.appendChild(fileRow({ ...f, type: 'file', sub: f.dir }, max)));
+      return;
+    }
+    let entries = d.entries.map(e => ({ ...e, dirSize: filesState.sizes ? filesState.sizes.sizes[e.name] : null }));
+    let max = 0;
+    if (filesState.sizes) {
+      entries.sort((a, b) => ((b.type === 'dir' ? b.dirSize : b.size) || 0) - ((a.type === 'dir' ? a.dirSize : a.size) || 0));
+      max = Math.max(0, ...entries.map(e => (e.type === 'dir' ? e.dirSize : e.size) || 0));
+    }
+    if (!entries.length) list.innerHTML = '<div class="files-empty">Ordner ist leer.</div>';
+    entries.forEach(e => list.appendChild(fileRow(e, max)));
+  }
+
+  async function filesApi(endpoint, path) {
+    const res = await fetch(`/api/files/${endpoint}?path=${encodeURIComponent(path)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Fehler beim Laden.');
+    return data;
+  }
+
+  async function openFilesPath(path) {
+    setFilesMsg('Lade…');
+    try {
+      const data = await filesApi('list', path);
+      Object.assign(filesState, { path: data.path, data, sizes: null, mode: 'list' });
+      renderBreadcrumb(data.path, data.root);
+      $('files-up').disabled = !data.parent;
+      renderFiles();
+      setFilesMsg(data.truncated ? 'Nur die ersten 2000 Einträge werden angezeigt.' : '');
+      $('files-list').scrollTop = 0;
+    } catch (err) {
+      setFilesMsg(err.message, 'error');
+    }
+  }
+
+  function setFilesMsg(text, type) {
+    const el = $('files-msg');
+    el.textContent = text;
+    el.className = `form-msg ${type || ''}`;
+  }
+
+  function openFilesModal(mount) {
+    const modal = $('files-modal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    $('files-modal-close').focus();
+    openFilesPath(mount);
+  }
+
+  function closeFilesModal() {
+    const modal = $('files-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function initFilesModal() {
+    // Drive list is rebuilt on every live update: delegate the "Öffnen" clicks
+    els.drivesListContainer.addEventListener('click', e => {
+      const btn = e.target.closest('.drive-open');
+      if (btn) openFilesModal(btn.dataset.mount);
+    });
+    $('files-modal-close').addEventListener('click', closeFilesModal);
+    $('files-modal').addEventListener('click', e => { if (e.target.id === 'files-modal') closeFilesModal(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('files-modal').classList.contains('open')) closeFilesModal();
+    });
+    $('files-up').addEventListener('click', () => {
+      if (filesState.data && filesState.data.parent) openFilesPath(filesState.data.parent);
+    });
+    $('files-sizes').addEventListener('click', async () => {
+      const btn = $('files-sizes');
+      btn.disabled = true;
+      setFilesMsg('Berechne Ordnergrößen… (kann bei großen Laufwerken dauern)');
+      try {
+        filesState.sizes = await filesApi('sizes', filesState.path);
+        filesState.mode = 'list';
+        renderFiles();
+        const total = filesState.sizes.total != null ? `Gesamt ${fmtSize(filesState.sizes.total)}` : '';
+        setFilesMsg(`${total}${filesState.sizes.unreadable ? ` · ${filesState.sizes.unreadable} Ordner nicht lesbar` : ''}`, 'success');
+      } catch (err) {
+        setFilesMsg(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    $('files-largest').addEventListener('click', async () => {
+      const btn = $('files-largest');
+      btn.disabled = true;
+      setFilesMsg('Suche größte Dateien…');
+      try {
+        filesState.largest = await filesApi('largest', filesState.path);
+        filesState.mode = 'largest';
+        renderFiles();
+        setFilesMsg(`${filesState.largest.scanned.toLocaleString('de-DE')} Dateien durchsucht${filesState.largest.timed_out ? ' (nach 60 s abgebrochen)' : ''}`, 'success');
+      } catch (err) {
+        setFilesMsg(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
     });
   }
 
@@ -1886,6 +2112,7 @@
     initUpdatesSheet();
     initServiceSheet();
     initProcessSearch();
+    initFilesModal();
     loadHomelab();
     loadWol();
     setInterval(loadHomelab, 20000);

@@ -866,6 +866,29 @@
     </div>
   </div>
 
+  <!-- File explorer + storage analysis -->
+  <div class="modal-backdrop" id="files-modal" aria-hidden="true">
+    <div class="modal-card sheet-card files-sheet" role="dialog" aria-modal="true" aria-labelledby="files-modal-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="files-modal-title">Dateien</h3>
+          <p class="card-subtitle">Nur lesen · Klick auf eine Datei lädt sie herunter</p>
+        </div>
+        <button class="mini-icon-btn" id="files-modal-close" title="Schließen (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <nav class="files-breadcrumb" id="files-breadcrumb" aria-label="Pfad"></nav>
+      <div class="files-toolbar">
+        <button class="btn-secondary" id="files-up" title="Übergeordneter Ordner">↑ Hoch</button>
+        <button class="btn-secondary" id="files-sizes">Ordnergrößen berechnen</button>
+        <button class="btn-secondary" id="files-largest">Größte Dateien</button>
+        <span class="form-msg" id="files-msg" role="status"></span>
+      </div>
+      <div class="files-list" id="files-list"></div>
+    </div>
+  </div>
+
   <!-- Docker container logs -->
   <div class="modal-backdrop" id="logs-modal" aria-hidden="true">
     <div class="modal-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
