@@ -6,6 +6,7 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 
 import asyncio
 import platform
+import re
 import time
 from contextlib import asynccontextmanager
 import logging
@@ -655,10 +656,10 @@ def _serve_page(name: str) -> HTMLResponse:
     mix a new page with a cached old style.css / *.js after an auto-update."""
     with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
         html = f.read()
-    for asset in ("style.css", "i18n.js", "app.js", "settings.js", "terminal.js", "system.js"):
-        path = os.path.join(STATIC_DIR, asset)
-        if os.path.exists(path):
-            html = html.replace(f"/static/{asset}\"", f"/static/{asset}?v={int(os.path.getmtime(path))}\"")
+    def versioned(m: "re.Match") -> str:
+        path = os.path.join(STATIC_DIR, m.group(1))
+        return f"/static/{m.group(1)}?v={int(os.path.getmtime(path))}\"" if os.path.exists(path) else m.group(0)
+    html = re.sub(r'/static/([\w.-]+\.(?:js|css))"', versioned, html)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 

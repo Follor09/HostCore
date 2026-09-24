@@ -4027,3 +4027,170 @@ a.file-name:hover {
     text-overflow: ellipsis;
   }
 }
+
+/* ==========================================================================
+   Customizable dashboard
+   ========================================================================== */
+body:not(.customizing) [data-widget].widget-off {
+  display: none;
+}
+
+@media (min-width: 1081px) {
+  body:not(.customizing) .top-widgets-row[data-visible="2"] { grid-template-columns: 1fr 1fr; }
+  body:not(.customizing) .top-widgets-row[data-visible="1"],
+  body:not(.customizing) .bottom-tools-grid[data-visible="1"] { grid-template-columns: 1fr; }
+}
+
+.customizing [data-widget] {
+  position: relative;
+}
+
+.customizing [data-widget].widget-off > :not(.widget-tools) {
+  opacity: 0.3;
+}
+
+.customizing [data-widget].widget-off {
+  outline: 1px dashed var(--border-subtle);
+  outline-offset: -1px;
+}
+
+/* Areas get a strip on top for their own toolbar */
+.customizing [data-widget-group][data-widget] {
+  padding-top: 44px;
+  border-radius: 18px;
+  outline: 1px dashed rgba(0, 240, 255, 0.25);
+  outline-offset: 6px;
+}
+
+.customizing [data-widget]:not([data-widget-group]) {
+  cursor: grab;
+}
+
+.customizing [data-widget].dragging {
+  opacity: 0.5;
+  outline: 2px dashed var(--accent-cyan);
+}
+
+.widget-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(8, 11, 18, 0.94);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  cursor: default;
+}
+
+[data-widget-group] > .widget-tools {
+  top: 0;
+  left: 0;
+  right: auto;
+}
+
+.widget-tools-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-main);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.widget-tool {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.widget-tool:hover:not(:disabled) {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.widget-tool:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.widget-tool[aria-pressed="true"] {
+  color: var(--accent-amber);
+  border-color: rgba(255, 183, 3, 0.4);
+}
+
+.customize-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(760px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: rgba(10, 14, 24, 0.96);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: var(--glass-blur);
+}
+
+.customize-bar[hidden] {
+  display: none;
+}
+
+.customize-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.customize-text strong {
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.customize-text em {
+  font-style: normal;
+  color: var(--accent-cyan);
+}
+
+.customize-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Room so the floating bar never covers the last card */
+body.customizing .dashboard-container {
+  padding-bottom: 130px;
+}
+
+#btn-customize[aria-pressed="true"] {
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+@media (max-width: 640px) {
+  .customize-bar {
+    flex-direction: column;
+    align-items: stretch;
+    bottom: 12px;
+  }
+  .customize-actions > * { flex: 1; }
+  .widget-tools-name { display: none; }
+}

@@ -360,7 +360,14 @@
     'Tag': 'Day', 'Temp. Ø': 'Temp. avg', 'Temp. max': 'Temp. max', 'Reserve': 'Spare', 'Noch keine Werte': 'No values yet',
     'Pro Tag geschriebene Datenmenge': 'Data written per day', 'NVMe-Temperatur pro Tag': 'NVMe temperature per day',
     'Noch keine Daten – der erste Tageswert wird etwa eine Minute nach dem Start gespeichert, danach stündlich aktualisiert.': 'No data yet – the first daily value is saved about a minute after start-up, then updated hourly.',
-    'Verschleiß meldet die SSD selbst in ganzen Prozent. Die Restlebensdauer ist eine Hochrechnung aus dem bisherigen Anstieg – erst nach einigen Wochen aussagekräftig.': 'The SSD reports wear itself in whole percent. Remaining life is extrapolated from the rise so far – meaningful only after a few weeks.'
+    'Verschleiß meldet die SSD selbst in ganzen Prozent. Die Restlebensdauer ist eine Hochrechnung aus dem bisherigen Anstieg – erst nach einigen Wochen aussagekräftig.': 'The SSD reports wear itself in whole percent. Remaining life is extrapolated from the rise so far – meaningful only after a few weeks.',
+    // Customizable dashboard
+    'Dashboard anpassen': 'Customize dashboard', 'Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet aus.': 'Arrows or dragging change the order, the eye hides a card.',
+    'Zurücksetzen': 'Reset', 'Wirklich zurücksetzen?': 'Really reset?', 'Alles sichtbar': 'Everything visible',
+    'Nach vorne': 'Move forward', 'Nach hinten': 'Move back', 'Nach oben': 'Move up', 'Nach unten': 'Move down', 'Ausblenden': 'Hide', 'Einblenden': 'Show',
+    'Obere Reihe': 'Top row', 'Messwerte': 'Metrics', 'Untere Reihe': 'Bottom row', 'Uhrzeit & Betriebszeit': 'Time & uptime',
+    'Server-Dienste': 'Server services',
+    'Speicher & NVMe': 'Storage & NVMe', 'Laufwerke & Explorer': 'Drives & explorer', 'Prozesse & Diagnose': 'Processes & diagnostics'
   };
 
   // ---------------------------------------------------------------------------
@@ -480,7 +487,8 @@
     [/^Hochrechnung: (.+)% pro Jahr$/, 'Extrapolated: $1% per year'],
     [/^seit (\d+) Tagen kein Anstieg$/, 'no increase for $1 days'],
     [/^(\d+) von 30 Tagen$/, '$1 of 30 days'],
-    [/^Ein Messpunkt pro Tag · (\d+) Tage erfasst$/, 'One data point per day · $1 days recorded']
+    [/^Ein Messpunkt pro Tag · (\d+) Tage erfasst$/, 'One data point per day · $1 days recorded'],
+    [/^(\d+) ausgeblendet$/, '$1 hidden']
   ];
 
   function translateDynamic(s) {

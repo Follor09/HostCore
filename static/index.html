@@ -67,6 +67,9 @@
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
         <span>Anmelden</span>
       </a>
+      <button class="icon-button" id="btn-customize" title="Dashboard anpassen" aria-label="Dashboard anpassen" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+      </button>
       <a class="icon-button" href="/system" title="System-Werkzeuge" aria-label="System-Werkzeuge">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
       </a>
@@ -106,12 +109,12 @@
   </header>
 
   <!-- Main Content Dashboard Container -->
-  <main class="dashboard-container">
+  <main class="dashboard-container" data-widget-group="main">
 
     <!-- Top Widgets Row: Clock, Weather, Server Services -->
-    <section class="top-widgets-row">
+    <section class="top-widgets-row" data-widget-group="top" data-widget="top">
       <!-- 1. Clock & Uptime Card -->
-      <div class="glass-card widget-clock-card">
+      <div class="glass-card widget-clock-card" data-widget="clock">
         <div class="widget-header">
           <span class="widget-label">SYSTEMZEIT & BETRIEBSZEIT</span>
           <span class="status-indicator-tag" id="os-name-tag">Linux</span>
@@ -136,7 +139,7 @@
       </div>
 
       <!-- 2. Live Weather Widget -->
-      <div class="glass-card widget-weather-card">
+      <div class="glass-card widget-weather-card" data-widget="weather">
         <div class="widget-header">
           <div class="weather-title-wrap">
             <span class="widget-label">WETTER & KLIMA</span>
@@ -198,7 +201,7 @@
       </div>
 
       <!-- 3. Server-Dienste & Ports (Replaces GPIO) -->
-      <div class="glass-card widget-services-card">
+      <div class="glass-card widget-services-card" data-widget="services">
         <div class="widget-header">
           <span class="widget-label">SERVER-DIENSTE & PORTS</span>
           <span class="status-indicator-tag" id="services-active-count">0 / 6 Aktiv</span>
@@ -210,10 +213,10 @@
     </section>
 
     <!-- Main System Monitoring Center -->
-    <section class="metrics-grid">
+    <section class="metrics-grid" data-widget-group="metrics" data-widget="metrics">
 
       <!-- Metric 1: CPU Auslastung -->
-      <div class="glass-card metric-card">
+      <div class="glass-card metric-card" data-widget="cpu">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-cyan">
@@ -240,7 +243,7 @@
       </div>
 
       <!-- Metric 2: CPU Temperatur & Drosselung -->
-      <div class="glass-card metric-card">
+      <div class="glass-card metric-card" data-widget="temp">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-amber" id="temp-icon-pill">
@@ -268,7 +271,7 @@
       </div>
 
       <!-- Metric 3: RAM & Swap Arbeitsspeicher -->
-      <div class="glass-card metric-card">
+      <div class="glass-card metric-card" data-widget="ram">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-violet">
@@ -304,7 +307,7 @@
       </div>
 
       <!-- Metric 4: Flash / Disk Speicherplatz -->
-      <div class="glass-card metric-card">
+      <div class="glass-card metric-card" data-widget="disk">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-emerald">
@@ -371,7 +374,7 @@
       </div>
 
       <!-- Metric 5: Netzwerk & Bandbreite -->
-      <div class="glass-card metric-card network-card">
+      <div class="glass-card metric-card network-card" data-widget="network">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-blue">
@@ -412,7 +415,7 @@
       </div>
 
       <!-- Metric 6: Lüfter (Active Cooler) -->
-      <div class="glass-card metric-card fan-card">
+      <div class="glass-card metric-card fan-card" data-widget="fan">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-cyan">
@@ -453,7 +456,7 @@
       </div>
 
       <!-- Metric: Stromversorgung (Pi 5 PMIC) -->
-      <div class="glass-card metric-card power-card" id="power-card">
+      <div class="glass-card metric-card power-card" data-widget="power" id="power-card">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-amber">
@@ -492,7 +495,7 @@
       </div>
 
       <!-- Metric 7: System-Updates (apt) -->
-      <div class="glass-card metric-card updates-card" id="updates-card" role="button" tabindex="0" title="Details &amp; Installation öffnen">
+      <div class="glass-card metric-card updates-card" data-widget="updates" id="updates-card" role="button" tabindex="0" title="Details &amp; Installation öffnen">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-amber">
@@ -517,7 +520,7 @@
       </div>
 
       <!-- Metric 8: Wake-on-LAN -->
-      <div class="glass-card metric-card wol-card">
+      <div class="glass-card metric-card wol-card" data-widget="wol">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-emerald">
@@ -536,7 +539,7 @@
     </section>
 
     <!-- Metrics History (24h / 7 Tage) -->
-    <section class="glass-card history-card" id="history-card">
+    <section class="glass-card history-card" data-widget="history" id="history-card">
       <div class="history-head">
         <div class="card-title-group">
           <div class="card-icon-pill icon-violet">
@@ -579,7 +582,7 @@
     </section>
 
     <!-- Workloads: Docker-Container & Kubernetes-Pods -->
-    <section class="glass-card workloads-card" id="workloads-card">
+    <section class="glass-card workloads-card" data-widget="workloads" id="workloads-card">
       <div class="history-head">
         <div class="card-title-group">
           <div class="card-icon-pill icon-cyan">
@@ -608,10 +611,10 @@
     </section>
 
     <!-- Lower Section: Storage Explorer & System Journal Logs + Diagnostics/Processes -->
-    <section class="bottom-tools-grid">
+    <section class="bottom-tools-grid" data-widget-group="bottom" data-widget="bottom">
 
       <!-- Drives & Storage Explorer (Replaces 40-Pin Header) -->
-      <div class="glass-card storage-explorer-card">
+      <div class="glass-card storage-explorer-card" data-widget="storage">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-emerald">
@@ -633,7 +636,7 @@
       </div>
 
       <!-- Top Processes & Diagnostic Command Center Tabs -->
-      <div class="glass-card process-diagnostics-card">
+      <div class="glass-card process-diagnostics-card" data-widget="processes">
         <div class="tabs-header">
           <button class="tab-btn active" id="tab-btn-processes">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
@@ -969,8 +972,21 @@
 
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
+  <!-- Customize mode: floating bar -->
+  <div class="customize-bar" id="customize-bar" role="region" aria-label="Dashboard anpassen" hidden>
+    <div class="customize-text">
+      <strong>Dashboard anpassen</strong>
+      <span>Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet aus. <em id="customize-count"></em></span>
+    </div>
+    <div class="customize-actions">
+      <button class="btn-secondary" id="customize-reset">Zurücksetzen</button>
+      <button class="btn-primary" id="customize-done">Fertig</button>
+    </div>
+  </div>
+
   <script src="/static/i18n.js"></script>
 
   <script src="/static/app.js"></script>
+  <script src="/static/customize.js"></script>
 </body>
 </html>
