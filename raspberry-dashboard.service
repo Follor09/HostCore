@@ -1,0 +1,19 @@
+[Unit]
+Description=Raspberry Pi All-in-One Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+ExecStart=__DIR__/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+# Pulling is done by pi-dashboard-update.timer (keeps working even if the app crashes);
+# the in-app poller only shows "update available".
+Environment=AUTO_UPDATE_ON_COMMIT=false
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

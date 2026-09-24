@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raspberry Pi Dashboard | Server & Homelab Monitor</title>
+  <meta name="description" content="Echtzeit Raspberry Pi Server Dashboard mit Hardware-Monitoring, Docker & Diensten, Speicher-Explorer, Wetter und Kiosk-Modus.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber">
+  <!-- Glow Backdrops -->
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-logo">
+        <svg class="pi-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" fill="#ff2a5f" stroke="#ff2a5f"/>
+          <path d="M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.5-1.5.5-2.5 1.8-2.5 3.5 0 2.2 1.8 4 4 4s4-1.8 4-4c0-1.7-1-3-2.5-3.5 1.2-.7 2-2 2-3.5a4 4 0 0 0-4-4z" stroke="#00ffa3" fill="none"/>
+          <circle cx="8" cy="11" r="2.5" fill="#ff2a5f" stroke="none"/>
+          <circle cx="16" cy="11" r="2.5" fill="#ff2a5f" stroke="none"/>
+          <circle cx="9" cy="16" r="2.5" fill="#ff2a5f" stroke="none"/>
+          <circle cx="15" cy="16" r="2.5" fill="#ff2a5f" stroke="none"/>
+          <circle cx="12" cy="18" r="2" fill="#ff2a5f" stroke="none"/>
+          <path d="M10 2c.5 1.5 1.5 2 2 2s1.5-.5 2-2" stroke="#00ffa3" stroke-width="2"/>
+        </svg>
+        <div class="brand-text">
+          <span class="brand-title">PI<span class="gradient-text">CORE</span> SERVER</span>
+          <span class="brand-subtitle" id="device-model-badge">Lade System...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="status-chip" id="ws-status-chip">
+        <span class="pulse-dot"></span>
+        <span id="ws-status-text">Live WebSocket</span>
+      </div>
+      <div class="ip-chip" id="ip-address-badge">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+        <span id="primary-ip">127.0.0.1</span>
+      </div>
+      <div class="git-chip" id="git-chip" title="Aktueller Git Commit">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+        <span id="git-commit-tag">git: main</span>
+      </div>
+      <button class="pill-button update-pill" id="btn-header-update" style="display: none;" title="Neues Update vom GitHub Repo installieren">
+        <span class="pulse-dot-cyan"></span>
+        <span id="header-update-text">Update verfügbar!</span>
+      </button>
+    </div>
+
+    <div class="header-right">
+      <button class="icon-button" id="btn-fullscreen" title="Vollbild Kiosk-Modus">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+      </button>
+      <button class="icon-button" id="btn-theme-toggle" title="Design-Schema umschalten">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
+      <button class="pill-button warning-pill" id="btn-reboot-modal" title="Raspberry Pi neu starten">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+        <span>Neustart</span>
+      </button>
+      <button class="pill-button danger-pill" id="btn-shutdown-modal" title="Raspberry Pi ausschalten">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+        <span>Herunterfahren</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Dashboard Container -->
+  <main class="dashboard-container">
+
+    <!-- Top Widgets Row: Clock, Weather, Server Services -->
+    <section class="top-widgets-row">
+      <!-- 1. Clock & Uptime Card -->
+      <div class="glass-card widget-clock-card">
+        <div class="widget-header">
+          <span class="widget-label">SYSTEMZEIT & BETRIEBSZEIT</span>
+          <span class="status-indicator-tag" id="os-name-tag">Linux</span>
+        </div>
+        <div class="clock-display">
+          <div class="digital-time" id="clock-time">00:00:00</div>
+          <div class="digital-date" id="clock-date">Lade Datum...</div>
+        </div>
+        <div class="uptime-bar">
+          <div class="uptime-icon">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </div>
+          <div class="uptime-info">
+            <span class="uptime-label">Uptime</span>
+            <span class="uptime-value" id="uptime-val">--</span>
+          </div>
+          <div class="boot-time-info">
+            <span class="uptime-label">Boot</span>
+            <span class="boot-time-val" id="boot-time-val">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Live Weather Widget -->
+      <div class="glass-card widget-weather-card">
+        <div class="widget-header">
+          <div class="weather-title-wrap">
+            <span class="widget-label">WETTER & KLIMA</span>
+            <span class="weather-location" id="weather-city">Berlin</span>
+          </div>
+          <button class="mini-icon-btn" id="btn-weather-refresh" title="Wetter aktualisieren">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
+        </div>
+        <div class="weather-main">
+          <div class="weather-temp-wrap">
+            <span class="weather-temp-val" id="weather-temp">--</span>
+            <span class="weather-temp-unit">°C</span>
+          </div>
+          <div class="weather-icon-badge" id="weather-icon-container">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#ffb703" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </div>
+        </div>
+        <div class="weather-condition-desc" id="weather-description">Klarer Himmel</div>
+        <div class="weather-details-grid">
+          <div class="weather-detail-item">
+            <span class="detail-label">Luftfeuchte</span>
+            <span class="detail-val" id="weather-humidity">--%</span>
+          </div>
+          <div class="weather-detail-item">
+            <span class="detail-label">Wind</span>
+            <span class="detail-val" id="weather-wind">-- km/h</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Server-Dienste & Ports (Replaces GPIO) -->
+      <div class="glass-card widget-services-card">
+        <div class="widget-header">
+          <span class="widget-label">SERVER-DIENSTE & PORTS</span>
+          <span class="status-indicator-tag" id="services-active-count">0 / 6 Aktiv</span>
+        </div>
+        <div class="services-list-grid" id="services-container">
+          <!-- Dynamically populated services -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Main System Monitoring Center -->
+    <section class="metrics-grid">
+
+      <!-- Metric 1: CPU Auslastung -->
+      <div class="glass-card metric-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-cyan">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>
+            </div>
+            <div>
+              <h3>CPU Auslastung</h3>
+              <p class="card-subtitle"><span id="cpu-core-count">4</span> Kerne • <span id="cpu-freq-val">--</span> MHz</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="cpu-total-percent">0%</div>
+        </div>
+
+        <div class="metric-chart-wrap">
+          <canvas id="cpu-history-chart" width="280" height="65"></canvas>
+        </div>
+
+        <div class="cores-breakdown">
+          <span class="sub-label">Kerne Details</span>
+          <div class="cores-grid" id="cores-grid-container">
+            <!-- Dynamic per-core bars -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Metric 2: CPU Temperatur & Drosselung -->
+      <div class="glass-card metric-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-amber" id="temp-icon-pill">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>
+            </div>
+            <div>
+              <h3>CPU Temperatur</h3>
+              <p class="card-subtitle" id="temp-source-badge">Sensor: Thermal Zone</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value temp-badge" id="cpu-temp-val">--°C</div>
+        </div>
+
+        <div class="metric-chart-wrap">
+          <canvas id="temp-history-chart" width="280" height="65"></canvas>
+        </div>
+
+        <div class="throttle-status-box" id="throttle-box">
+          <div class="throttle-header">
+            <span class="sub-label">Raspberry Pi Throttling-Status</span>
+            <span class="throttle-tag normal" id="throttle-tag">Normal</span>
+          </div>
+          <p class="throttle-desc" id="throttle-description">Keine thermische Drosselung oder Unterspannung erkannt.</p>
+        </div>
+      </div>
+
+      <!-- Metric 3: RAM & Swap Arbeitsspeicher -->
+      <div class="glass-card metric-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-violet">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="6" cy="12" r="1.5"></circle><circle cx="10" cy="12" r="1.5"></circle><circle cx="14" cy="12" r="1.5"></circle><circle cx="18" cy="12" r="1.5"></circle></svg>
+            </div>
+            <div>
+              <h3>Arbeitsspeicher</h3>
+              <p class="card-subtitle" id="ram-used-summary">-- MB von -- MB</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="ram-percent-val">0%</div>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill fill-violet" id="ram-progress-fill" style="width: 0%"></div>
+          </div>
+          <div class="progress-legend">
+            <span>Belegt: <b id="ram-used-txt">-- MB</b></span>
+            <span>Frei: <b id="ram-avail-txt">-- MB</b></span>
+          </div>
+        </div>
+
+        <div class="swap-subcard">
+          <div class="swap-header">
+            <span class="sub-label">SWAP SPEICHER</span>
+            <span class="swap-val" id="swap-val">0%</span>
+          </div>
+          <div class="progress-bar-bg mini">
+            <div class="progress-bar-fill fill-muted" id="swap-progress-fill" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metric 4: Flash / Disk Speicherplatz -->
+      <div class="glass-card metric-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-emerald">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"></line><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" y1="16" x2="6.01" y2="16"></line><line x1="10" y1="16" x2="10.01" y2="16"></line></svg>
+            </div>
+            <div>
+              <h3>SD-Karte / Disk</h3>
+              <p class="card-subtitle" id="disk-summary">Root-Partition (/)</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="disk-percent-val">0%</div>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill fill-emerald" id="disk-progress-fill" style="width: 0%"></div>
+          </div>
+          <div class="progress-legend">
+            <span>Belegt: <b id="disk-used-txt">-- GB</b></span>
+            <span>Verfügbar: <b id="disk-free-txt">-- GB</b></span>
+          </div>
+        </div>
+
+        <div class="disk-meta-stats">
+          <div class="meta-stat-item">
+            <span class="meta-label">Gesamtkapazität</span>
+            <span class="meta-val" id="disk-total-txt">-- GB</span>
+          </div>
+          <div class="meta-stat-item">
+            <span class="meta-label">Architektur</span>
+            <span class="meta-val" id="arch-val">ARM64</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metric 5: Netzwerk & Bandbreite -->
+      <div class="glass-card metric-card network-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-blue">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+            </div>
+            <div>
+              <h3>Netzwerk-Traffic</h3>
+              <p class="card-subtitle">Echtzeit Datendurchsatz</p>
+            </div>
+          </div>
+          <div class="net-indicators">
+            <div class="net-rate-badge down">
+              <span class="arrow-down">↓</span>
+              <span id="net-down-rate">0.0 KB/s</span>
+            </div>
+            <div class="net-rate-badge up">
+              <span class="arrow-up">↑</span>
+              <span id="net-up-rate">0.0 KB/s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="metric-chart-wrap">
+          <canvas id="network-history-chart" width="280" height="65"></canvas>
+        </div>
+
+        <div class="net-totals-grid">
+          <div class="net-total-item">
+            <span class="sub-label">Empfangen gesamt</span>
+            <span class="total-bytes" id="net-total-recv">-- MB</span>
+          </div>
+          <div class="net-total-item">
+            <span class="sub-label">Gesendet gesamt</span>
+            <span class="total-bytes" id="net-total-sent">-- MB</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lower Section: Storage Explorer & System Journal Logs + Diagnostics/Processes -->
+    <section class="bottom-tools-grid">
+
+      <!-- Drives & Storage Explorer (Replaces 40-Pin Header) -->
+      <div class="glass-card storage-explorer-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-emerald">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            </div>
+            <div>
+              <h3>Laufwerke & Mount-Punkte</h3>
+              <p class="card-subtitle">SD-Karte, NVMe-SSDs & externe USB-Speicher</p>
+            </div>
+          </div>
+          <button class="mini-icon-btn" id="btn-refresh-drives" title="Laufwerke neu einlesen">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
+        </div>
+
+        <div class="drives-list" id="drives-list-container">
+          <!-- Dynamically populated drives -->
+        </div>
+      </div>
+
+      <!-- Top Processes & Diagnostic Command Center Tabs -->
+      <div class="glass-card process-diagnostics-card">
+        <div class="tabs-header">
+          <button class="tab-btn active" id="tab-btn-processes">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            Top Prozesse
+          </button>
+          <button class="tab-btn" id="tab-btn-diagnostics">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+            Diagnose & Server-Tools
+          </button>
+          <button class="tab-btn" id="tab-btn-logs">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            System-Logs
+          </button>
+          <button class="tab-btn" id="tab-btn-updates">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+            Git & Updates
+          </button>
+        </div>
+
+        <!-- Tab 1: Top Processes -->
+        <div class="tab-pane active" id="pane-processes">
+          <div class="table-responsive">
+            <table class="processes-table">
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>Name</th>
+                  <th>CPU %</th>
+                  <th>MEM %</th>
+                  <th>Benutzer</th>
+                </tr>
+              </thead>
+              <tbody id="processes-tbody">
+                <tr>
+                  <td colspan="5" class="table-loading">Lade aktive Prozesse...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 2: Quick Diagnostics Console -->
+        <div class="tab-pane" id="pane-diagnostics">
+          <div class="diag-buttons-bar">
+            <button class="diag-cmd-btn" data-cmd="ping">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+              Ping Test (1.1.1.1)
+            </button>
+            <button class="diag-cmd-btn" data-cmd="docker">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+              Docker PS
+            </button>
+            <button class="diag-cmd-btn" data-cmd="memory">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect></svg>
+              Speicher (free -h)
+            </button>
+            <button class="diag-cmd-btn" data-cmd="disk">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"></line><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>
+              Festplatte (df -h)
+            </button>
+            <button class="diag-cmd-btn" data-cmd="temp">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>
+              vcgencmd temp
+            </button>
+            <button class="diag-cmd-btn" data-cmd="throttled">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              vcgencmd throttled
+            </button>
+          </div>
+
+          <div class="terminal-container">
+            <div class="terminal-bar">
+              <div class="terminal-dots">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <span class="terminal-title" id="terminal-status">bash — output</span>
+            </div>
+            <pre class="terminal-body" id="terminal-output">Klicke oben auf einen Diagnose-Befehl, um die Ausgabe hier in Echtzeit anzuzeigen.</pre>
+          </div>
+        </div>
+
+        <!-- Tab 3: System Logs -->
+        <div class="tab-pane" id="pane-logs">
+          <div class="logs-toolbar">
+            <span class="sub-label">Journalctl & Kernel-Ereignisse</span>
+            <button class="mini-icon-btn" id="btn-refresh-logs" title="Logs aktualisieren">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+          <div class="terminal-container">
+            <pre class="terminal-body log-output" id="logs-output">Lade System-Logs...</pre>
+          </div>
+        </div>
+
+        <!-- Tab 4: Git Repository & Auto-Updates -->
+        <div class="tab-pane" id="pane-updates">
+          <div class="updates-panel">
+            <div class="updates-status-card" id="updates-status-box">
+              <div class="updates-status-header">
+                <div class="update-icon-circle" id="update-status-icon">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div>
+                  <h4 id="update-status-title">System ist auf dem neuesten Stand</h4>
+                  <p class="update-status-sub" id="update-status-sub">Letzter Check: gerade eben</p>
+                </div>
+              </div>
+
+              <div class="update-details-box" id="update-details-box" style="display: none;">
+                <span class="sub-label">Neuer GitHub Commit verfügbar</span>
+                <p class="update-incoming-msg" id="update-incoming-msg">--</p>
+              </div>
+
+              <div class="update-actions-bar">
+                <button class="pill-button warning-pill" id="btn-check-updates">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                  <span>Nach Updates suchen</span>
+                </button>
+                <button class="pill-button update-pill" id="btn-apply-update" style="display: none;">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  <span>Jetzt Aktualisieren</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Repo Info Grid -->
+            <div class="repo-meta-grid">
+              <div class="repo-meta-item">
+                <span class="meta-label">Installierter Commit</span>
+                <span class="meta-val" id="git-meta-commit">--</span>
+              </div>
+              <div class="repo-meta-item">
+                <span class="meta-label">Branch</span>
+                <span class="meta-val" id="git-meta-branch">main</span>
+              </div>
+              <div class="repo-meta-item">
+                <span class="meta-label">Auto-Update Poller</span>
+                <span class="meta-val" style="color: var(--accent-emerald);">Aktiv (alle 5 Min)</span>
+              </div>
+              <div class="repo-meta-item">
+                <span class="meta-label">GitHub Webhook URL</span>
+                <span class="meta-val" id="git-meta-webhook" style="font-size: 0.72rem;">/api/webhook/github</span>
+              </div>
+            </div>
+
+            <div class="terminal-container" style="margin-top: 12px;">
+              <div class="terminal-bar">
+                <span class="terminal-title">Update Protokoll / Git Output</span>
+              </div>
+              <pre class="terminal-body" id="update-terminal-log" style="max-height: 140px;">Bereit. Änderungen auf GitHub werden alle 5 Minuten automatisch erkannt.</pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Confirm Modal for Reboot / Shutdown -->
+  <div class="modal-backdrop" id="action-modal">
+    <div class="modal-card">
+      <div class="modal-icon-badge" id="modal-icon">⚠️</div>
+      <h3 id="modal-title">System-Aktion bestätigen</h3>
+      <p id="modal-message">Möchtest du den Raspberry Pi wirklich neu starten?</p>
+      <div class="modal-buttons">
+        <button class="btn-cancel" id="btn-modal-cancel">Abbrechen</button>
+        <button class="btn-confirm" id="btn-modal-confirm">Bestätigen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

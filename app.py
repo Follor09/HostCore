@@ -1,0 +1,314 @@
+"""
+Raspberry Pi All-in-One Dashboard Server (Server & Homelab Edition).
+FastAPI backend with WebSocket real-time live streaming, services monitoring,
+drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
+"""
+
+import asyncio
+from contextlib import asynccontextmanager
+import logging
+import os
+import subprocess
+from typing import Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+import httpx
+
+import system_info
+import services_manager
+import updater
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("pi_dashboard")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initial git check & background poller
+    updater.refresh_git_info()
+    poller_task = asyncio.create_task(updater.background_update_poller())
+    yield
+    # Shutdown
+    poller_task.cancel()
+
+
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
+
+# Serve static assets
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+class CommandRequest(BaseModel):
+    command: str
+
+
+# Cached weather response to prevent rate limiting
+_cached_weather = {
+    "temp": 20.0,
+    "humidity": 50,
+    "wind_speed": 10.0,
+    "description": "Klar",
+    "weather_code": 0,
+    "city": "Berlin (Default)",
+    "timestamp": 0
+}
+
+
+def interpret_wmo_code(code: int) -> tuple[str, str]:
+    """Translate WMO weather code to German description and icon."""
+    mapping = {
+        0: ("Klarer Himmel", "sun"),
+        1: ("Überwiegend klar", "sun-dim"),
+        2: ("Teilweise bewölkt", "cloud-sun"),
+        3: ("Bedeckt", "cloud"),
+        45: ("Neblig", "cloud-fog"),
+        48: ("Raureifnebel", "cloud-fog"),
+        51: ("Leichter Nieselregen", "cloud-drizzle"),
+        53: ("Nieselregen", "cloud-drizzle"),
+        55: ("Starker Nieselregen", "cloud-drizzle"),
+        61: ("Leichter Regen", "cloud-rain"),
+        63: ("Mäßiger Regen", "cloud-rain"),
+        65: ("Starker Regen", "cloud-rain-heavy"),
+        71: ("Leichter Schneefall", "cloud-snow"),
+        73: ("Schneefall", "cloud-snow"),
+        75: ("Starker Schneefall", "cloud-snow"),
+        80: ("Regenschauer", "cloud-showers"),
+        81: ("Starke Schauer", "cloud-showers"),
+        82: ("Heftige Schauer", "cloud-showers-heavy"),
+        95: ("Gewitter", "cloud-lightning"),
+        96: ("Gewitter mit Hagel", "cloud-lightning-hail"),
+    }
+    return mapping.get(code, ("Heiter", "cloud-sun"))
+
+
+@app.get("/")
+async def get_index():
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return JSONResponse({"status": "Dashboard frontend loading..."})
+
+
+@app.get("/api/system")
+async def api_system():
+    """Return full system snapshot."""
+    return system_info.get_system_snapshot()
+
+
+@app.get("/api/processes")
+async def api_processes(limit: int = 8):
+    """Return top active processes."""
+    return {"processes": system_info.get_top_processes(limit=limit)}
+
+
+@app.get("/api/services")
+async def api_services():
+    """Return status of homelab services."""
+    return {"services": services_manager.get_services_status()}
+
+
+@app.get("/api/drives")
+async def api_drives():
+    """Return mounted storage partitions and external USB drives."""
+    return {"drives": services_manager.get_mounted_drives()}
+
+
+@app.get("/api/logs")
+async def api_logs(lines: int = 30):
+    """Return recent system journal logs."""
+    return {"logs": services_manager.get_recent_logs(lines=lines)}
+
+
+# ---------------------------------------------------------------------------
+# Auto-Update Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/updates/status")
+async def api_update_status():
+    """Get current Git version info and pending update status."""
+    return updater.update_state
+
+
+@app.post("/api/updates/check")
+async def api_update_check():
+    """Trigger manual check against GitHub remote."""
+    status = updater.check_for_updates()
+    return status
+
+
+@app.post("/api/updates/apply")
+async def api_update_apply():
+    """Pull latest Git commits, install requirements, and restart server."""
+    result = updater.perform_update()
+    return result
+
+
+@app.post("/api/webhook/github")
+async def api_github_webhook(request: Request, x_hub_signature_256: Optional[str] = Header(None)):
+    """
+    GitHub Webhook receiver.
+    Triggered instantly whenever a new commit is pushed to the GitHub repository.
+    """
+    body = await request.body()
+    if not updater.verify_github_signature(body, x_hub_signature_256):
+        raise HTTPException(status_code=403, detail="Invalid GitHub webhook signature")
+
+    event_type = request.headers.get("X-GitHub-Event", "push")
+    logger.info(f"Received GitHub webhook event: {event_type}")
+
+    if event_type in ("push", "ping"):
+        # Run update in background task
+        asyncio.create_task(asyncio.to_thread(updater.perform_update))
+        return {"status": "ok", "message": "GitHub push event empfangen. Auto-Update gestartet!"}
+
+    return {"status": "ignored", "event": event_type}
+
+
+@app.get("/api/weather")
+async def api_weather(lat: float = 52.52, lon: float = 13.41, city: str = "Berlin"):
+    """Fetch live weather conditions."""
+    global _cached_weather
+    import time
+    now = time.time()
+
+    if now - _cached_weather["timestamp"] < 600 and _cached_weather.get("city") == city:
+        return _cached_weather
+
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+            f"&timezone=auto"
+        )
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                cur = data.get("current", {})
+                code = cur.get("weather_code", 0)
+                desc, icon = interpret_wmo_code(code)
+
+                _cached_weather = {
+                    "temp": round(cur.get("temperature_2m", 20.0), 1),
+                    "humidity": cur.get("relative_humidity_2m", 50),
+                    "wind_speed": round(cur.get("wind_speed_10m", 0.0), 1),
+                    "description": desc,
+                    "icon": icon,
+                    "weather_code": code,
+                    "city": city,
+                    "timestamp": now
+                }
+                return _cached_weather
+    except Exception as e:
+        logger.warning(f"Failed to fetch weather: {e}")
+
+    return _cached_weather
+
+
+@app.post("/api/action/command")
+async def api_exec_command(req: CommandRequest):
+    """Execute whitelisted safe diagnostic commands."""
+    allowed_commands = {
+        "ping": ["ping", "-c", "3", "1.1.1.1"],
+        "uptime": ["uptime"],
+        "memory": ["free", "-h"],
+        "disk": ["df", "-h"],
+        "temp": ["vcgencmd", "measure_temp"],
+        "throttled": ["vcgencmd", "get_throttled"],
+        "uname": ["uname", "-a"],
+        "docker": ["docker", "ps", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"]
+    }
+
+    cmd_key = req.command.strip().lower()
+    if cmd_key not in allowed_commands:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Kommando nicht erlaubt. Verfügbare Kommandos: {list(allowed_commands.keys())}"
+        )
+
+    cmd_args = allowed_commands[cmd_key]
+    try:
+        if cmd_key == "memory" and system_info.platform.system() == "Darwin":
+            cmd_args = ["vm_stat"]
+        elif cmd_key in ("temp", "throttled") and not system_info.is_raspberry_pi():
+            return {
+                "command": cmd_key,
+                "stdout": f"[Dev-Mode]: '{cmd_key}' ist für echten Raspberry Pi reserviert. Aktuelle CPU-Temperatur: {system_info.get_cpu_temp()['celsius']}°C",
+                "returncode": 0
+            }
+
+        proc = subprocess.run(cmd_args, capture_output=True, text=True, timeout=8)
+        return {
+            "command": cmd_key,
+            "stdout": proc.stdout or proc.stderr,
+            "returncode": proc.returncode
+        }
+    except Exception as e:
+        return {"command": cmd_key, "error": str(e), "returncode": 1}
+
+
+@app.post("/api/action/reboot")
+async def api_reboot():
+    """Trigger system reboot (guarded on dev hosts)."""
+    if system_info.is_raspberry_pi():
+        try:
+            subprocess.Popen(["sudo", "reboot"])
+            return {"status": "success", "message": "Raspberry Pi wird jetzt neu gestartet..."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    else:
+        return {
+            "status": "simulated",
+            "message": "[Simulation] Neustart-Befehl erfolgreich empfangen. Auf einem echten Pi wird 'sudo reboot' ausgeführt."
+        }
+
+
+@app.post("/api/action/shutdown")
+async def api_shutdown():
+    """Trigger system shutdown (guarded on dev hosts)."""
+    if system_info.is_raspberry_pi():
+        try:
+            subprocess.Popen(["sudo", "poweroff"])
+            return {"status": "success", "message": "Raspberry Pi wird heruntergefahren..."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    else:
+        return {
+            "status": "simulated",
+            "message": "[Simulation] Herunterfahren-Befehl erfolgreich empfangen. Auf einem echten Pi wird 'sudo poweroff' ausgeführt."
+        }
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time live push updates.
+    Sends system snapshot, top processes, services, drives, and updater state every 1.5 seconds.
+    """
+    await websocket.accept()
+    logger.info("WebSocket Client connected.")
+    try:
+        while True:
+            snapshot = system_info.get_system_snapshot()
+            processes = system_info.get_top_processes(limit=6)
+            services = services_manager.get_services_status()
+            drives = services_manager.get_mounted_drives()
+
+            payload = {
+                "type": "live_update",
+                "system": snapshot,
+                "processes": processes,
+                "services": services,
+                "drives": drives,
+                "updater": updater.update_state
+            }
+            await websocket.send_json(payload)
+            await asyncio.sleep(1.5)
+    except WebSocketDisconnect:
+        logger.info("WebSocket Client disconnected.")
+    except Exception as e:
+        logger.warning(f"WebSocket connection error: {e}")

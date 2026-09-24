@@ -1,0 +1,8 @@
+[Unit]
+Description=Pull new PiCore Dashboard commits from GitHub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=__DIR__/update.sh

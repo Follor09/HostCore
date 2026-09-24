@@ -1,0 +1,9 @@
+[Unit]
+Description=Check GitHub for new PiCore Dashboard commits every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
