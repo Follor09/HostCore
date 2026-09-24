@@ -18,6 +18,7 @@
       temp: [],
       netDown: [],
       netUp: [],
+      netUp: [],
       maxPoints: 25
     }
   };
@@ -95,6 +96,8 @@
 
     // Network
     netDownRate: document.getElementById('net-down-rate'),
+    diskType: document.getElementById('disk-type'),
+    diskSummary: document.getElementById('disk-summary'),
     netUpRate: document.getElementById('net-up-rate'),
     netTotalRecv: document.getElementById('net-total-recv'),
     netTotalSent: document.getElementById('net-total-sent'),
@@ -150,17 +153,18 @@
   // ---------------------------------------------------------------------------
   // Canvas Sparkline Chart Drawer
   // ---------------------------------------------------------------------------
-  function drawSparkline(canvas, dataSeries, color, fillColor) {
+  // opts.max: shared y-scale for several series; opts.overlay: draw on top instead of clearing
+  function drawSparkline(canvas, dataSeries, color, fillColor, opts = {}) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
 
-    ctx.clearRect(0, 0, width, height);
+    if (!opts.overlay) ctx.clearRect(0, 0, width, height);
     if (dataSeries.length < 2) return;
 
     const min = 0;
-    const max = Math.max(100, Math.max(...dataSeries) * 1.15);
+    const max = opts.max || Math.max(100, Math.max(...dataSeries) * 1.15);
     const step = width / (state.history.maxPoints - 1);
 
     ctx.beginPath();
@@ -729,6 +733,11 @@
       if (els.diskUsedTxt) els.diskUsedTxt.textContent = `${sys.disk.used_gb} GB`;
       if (els.diskFreeTxt) els.diskFreeTxt.textContent = `${sys.disk.free_gb} GB`;
       if (els.diskTotalTxt) els.diskTotalTxt.textContent = `${sys.disk.total_gb} GB`;
+      if (els.diskType && sys.disk.type) els.diskType.textContent = sys.disk.type;
+      if (els.diskSummary && sys.disk.device) {
+        els.diskSummary.textContent = sys.disk.model ? `${sys.disk.model} · /` : `${sys.disk.device} · /`;
+        els.diskSummary.title = sys.disk.device;
+      }
     }
 
     // Network
@@ -745,9 +754,15 @@
       if (els.netTotalRecv) els.netTotalRecv.textContent = `${sys.network.total_recv_mb} MB`;
       if (els.netTotalSent) els.netTotalSent.textContent = `${sys.network.total_sent_mb} MB`;
 
-      state.history.netDown.push(down);
-      if (state.history.netDown.length > state.history.maxPoints) state.history.netDown.shift();
-      drawSparkline(els.netChart, state.history.netDown, '#38bdf8', 'rgba(56, 189, 248, 0.25)');
+      const h = state.history;
+      h.netDown.push(down);
+      h.netUp.push(up);
+      if (h.netDown.length > h.maxPoints) h.netDown.shift();
+      if (h.netUp.length > h.maxPoints) h.netUp.shift();
+      // Both lines on one scale so upload isn't cut off or exaggerated
+      const netMax = Math.max(100, ...h.netDown, ...h.netUp) * 1.15;
+      drawSparkline(els.netChart, h.netDown, '#38bdf8', 'rgba(56, 189, 248, 0.25)', { max: netMax });
+      drawSparkline(els.netChart, h.netUp, '#a855f7', 'rgba(168, 85, 247, 0.18)', { max: netMax, overlay: true });
     }
   }
 

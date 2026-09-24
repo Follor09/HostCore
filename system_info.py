@@ -291,6 +291,57 @@ def get_top_processes(limit: int = 8) -> list:
     return procs[:limit]
 
 
+_root_drive_cache = None
+
+
+def get_root_drive() -> dict:
+    """Identify the drive the root filesystem lives on (NVMe, SD card, USB SSD/HDD)."""
+    global _root_drive_cache
+    if _root_drive_cache is not None:
+        return _root_drive_cache
+
+    device = ""
+    try:
+        # findmnt resolves /dev/root to the real partition on Raspberry Pi OS
+        device = subprocess.run(["findmnt", "-n", "-o", "SOURCE", "/"],
+                                capture_output=True, text=True, timeout=2).stdout.strip()
+        device = device.split("[")[0]  # btrfs subvolumes: /dev/nvme0n1p2[/@]
+    except Exception:
+        pass
+    if not device:
+        device = next((p.device for p in psutil.disk_partitions() if p.mountpoint == "/"), "")
+
+    name = os.path.basename(device)
+    # Partition -> whole disk: nvme0n1p2 -> nvme0n1, mmcblk0p2 -> mmcblk0, sda2 -> sda
+    if name.startswith(("nvme", "mmcblk")):
+        disk = name.split("p")[0] if name.startswith("mmcblk") else name.rsplit("p", 1)[0]
+    else:
+        disk = name.rstrip("0123456789")
+
+    def read_sys(path: str) -> str:
+        try:
+            with open(f"/sys/block/{disk}/{path}") as f:
+                return f.read().strip()
+        except Exception:
+            return ""
+
+    if name.startswith("nvme"):
+        kind = "NVMe SSD"
+    elif name.startswith("mmcblk"):
+        kind = "eMMC" if read_sys("device/type") == "MMC" else "SD-Karte"
+    elif name.startswith("sd"):
+        kind = "Festplatte (HDD)" if read_sys("queue/rotational") == "1" else "USB-SSD"
+    else:
+        kind = "Systemlaufwerk"
+
+    _root_drive_cache = {
+        "type": kind,
+        "model": read_sys("device/model") or read_sys("device/name"),
+        "device": device,
+    }
+    return _root_drive_cache
+
+
 def get_system_snapshot() -> dict:
     """Aggregate full system metrics into a single dictionary."""
     # CPU
@@ -347,7 +398,8 @@ def get_system_snapshot() -> dict:
             "total_gb": round(disk.total / (1024 ** 3), 1),
             "used_gb": round(disk.used / (1024 ** 3), 1),
             "free_gb": round(disk.free / (1024 ** 3), 1),
-            "percent": round(disk.percent, 1)
+            "percent": round(disk.percent, 1),
+            **get_root_drive()
         },
         "network": net
     }
