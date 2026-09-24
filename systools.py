@@ -471,3 +471,86 @@ def benchmark_history() -> Dict[str, Any]:
     import services_manager
     drives = [{"mount": d["mount"], "label": d["label"]} for d in services_manager.get_mounted_drives()]
     return {"results": settings_store.get("benchmarks", []) or [], "drives": drives, "running": _bench_lock.locked()}
+
+
+# ---------------------------------------------------------------------------
+# Log search (systemd journal)
+# ---------------------------------------------------------------------------
+import json as _json
+
+LOG_SINCE = {"15m": "15 min ago", "1h": "1 hour ago", "24h": "24 hours ago", "7d": "7 days ago"}
+LOG_PRIORITY = {"all": None, "warning": "warning", "err": "err"}
+LOG_LIMIT = 300
+
+
+def journal_units() -> Dict[str, Any]:
+    if not shutil.which("journalctl"):
+        return {"supported": False, "units": []}
+    out = _run(["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain", "--no-pager"])
+    units = sorted({line.split()[0] for line in out.splitlines() if line.split()
+                    and line.split()[0].endswith(".service")})
+    return {"supported": True, "units": units}
+
+
+def _journal_hint(stderr: str, count: int) -> str:
+    if "insufficient permissions" in stderr.lower() or (count == 0 and "not seeing messages from other users" in stderr.lower()):
+        user = os.environ.get("USER", "$USER")
+        return f"Nur eigene Logs sichtbar. Für alle: sudo usermod -aG systemd-journal {user} && sudo systemctl restart raspberry-dashboard"
+    return ""
+
+
+def _message(entry: dict) -> str:
+    msg = entry.get("MESSAGE", "")
+    if isinstance(msg, list):  # non-UTF-8 messages come as a byte array
+        msg = bytes(msg).decode("utf-8", errors="replace")
+    return str(msg)
+
+
+def journal_search(unit: str = "", priority: str = "all", since: str = "1h", query: str = "") -> Dict[str, Any]:
+    if not shutil.which("journalctl"):
+        return {"supported": False, "entries": []}
+    cmd = ["journalctl", "--no-pager", "-o", "json", "-r", "-n", str(LOG_LIMIT)]
+    if unit == "kernel":
+        cmd.append("-k")
+    elif unit:
+        if unit not in journal_units()["units"]:
+            raise ValueError("Unbekannter Dienst.")
+        cmd += ["-u", unit]
+    if LOG_PRIORITY.get(priority):
+        cmd += ["-p", LOG_PRIORITY[priority]]
+    cmd += ["--since", LOG_SINCE.get(since, LOG_SINCE["1h"])]
+    query = query.strip()[:200]
+    if query:
+        # journalctl's own grep searches the whole range, not just the newest lines
+        cmd += ["-g", re.escape(query), "--case-sensitive=false"]
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=20, errors="replace")
+    except subprocess.TimeoutExpired:
+        raise ValueError("Suche dauerte zu lange – Zeitraum verkleinern.")
+    if query and "pattern matching" in res.stderr.lower():
+        # journalctl built without PCRE2: fetch more lines and filter here
+        cmd = [c for c in cmd if c not in ("-g", re.escape(query), "--case-sensitive=false")]
+        cmd[cmd.index("-n") + 1] = "5000"
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=20, errors="replace")
+
+    entries = []
+    for line in res.stdout.splitlines():
+        try:
+            e = _json.loads(line)
+        except ValueError:
+            continue
+        msg = _message(e)
+        if query and query.lower() not in msg.lower() and "-g" not in cmd:
+            continue
+        entries.append({
+            "ts": int(e.get("__REALTIME_TIMESTAMP", "0")) // 1_000_000,
+            "unit": e.get("_SYSTEMD_UNIT") or e.get("SYSLOG_IDENTIFIER") or ("kernel" if e.get("_TRANSPORT") == "kernel" else ""),
+            "priority": int(e.get("PRIORITY", 6)),
+            "pid": e.get("_PID", ""),
+            "message": msg[:2000],
+        })
+        if len(entries) >= LOG_LIMIT:
+            break
+    return {"supported": True, "entries": entries, "limit": LOG_LIMIT,
+            "hint": _journal_hint(res.stderr, len(entries))}

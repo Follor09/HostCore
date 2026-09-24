@@ -796,6 +796,81 @@ body {
   align-self: flex-start;
 }
 
+.log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.log-filters select,
+.log-filters input {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+}
+
+.log-filters input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.log-filters select:focus,
+.log-filters input:focus {
+  border-color: var(--border-focus);
+}
+
+.log-results {
+  margin-top: 10px;
+  max-height: 560px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: #05070c;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: 118px 150px 1fr;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-left: 3px solid transparent;
+  color: #a5b4c8;
+}
+
+.log-line.err { border-left-color: var(--accent-rose); color: #ffb3c2; }
+.log-line.warn { border-left-color: var(--accent-amber); color: #ffe2a3; }
+
+.log-line time,
+.log-line .log-unit {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-line .log-msg {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-line mark {
+  background: rgba(0, 240, 255, 0.25);
+  color: #fff;
+  border-radius: 2px;
+}
+
+@media (max-width: 760px) {
+  .log-line { grid-template-columns: 1fr; gap: 2px; }
+}
+
 .net-toggle {
   margin-top: 10px;
 }

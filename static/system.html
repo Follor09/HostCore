@@ -35,6 +35,7 @@
       <a href="#hardware">Hardware</a>
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
+      <a href="#logs">Logs</a>
     </nav>
 
     <div class="settings-sections">
@@ -111,6 +112,33 @@
         <div class="table-scroll">
           <table class="data-table" id="bench-history"></table>
         </div>
+      </section>
+
+      <!-- Log-Suche -->
+      <section class="glass-card settings-section" id="logs">
+        <h2>Log-Suche</h2>
+        <p class="section-desc">Durchsucht das System-Journal. Neueste Einträge zuerst, maximal 300 Treffer.</p>
+        <form class="log-filters" id="log-form">
+          <select id="log-unit" aria-label="Dienst">
+            <option value="">Alle Dienste</option>
+            <option value="kernel">Kernel</option>
+          </select>
+          <select id="log-priority" aria-label="Schweregrad">
+            <option value="all">Alle Meldungen</option>
+            <option value="warning">Warnungen &amp; Fehler</option>
+            <option value="err">Nur Fehler</option>
+          </select>
+          <select id="log-since" aria-label="Zeitraum">
+            <option value="15m">Letzte 15 Min.</option>
+            <option value="1h" selected>Letzte Stunde</option>
+            <option value="24h">Letzte 24 Std.</option>
+            <option value="7d">Letzte 7 Tage</option>
+          </select>
+          <input type="search" id="log-query" placeholder="Suchbegriff…" autocomplete="off" spellcheck="false" aria-label="Suchbegriff">
+          <button type="submit" class="btn-primary">Suchen</button>
+        </form>
+        <p class="field-hint" id="log-status"></p>
+        <div class="log-results" id="log-results"></div>
       </section>
     </div>
   </main>

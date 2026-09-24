@@ -307,13 +307,72 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Log search
+  // ---------------------------------------------------------------------------
+  function highlight(target, text, query) {
+    if (!query) { target.textContent = text; return; }
+    const lower = text.toLowerCase(), q = query.toLowerCase();
+    let pos = 0, idx;
+    while ((idx = lower.indexOf(q, pos)) !== -1) {
+      target.appendChild(document.createTextNode(text.slice(pos, idx)));
+      target.appendChild(el('mark', '', text.slice(idx, idx + q.length)));
+      pos = idx + q.length;
+    }
+    target.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  function renderLogUnits(u) {
+    const select = $('log-unit');
+    if (!u.supported) {
+      $('log-status').textContent = 'Kein systemd-Journal auf diesem System.';
+      return;
+    }
+    u.units.forEach(name => {
+      const o = el('option', '', name.replace(/\.service$/, ''));
+      o.value = name;
+      select.appendChild(o);
+    });
+  }
+
+  async function searchLogs(e) {
+    if (e) e.preventDefault();
+    const query = $('log-query').value.trim();
+    const params = new URLSearchParams({
+      unit: $('log-unit').value, priority: $('log-priority').value, since: $('log-since').value, q: query
+    });
+    const status = $('log-status'), box = $('log-results');
+    status.textContent = 'Suche…';
+    try {
+      const r = await api(`/api/tools/logs?${params}`);
+      box.innerHTML = '';
+      if (!r.supported) { status.textContent = 'Kein systemd-Journal auf diesem System.'; return; }
+      r.entries.forEach(entry => {
+        const line = el('div', `log-line${entry.priority <= 3 ? ' err' : entry.priority === 4 ? ' warn' : ''}`);
+        const t = el('time', '', new Date(entry.ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        const unit = el('span', 'log-unit', (entry.unit || '').replace(/\.service$/, ''));
+        unit.title = entry.unit + (entry.pid ? ` (PID ${entry.pid})` : '');
+        const msg = el('span', 'log-msg');
+        highlight(msg, entry.message, query);
+        line.append(t, unit, msg);
+        box.appendChild(line);
+      });
+      status.textContent = r.entries.length
+        ? `${r.entries.length}${r.entries.length >= r.limit ? '+' : ''} Einträge${r.hint ? ' · ' + r.hint : ''}`
+        : `Keine Einträge gefunden.${r.hint ? ' ' + r.hint : ''}`;
+    } catch (err) {
+      status.textContent = err.message;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
     network: ['/api/tools/network', renderNetwork],
     hardware: ['/api/tools/hardware', renderHardware],
     cpu: ['/api/tools/cpu-mode', renderCpuMode],
-    bench: ['/api/tools/benchmark', renderBenchmarks]
+    bench: ['/api/tools/benchmark', renderBenchmarks],
+    logUnits: ['/api/tools/log-units', renderLogUnits]
   };
 
   async function load(key) {
@@ -340,6 +399,8 @@
     $('bench-disk').addEventListener('click', () => runBenchmark('disk'));
     $('bench-cpu').addEventListener('click', () => runBenchmark('cpu'));
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
+    $('log-form').addEventListener('submit', searchLogs);
+    ['log-unit', 'log-priority', 'log-since'].forEach(id => $(id).addEventListener('change', () => searchLogs()));
 
     // Highlight the section currently in view
     const links = [...document.querySelectorAll('.settings-nav a')];
@@ -349,6 +410,7 @@
     document.querySelectorAll('.settings-section').forEach(s => observer.observe(s));
 
     Object.keys(LOADERS).forEach(load);
+    searchLogs();
     // Live clock speed while the page is open
     setInterval(async () => {
       if (document.hidden || !cache.cpu || !cache.cpu.available) return;

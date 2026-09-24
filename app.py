@@ -380,6 +380,19 @@ async def api_tools_run_benchmark(req: BenchmarkRequest, request: Request):
     return entry
 
 
+@app.get("/api/tools/log-units")
+async def api_tools_log_units():
+    return await asyncio.to_thread(systools.journal_units)
+
+
+@app.get("/api/tools/logs")
+async def api_tools_logs(unit: str = "", priority: str = "all", since: str = "1h", q: str = ""):
+    try:
+        return await asyncio.to_thread(systools.journal_search, unit, priority, since, q)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/tools/cpu-mode")
 async def api_tools_cpu_mode():
     return await asyncio.to_thread(systools.cpu_mode)
