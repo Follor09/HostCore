@@ -12,7 +12,13 @@ OWNER="$(stat -c %U "$DIR")"
 as_owner() { sudo -u "$OWNER" -H -- "$@"; }
 
 echo "📦 Python venv & dependencies (user: $OWNER, dir: $DIR)..."
-[ -d "$DIR/venv" ] || as_owner python3 -m venv "$DIR/venv"
+# Recreate a venv that is missing or broken (e.g. copied over from a Mac)
+if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
+    echo "🔧 venv missing or broken, recreating..."
+    rm -rf "$DIR/venv"
+    python3 -c 'import ensurepip' 2>/dev/null || apt-get install -y python3-venv
+    as_owner python3 -m venv "$DIR/venv"
+fi
 as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
 chmod +x "$DIR/update.sh" "$DIR/start.sh"
 
