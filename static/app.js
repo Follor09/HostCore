@@ -1094,10 +1094,9 @@
   // ---------------------------------------------------------------------------
   // App Bootstrapper
   // ---------------------------------------------------------------------------
-  // Homelab Extras: Internet, Updates, NVMe health, Docker & Kubernetes
+  // Homelab Extras: Updates, NVMe health, Docker & Kubernetes
   // ---------------------------------------------------------------------------
   const $ = id => document.getElementById(id);
-  const PING_SLOTS = 180; // one hour at 20s
 
   function setHealthTag(el, level, text) {
     if (!el) return;
@@ -1105,65 +1104,11 @@
     el.textContent = text;
   }
 
-  function fmtMs(ms) {
-    return ms == null ? '–' : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
-  }
-
   function relTime(ts) {
     const s = Math.max(0, Date.now() / 1000 - ts);
     if (s < 3600) return `vor ${Math.max(1, Math.round(s / 60))} Min.`;
     if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
     return `vor ${Math.round(s / 86400)} Tagen`;
-  }
-
-  // Latency line over the last hour; failed pings leave a gap plus a red tick at the bottom
-  function drawLatency(canvas, samples) {
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const { width, height } = canvas;
-    ctx.clearRect(0, 0, width, height);
-    if (!samples.length) return;
-
-    const vals = samples.map(p => p.ms).filter(v => v != null);
-    const max = Math.max(20, ...vals) * 1.2;
-    const step = width / (PING_SLOTS - 1);
-    const offset = PING_SLOTS - samples.length;
-    const y = v => height - 5 - (v / max) * (height - 10);
-
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    let drawing = false;
-    samples.forEach((p, i) => {
-      const x = (offset + i) * step;
-      if (p.ms == null) { drawing = false; return; }
-      if (drawing) ctx.lineTo(x, y(p.ms)); else ctx.moveTo(x, y(p.ms));
-      drawing = true;
-    });
-    ctx.stroke();
-
-    ctx.fillStyle = '#ff2a5f';
-    samples.forEach((p, i) => {
-      if (p.ms == null) ctx.fillRect((offset + i) * step - 1.5, height - 8, 3, 8);
-    });
-  }
-
-  function renderInternet(net) {
-    if (!net || net.status === 'unknown') return;
-    const labels = { online: ['good', 'Online'], degraded: ['warning', 'Gestört'], offline: ['critical', 'Offline'] };
-    const [level, text] = labels[net.status] || ['', net.status];
-    setHealthTag($('inet-status-tag'), level, text);
-    $('inet-latency').textContent = fmtMs(net.inet_ms);
-    $('inet-subtitle').textContent = `Ping zu ${net.internet_host}`;
-    $('inet-window').textContent = net.window_minutes >= 60 ? 'Letzte Stunde' : `Letzte ${Math.max(1, net.window_minutes)} Min.`;
-    $('inet-gw').textContent = fmtMs(net.gw_ms);
-    $('inet-gw').title = net.gateway ? `Router ${net.gateway}` : '';
-    $('inet-dns').textContent = fmtMs(net.dns_ms);
-    $('inet-loss').textContent = `${net.loss_percent}%`;
-    $('inet-outages').textContent = String(net.outages);
-    drawLatency($('inet-chart'), net.samples || []);
   }
 
   const SHIELD_ICON = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
@@ -1539,7 +1484,6 @@
       const res = await fetch('/api/homelab');
       if (!res.ok) return;
       const data = await res.json();
-      renderInternet(data.internet);
       renderUpdates(data.updates);
       renderNvme(data.nvme);
       renderWorkloads(data.workloads);

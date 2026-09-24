@@ -1,20 +1,17 @@
 """
 Homelab extras for the dashboard:
-- Internet monitor: pings router + internet and times DNS in the background
 - System updates: pending apt packages (security separately), reboot-required flag
 - NVMe health: temperature (hwmon) and SMART data (smartctl via a narrow sudo rule)
 - Workloads: Docker containers and Kubernetes pods
 Everything slow is cached so the Pi isn't hammered by open browser tabs.
 """
 
-import asyncio
 import glob
 import json
 import os
 import platform
 import re
 import shutil
-import socket
 import subprocess
 import time
 from collections import deque
@@ -47,107 +44,6 @@ class _Cache:
 
 
 _cache = _Cache()
-
-
-# ---------------------------------------------------------------------------
-# Internet monitor
-# ---------------------------------------------------------------------------
-PING_INTERVAL = 20                      # seconds
-PING_HISTORY = 3600 // PING_INTERVAL    # keep one hour
-INTERNET_HOST = "1.1.1.1"
-DNS_TEST_NAME = "github.com"
-
-_pings: deque = deque(maxlen=PING_HISTORY)
-
-
-def _default_gateway() -> str:
-    try:
-        if IS_LINUX:
-            out = _run(["ip", "route", "show", "default"], timeout=2).stdout
-            m = re.search(r"default via (\S+)", out)
-        else:
-            out = _run(["route", "-n", "get", "default"], timeout=2).stdout
-            m = re.search(r"gateway:\s*(\S+)", out)
-        return m.group(1) if m else ""
-    except Exception:
-        return ""
-
-
-def _ping(host: str) -> Optional[float]:
-    if not host:
-        return None
-    # -W is seconds on Linux, milliseconds on macOS
-    cmd = ["ping", "-c", "1", "-W", "2" if IS_LINUX else "2000", host]
-    try:
-        res = _run(cmd, timeout=4)
-        m = re.search(r"time[=<]([\d.]+)\s*ms", res.stdout)
-        return round(float(m.group(1)), 1) if res.returncode == 0 and m else None
-    except Exception:
-        return None
-
-
-def _dns_ms() -> Optional[float]:
-    start = time.perf_counter()
-    try:
-        socket.getaddrinfo(DNS_TEST_NAME, 443)
-        return round((time.perf_counter() - start) * 1000, 1)
-    except Exception:
-        return None
-
-
-def _probe() -> Dict[str, Any]:
-    gateway = _default_gateway()
-    return {"ts": int(time.time()), "gateway": gateway,
-            "gw_ms": _ping(gateway), "inet_ms": _ping(INTERNET_HOST), "dns_ms": _dns_ms()}
-
-
-async def background_net_monitor() -> None:
-    while True:
-        try:
-            _pings.append(await asyncio.to_thread(_probe))
-        except Exception:
-            pass
-        await asyncio.sleep(PING_INTERVAL)
-
-
-def get_internet_status() -> Dict[str, Any]:
-    samples = list(_pings)
-    if not samples:
-        return {"status": "unknown", "samples": []}
-
-    last = samples[-1]
-    ok = [s for s in samples if s["inet_ms"] is not None]
-    recent = samples[-15:]  # last ~5 minutes
-    recent_loss = 100 * sum(s["inet_ms"] is None for s in recent) / len(recent)
-
-    # An outage = a run of consecutive failed internet pings
-    outages, in_outage = 0, False
-    for s in samples:
-        failed = s["inet_ms"] is None
-        if failed and not in_outage:
-            outages += 1
-        in_outage = failed
-
-    if last["inet_ms"] is None and (len(samples) < 2 or samples[-2]["inet_ms"] is None):
-        status = "offline"
-    elif recent_loss >= 20 or last["inet_ms"] is None:
-        status = "degraded"
-    else:
-        status = "online"
-
-    return {
-        "status": status,
-        "gateway": last["gateway"],
-        "internet_host": INTERNET_HOST,
-        "gw_ms": last["gw_ms"],
-        "inet_ms": last["inet_ms"],
-        "dns_ms": last["dns_ms"],
-        "avg_ms": round(sum(s["inet_ms"] for s in ok) / len(ok), 1) if ok else None,
-        "loss_percent": round(100 * (len(samples) - len(ok)) / len(samples), 1),
-        "outages": outages,
-        "window_minutes": round(len(samples) * PING_INTERVAL / 60),
-        "samples": [{"ts": s["ts"], "ms": s["inet_ms"]} for s in samples],
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +337,6 @@ def get_workloads() -> Dict[str, Any]:
 
 def get_all() -> Dict[str, Any]:
     return {
-        "internet": get_internet_status(),
         "updates": get_updates(),
         "nvme": get_nvme_health(),
         "workloads": get_workloads(),

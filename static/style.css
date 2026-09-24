@@ -1039,7 +1039,7 @@ body {
 }
 
 /* ==========================================================================
-   Homelab Extras: status tags, NVMe health, Internet, Updates, Workloads
+   Homelab Extras: status tags, NVMe health, Updates, Workloads
    ========================================================================== */
 
 /* Status always pairs a dot with a text label, never color alone */
@@ -1115,17 +1115,6 @@ body {
 #disk-meta-stats {
   grid-template-columns: 1fr 1fr;
   row-gap: 8px;
-}
-
-/* Internet monitor */
-.inet-status-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.inet-stats {
-  grid-template-columns: repeat(4, 1fr);
 }
 
 /* System updates */

@@ -34,12 +34,10 @@ async def lifespan(app: FastAPI):
     updater.refresh_git_info()
     poller_task = asyncio.create_task(updater.background_update_poller())
     history_task = asyncio.create_task(history.background_sampler())
-    net_task = asyncio.create_task(homelab.background_net_monitor())
     yield
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
-    net_task.cancel()
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
@@ -265,7 +263,7 @@ async def api_history(range: str = "24h"):
 
 @app.get("/api/homelab")
 async def api_homelab():
-    """Internet monitor, apt updates, NVMe health, Docker containers and Kubernetes pods."""
+    """Apt updates, NVMe health, Docker containers and Kubernetes pods."""
     return await asyncio.to_thread(homelab.get_all)
 
 
