@@ -132,24 +132,47 @@
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
           </button>
         </div>
-        <div class="weather-main">
-          <div class="weather-temp-wrap">
-            <span class="weather-temp-val" id="weather-temp">--</span>
-            <span class="weather-temp-unit">°C</span>
-          </div>
-          <div class="weather-icon-badge" id="weather-icon-container">
-            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#ffb703" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-          </div>
+        <div class="weather-tabs" role="tablist">
+          <button class="weather-tab active" role="tab" data-tab="now">Jetzt</button>
+          <button class="weather-tab" role="tab" data-tab="hours">Stunden</button>
+          <button class="weather-tab" role="tab" data-tab="tomorrow">Morgen</button>
+          <button class="weather-tab" role="tab" data-tab="week">7 Tage</button>
         </div>
-        <div class="weather-condition-desc" id="weather-description">Klarer Himmel</div>
-        <div class="weather-details-grid">
-          <div class="weather-detail-item">
-            <span class="detail-label">Luftfeuchte</span>
-            <span class="detail-val" id="weather-humidity">--%</span>
+
+        <div class="weather-panes">
+          <div class="weather-pane" data-pane="now">
+            <div class="weather-main">
+              <div class="weather-temp-wrap">
+                <span class="weather-temp-val" id="weather-temp">--</span>
+                <span class="weather-temp-unit">°C</span>
+              </div>
+              <div class="weather-icon-badge" id="weather-icon-container">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#ffb703" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              </div>
+            </div>
+            <div class="weather-condition-desc" id="weather-description">Klarer Himmel</div>
+            <div class="weather-details-grid">
+              <div class="weather-detail-item">
+                <span class="detail-label">Luftfeuchte</span>
+                <span class="detail-val" id="weather-humidity">--%</span>
+              </div>
+              <div class="weather-detail-item">
+                <span class="detail-label">Wind</span>
+                <span class="detail-val" id="weather-wind">-- km/h</span>
+              </div>
+            </div>
           </div>
-          <div class="weather-detail-item">
-            <span class="detail-label">Wind</span>
-            <span class="detail-val" id="weather-wind">-- km/h</span>
+
+          <div class="weather-pane" data-pane="hours" hidden>
+            <div class="weather-hours" id="weather-hours"></div>
+          </div>
+
+          <div class="weather-pane" data-pane="tomorrow" hidden>
+            <div id="weather-tomorrow"></div>
+          </div>
+
+          <div class="weather-pane" data-pane="week" hidden>
+            <div class="weather-week" id="weather-week"></div>
           </div>
         </div>
       </div>

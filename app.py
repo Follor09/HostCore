@@ -211,6 +211,42 @@ async def api_github_webhook(request: Request, x_hub_signature_256: Optional[str
     return {"status": "ignored", "event": event_type}
 
 
+def _next_hours(hourly: dict, current_time: str, count: int) -> list:
+    """Hourly forecast starting at the current hour (Open-Meteo times are local ISO strings)."""
+    times = hourly.get("time", [])
+    current_hour = current_time[:13]  # "2026-09-24T14"
+    start = next((i for i, t in enumerate(times) if t[:13] >= current_hour), 0)
+    return [
+        {
+            "time": times[i][11:16],
+            "temp": round(hourly["temperature_2m"][i]),
+            "weather_code": hourly["weather_code"][i],
+            "precip_prob": hourly["precipitation_probability"][i] or 0,
+        }
+        for i in range(start, min(start + count, len(times)))
+    ]
+
+
+def _daily_forecast(daily: dict) -> list:
+    days = []
+    for i, date in enumerate(daily.get("time", [])):
+        code = daily["weather_code"][i]
+        days.append({
+            "date": date,
+            "weather_code": code,
+            "description": interpret_wmo_code(code)[0],
+            "temp_max": round(daily["temperature_2m_max"][i]),
+            "temp_min": round(daily["temperature_2m_min"][i]),
+            "precip_prob": daily["precipitation_probability_max"][i] or 0,
+            "precip_sum": round(daily["precipitation_sum"][i] or 0, 1),
+            "wind_max": round(daily["wind_speed_10m_max"][i] or 0),
+            "uv_max": round(daily["uv_index_max"][i] or 0, 1),
+            "sunrise": daily["sunrise"][i][11:16],
+            "sunset": daily["sunset"][i][11:16],
+        })
+    return days
+
+
 @app.get("/api/weather")
 async def api_weather(force: bool = False):
     """Fetch live weather conditions for the configured location."""
@@ -223,13 +259,18 @@ async def api_weather(force: bool = False):
         return _cached_weather
 
     try:
-        url = (
-            f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={loc['lat']}&longitude={loc['lon']}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
-            f"&timezone=auto"
-        )
+        params = {
+            "latitude": loc["lat"],
+            "longitude": loc["lon"],
+            "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
+            "hourly": "temperature_2m,weather_code,precipitation_probability",
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,"
+                     "precipitation_sum,wind_speed_10m_max,sunrise,sunset,uv_index_max",
+            "forecast_days": 7,
+            "timezone": "auto",
+        }
         async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(url)
+            resp = await client.get("https://api.open-meteo.com/v1/forecast", params=params)
             if resp.status_code == 200:
                 data = resp.json()
                 cur = data.get("current", {})
@@ -244,6 +285,8 @@ async def api_weather(force: bool = False):
                     "icon": icon,
                     "weather_code": code,
                     "city": loc["city"],
+                    "hourly": _next_hours(data.get("hourly", {}), cur.get("time", ""), 12),
+                    "daily": _daily_forecast(data.get("daily", {})),
                     "timestamp": now
                 }
                 return _cached_weather

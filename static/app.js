@@ -46,6 +46,12 @@
     weatherCityBtn: document.getElementById('weather-city-btn'),
     weatherCityForm: document.getElementById('weather-city-form'),
     weatherCityInput: document.getElementById('weather-city-input'),
+    weatherIcon: document.getElementById('weather-icon-container'),
+    weatherHours: document.getElementById('weather-hours'),
+    weatherTomorrow: document.getElementById('weather-tomorrow'),
+    weatherWeek: document.getElementById('weather-week'),
+    weatherTabs: document.querySelectorAll('.weather-tab'),
+    weatherPanes: document.querySelectorAll('.weather-pane'),
     weatherTemp: document.getElementById('weather-temp'),
     weatherDesc: document.getElementById('weather-description'),
     weatherHumidity: document.getElementById('weather-humidity'),
@@ -238,12 +244,125 @@
   // ---------------------------------------------------------------------------
   // Weather Widget Loader
   // ---------------------------------------------------------------------------
+  // Inline SVG weather icons (no emoji font needed on Raspberry Pi OS)
+  const WX_CLOUD = '<path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>';
+  const WX_ICONS = {
+    sun: '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
+    partly: '<circle cx="8" cy="8" r="3"/><path d="M8 2v1M2 8h1M3.76 3.76l.7.7M12.24 3.76l-.7.7"/><path d="M17.5 12h-.9A5.5 5.5 0 1 0 11 19.5h6.5a3.75 3.75 0 0 0 0-7.5z"/>',
+    cloud: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+    fog: '<path d="M3 8h18M5 12h14M3 16h18M7 20h10"/>',
+    drizzle: WX_CLOUD + '<path d="M8 19v2M8 13v2M16 19v2M16 13v2M12 21v2M12 15v2"/>',
+    rain: WX_CLOUD + '<path d="M16 13v8M8 13v8M12 15v8"/>',
+    snow: WX_CLOUD + '<path d="M8 16h.01M8 20h.01M12 18h.01M12 22h.01M16 16h.01M16 20h.01"/>',
+    thunder: '<path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><path d="M13 11l-4 6h6l-4 6"/>'
+  };
+
+  function wxKind(code) {
+    if (code === 0) return 'sun';
+    if (code <= 2) return 'partly';
+    if (code === 3) return 'cloud';
+    if (code <= 48) return 'fog';
+    if (code <= 57) return 'drizzle';
+    if (code <= 67 || (code >= 80 && code <= 82)) return 'rain';
+    if (code <= 77 || code === 85 || code === 86) return 'snow';
+    return 'thunder';
+  }
+
+  function wxIcon(code, size = 20) {
+    const kind = wxKind(code);
+    const cls = kind === 'partly' ? 'sun' : kind;
+    return `<span class="wx-icon wx-${cls}"><svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${WX_ICONS[kind]}</svg></span>`;
+  }
+
+  function precipTag(prob) {
+    return `<span class="weather-precip ${prob < 20 ? 'dry' : ''}">${prob}%</span>`;
+  }
+
+  function dayName(dateStr, index) {
+    if (index === 0) return 'Heute';
+    if (index === 1) return 'Morgen';
+    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'short' });
+  }
+
+  function renderHours(hours) {
+    if (!els.weatherHours) return;
+    if (!hours || !hours.length) {
+      els.weatherHours.innerHTML = '<div class="weather-empty">Keine Stundenvorhersage verfügbar</div>';
+      return;
+    }
+    els.weatherHours.innerHTML = hours.map((h, i) => `
+      <div class="weather-hour ${i === 0 ? 'now' : ''}">
+        <span class="weather-hour-time">${i === 0 ? 'Jetzt' : h.time}</span>
+        ${wxIcon(h.weather_code, 20)}
+        <span class="weather-hour-temp">${h.temp}°</span>
+        ${precipTag(h.precip_prob)}
+      </div>`).join('');
+  }
+
+  function renderTomorrow(day) {
+    if (!els.weatherTomorrow) return;
+    if (!day) {
+      els.weatherTomorrow.innerHTML = '<div class="weather-empty">Keine Vorhersage für morgen verfügbar</div>';
+      return;
+    }
+    const date = new Date(`${day.date}T12:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'numeric' });
+    els.weatherTomorrow.innerHTML = `
+      <div class="weather-tomorrow-head">
+        <div>
+          <div class="weather-tomorrow-temps">${day.temp_max}°<span class="min">/ ${day.temp_min}°</span></div>
+          <div class="weather-tomorrow-sub">${day.description} <span class="date">· ${date}</span></div>
+        </div>
+        <div class="weather-icon-badge">${wxIcon(day.weather_code, 34)}</div>
+      </div>
+      <div class="weather-details-grid four">
+        <div class="weather-detail-item"><span class="detail-label">Regen</span><span class="detail-val">${day.precip_prob}% · ${day.precip_sum} mm</span></div>
+        <div class="weather-detail-item"><span class="detail-label">Wind max.</span><span class="detail-val">${day.wind_max} km/h</span></div>
+        <div class="weather-detail-item"><span class="detail-label">Sonne</span><span class="detail-val">${day.sunrise} – ${day.sunset}</span></div>
+        <div class="weather-detail-item"><span class="detail-label">UV-Index</span><span class="detail-val">${day.uv_max}</span></div>
+      </div>`;
+  }
+
+  function renderWeek(days) {
+    if (!els.weatherWeek) return;
+    if (!days || !days.length) {
+      els.weatherWeek.innerHTML = '<div class="weather-empty">Keine Wochenvorhersage verfügbar</div>';
+      return;
+    }
+    // Bars share one scale so the days are comparable
+    const lo = Math.min(...days.map(d => d.temp_min));
+    const hi = Math.max(...days.map(d => d.temp_max));
+    const span = Math.max(hi - lo, 1);
+    els.weatherWeek.innerHTML = days.map((d, i) => `
+      <div class="weather-day">
+        <span class="weather-day-name">${dayName(d.date, i)}</span>
+        ${wxIcon(d.weather_code, 16)}
+        ${precipTag(d.precip_prob)}
+        <span class="weather-day-min">${d.temp_min}°</span>
+        <div class="weather-range"><span style="left:${(d.temp_min - lo) / span * 100}%;right:${(hi - d.temp_max) / span * 100}%"></span></div>
+        <span class="weather-day-max">${d.temp_max}°</span>
+      </div>`).join('');
+  }
+
   function renderWeather(data) {
     if (els.weatherCity) els.weatherCity.textContent = data.city;
     if (els.weatherTemp) els.weatherTemp.textContent = data.temp;
     if (els.weatherDesc) els.weatherDesc.textContent = data.description;
     if (els.weatherHumidity) els.weatherHumidity.textContent = `${data.humidity}%`;
     if (els.weatherWind) els.weatherWind.textContent = `${data.wind_speed} km/h`;
+    if (els.weatherIcon) els.weatherIcon.innerHTML = wxIcon(data.weather_code, 36);
+    renderHours(data.hourly);
+    renderTomorrow(data.daily && data.daily[1]);
+    renderWeek(data.daily);
+  }
+
+  function selectWeatherTab(tab) {
+    els.weatherTabs.forEach(b => {
+      const active = b.dataset.tab === tab;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', active);
+    });
+    els.weatherPanes.forEach(p => { p.hidden = p.dataset.pane !== tab; });
+    try { localStorage.setItem('weatherTab', tab); } catch (e) { /* storage unavailable */ }
   }
 
   async function loadWeather() {
@@ -863,6 +982,12 @@
     if (els.btnShutdownModal) els.btnShutdownModal.addEventListener('click', () => openModal('shutdown'));
     if (els.btnModalCancel) els.btnModalCancel.addEventListener('click', closeModal);
     if (els.btnModalConfirm) els.btnModalConfirm.addEventListener('click', executeModalAction);
+
+    els.weatherTabs.forEach(b => b.addEventListener('click', () => selectWeatherTab(b.dataset.tab)));
+    try {
+      const saved = localStorage.getItem('weatherTab');
+      if (saved && document.querySelector(`.weather-pane[data-pane="${saved}"]`)) selectWeatherTab(saved);
+    } catch (e) { /* storage unavailable */ }
 
     if (els.weatherCityBtn && els.weatherCityForm && els.weatherCityInput) {
       els.weatherCityBtn.addEventListener('click', () => toggleCityEditor(true));

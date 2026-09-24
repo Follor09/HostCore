@@ -562,6 +562,212 @@ body {
   color: var(--text-muted);
 }
 
+/* Weather tabs & forecast panes */
+.widget-weather-card .widget-header {
+  margin-bottom: 10px;
+}
+
+.weather-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.weather-tab {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 4px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.weather-tab:hover {
+  color: var(--text-main);
+}
+
+.weather-tab.active {
+  color: var(--accent-amber);
+  background: rgba(255, 183, 3, 0.12);
+}
+
+/* All panes share one grid cell, so the card keeps the tallest pane's height
+   and the top row doesn't jump when switching tabs */
+.weather-panes {
+  display: grid;
+}
+
+.weather-pane {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.weather-pane[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+.wx-icon {
+  display: inline-flex;
+}
+
+.wx-sun { color: var(--accent-amber); }
+.wx-cloud, .wx-fog { color: var(--text-muted); }
+.wx-rain, .wx-drizzle { color: var(--accent-blue); }
+.wx-snow { color: #e2e8f0; }
+.wx-thunder { color: var(--accent-violet); }
+
+.weather-empty {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 20px 0;
+  text-align: center;
+}
+
+/* Hourly strip */
+.weather-hours {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.weather-hour {
+  flex: 0 0 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+}
+
+.weather-hour.now {
+  border-color: rgba(255, 183, 3, 0.35);
+  background: rgba(255, 183, 3, 0.06);
+}
+
+.weather-hour-time {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.weather-hour-temp {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.weather-precip {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--accent-blue);
+}
+
+.weather-precip.dry {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
+/* Tomorrow */
+.weather-tomorrow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.weather-tomorrow-temps {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.weather-tomorrow-temps .min {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.weather-tomorrow-sub {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  margin-top: 6px;
+}
+
+.weather-tomorrow-sub .date {
+  color: var(--text-dim);
+}
+
+.weather-details-grid.four {
+  grid-template-columns: 1fr 1fr;
+  row-gap: 8px;
+}
+
+/* 7-day list */
+.weather-week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weather-day {
+  display: grid;
+  grid-template-columns: 52px 22px 36px 26px 1fr 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.weather-day-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.weather-day-min,
+.weather-day-max {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.weather-day-min { color: var(--text-dim); }
+.weather-day-max { color: var(--text-main); font-weight: 600; text-align: left; }
+
+.weather-range {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.weather-range span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-amber));
+}
+
 /* 3. Server Services Widget */
 .services-list-grid {
   display: grid;
