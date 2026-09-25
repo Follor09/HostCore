@@ -11,6 +11,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
   <title>Raspberry Pi Dashboard | Server & Homelab Monitor</title>
   <meta name="description" content="Echtzeit Raspberry Pi Server Dashboard mit Hardware-Monitoring, Docker & Diensten, Speicher-Explorer, Wetter und Kiosk-Modus.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -576,6 +577,40 @@
         <textarea class="notes-text" id="notes-text" spellcheck="true" aria-label="Notizen" hidden></textarea>
         <p class="notes-help" id="notes-help" hidden>Speichert automatisch · <code># Überschrift</code> · <code>- Punkt</code> · <code>- [ ] Aufgabe</code> · Links werden anklickbar</p>
       </div>
+      <!-- Schnellaktionen -->
+      <div class="glass-card metric-card actions-card" data-widget="actions" id="actions-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-amber">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+            <div>
+              <h3>Schnellaktionen</h3>
+              <p class="card-subtitle" id="actions-sub">Eigene Skripte per Klick</p>
+            </div>
+          </div>
+        </div>
+        <div class="actions-grid" id="actions-list"></div>
+        <p class="notes-empty" id="actions-hint"></p>
+      </div>
+
+      <!-- Web-Dienste -->
+      <div class="glass-card metric-card health-card" data-widget="health" id="health-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-cyan">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            </div>
+            <div>
+              <h3>Web-Dienste</h3>
+              <p class="card-subtitle" id="health-sub">Erreichbarkeit deiner Dienste</p>
+            </div>
+          </div>
+          <div class="metric-highlight-value" id="health-count">–</div>
+        </div>
+        <div class="health-list" id="health-list"></div>
+        <a class="wol-manage" href="/settings#web-dienste">Dienste verwalten →</a>
+      </div>
     </section>
 
     <!-- Metrics History (24h / 7 Tage) -->
@@ -942,6 +977,30 @@
     </div>
   </div>
 
+  <!-- Quick action output -->
+  <div class="modal-backdrop" id="action-run-modal" aria-hidden="true">
+    <div class="modal-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="action-run-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="action-run-title">Aktion</h3>
+          <p class="card-subtitle" id="action-run-sub"></p>
+        </div>
+        <div class="sheet-head-actions">
+          <span class="health-tag" id="action-run-tag"></span>
+          <button class="mini-icon-btn" id="action-run-close" title="Schließen (Esc)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+      <pre class="apt-log container-log" id="action-run-output" data-no-i18n></pre>
+      <div class="sheet-actions">
+        <button class="btn-cancel" id="action-run-stop">Stoppen</button>
+        <button class="btn-confirm action-again" id="action-run-again">Nochmal ausführen</button>
+      </div>
+      <p class="sheet-note">Läuft auf dem Pi weiter, auch wenn du dieses Fenster schließt.</p>
+    </div>
+  </div>
+
   <!-- systemd service: status, start/stop/restart, journal -->
   <div class="modal-backdrop" id="service-modal" aria-hidden="true">
     <div class="modal-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="service-modal-title">
@@ -1033,6 +1092,7 @@
 
   <script src="/static/app.js"></script>
   <script src="/static/notes.js"></script>
+  <script src="/static/widgets.js"></script>
   <script src="/static/customize.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

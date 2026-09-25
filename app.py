@@ -35,6 +35,10 @@ import monitor
 import netscan
 import fancurve
 import audit
+import sensors
+import actions
+import nettools
+import healthchecks
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -47,10 +51,12 @@ async def lifespan(app: FastAPI):
     poller_task = asyncio.create_task(updater.background_update_poller())
     await asyncio.to_thread(systools.restore_governor)
     history_task = asyncio.create_task(history.background_sampler())
+    health_task = asyncio.create_task(healthchecks.background_checker())
     yield
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
+    health_task.cancel()
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
@@ -109,7 +115,7 @@ async def require_login(request: Request, call_next):
 
     is_read = request.method in ("GET", "HEAD")
     always_private = (path in ("/settings", "/terminal", "/system")
-                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/", "/api/notes"))
+                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/", "/api/notes", "/api/actions"))
                       or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
@@ -584,6 +590,102 @@ async def api_notes_save(req: NotesRequest, request: Request):
     return notes
 
 
+class DnsRequest(BaseModel):
+    name: str
+    type: str = "A"
+    server: str = "system"
+
+
+class TracerouteRequest(BaseModel):
+    host: str
+
+
+class HealthCheckRequest(BaseModel):
+    name: str
+    url: str
+    interval: int = 5
+    verify_tls: bool = False
+
+
+@app.post("/api/tools/dns")
+async def api_tools_dns(req: DnsRequest, request: Request):
+    request.state.audit_detail = f"{req.type} {req.name[:80]} @ {req.server[:40]}"
+    try:
+        return await asyncio.to_thread(nettools.dns_lookup, req.name, req.type, req.server)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/tools/traceroute")
+async def api_tools_traceroute(req: TracerouteRequest, request: Request):
+    request.state.audit_detail = req.host[:80]
+    try:
+        return await asyncio.to_thread(nettools.traceroute, req.host)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/health")
+async def api_health():
+    return await asyncio.to_thread(healthchecks.status)
+
+
+@app.post("/api/settings/health")
+async def api_settings_health_add(req: HealthCheckRequest, request: Request):
+    request.state.audit_detail = f"{req.name[:40]} · {req.url[:100]}"
+    try:
+        item = await asyncio.to_thread(healthchecks.add_check, req.name, req.url, req.interval, req.verify_tls)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await healthchecks.run_check(item)
+    return await asyncio.to_thread(healthchecks.status)
+
+
+@app.post("/api/settings/health/{check_id}/delete")
+async def api_settings_health_delete(check_id: str):
+    await asyncio.to_thread(healthchecks.remove_check, check_id)
+    return await asyncio.to_thread(healthchecks.status)
+
+
+@app.post("/api/settings/health/{check_id}/run")
+async def api_settings_health_run(check_id: str):
+    check = next((c for c in healthchecks.checks() if c["id"] == check_id), None)
+    if not check:
+        raise HTTPException(status_code=404, detail="Prüfung nicht gefunden.")
+    await healthchecks.run_check(check)
+    return await asyncio.to_thread(healthchecks.status)
+
+
+@app.get("/api/actions")
+async def api_actions():
+    return await asyncio.to_thread(actions.list_actions)
+
+
+@app.post("/api/actions/{action_id}/run")
+async def api_actions_run(action_id: str, request: Request):
+    request.state.audit_detail = action_id[:100]
+    try:
+        return await asyncio.to_thread(actions.run_action, action_id, request.state.user)
+    except (ValueError, RuntimeError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/actions/runs/{run_id}")
+async def api_actions_get_run(run_id: str, offset: int = 0):
+    try:
+        return actions.get_run(run_id, max(0, offset))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/api/actions/runs/{run_id}/stop")
+async def api_actions_stop(run_id: str):
+    try:
+        return actions.stop_run(run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @app.get("/api/tools/activity")
 async def api_tools_activity(q: str = "", category: str = "", limit: int = 200, before: int = 0):
     return await asyncio.to_thread(audit.entries, q, category, limit, before)
@@ -872,6 +974,26 @@ async def api_history(range: str = "24h", iface: str = ""):
 @app.get("/api/history/interfaces")
 async def api_history_interfaces():
     return {"interfaces": await asyncio.to_thread(monitor.interfaces)}
+
+
+@app.get("/api/monitor/hogs")
+async def api_monitor_hogs(hours: int = 24):
+    return await asyncio.to_thread(monitor.resource_hogs, 168 if hours > 24 else 24)
+
+
+@app.get("/api/sensors")
+async def api_sensors():
+    return await asyncio.to_thread(sensors.read_all)
+
+
+@app.get("/api/sensors/history")
+async def api_sensors_history(hours: int = 24):
+    return await asyncio.to_thread(monitor.sensor_history, 168 if hours > 24 else 24)
+
+
+@app.get("/api/monitor/usage")
+async def api_monitor_usage(iface: str = ""):
+    return await asyncio.to_thread(monitor.data_usage, iface[:32])
 
 
 @app.get("/api/monitor/throttle")

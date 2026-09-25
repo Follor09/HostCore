@@ -11,6 +11,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
   <title>Einstellungen | PiCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,9 +48,11 @@
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#konto" class="active">Konto</a>
       <a href="#sprache">Sprache</a>
+      <a href="#darstellung">Darstellung</a>
       <a href="#wetter">Wetter</a>
       <a href="#dienste">Dienste</a>
       <a href="#wake-on-lan">Wake-on-LAN</a>
+      <a href="#web-dienste">Web-Dienste</a>
       <a href="#auto-update">Auto-Update</a>
       <a href="#verlauf">Verlauf</a>
       <a href="#system">System</a>
@@ -117,6 +120,17 @@
         </div>
       </section>
 
+      <!-- Darstellung -->
+      <section class="glass-card settings-section" id="darstellung">
+        <h2>Darstellung</h2>
+        <p class="section-desc">Hell, dunkel oder automatisch passend zur Einstellung deines Geräts. Wird in diesem Browser gespeichert.</p>
+        <div class="segmented" id="theme-switch" role="radiogroup" aria-label="Design">
+          <button data-theme="auto">Automatisch</button>
+          <button data-theme="dark">Dunkel</button>
+          <button data-theme="light">Hell</button>
+        </div>
+      </section>
+
       <!-- Wetter -->
       <section class="glass-card settings-section" id="wetter">
         <h2>Wetter</h2>
@@ -158,6 +172,37 @@
           </label>
           <button type="submit" class="btn-primary">Hinzufügen</button>
         </form>
+      </section>
+
+      <!-- Web-Dienste -->
+      <section class="glass-card settings-section" id="web-dienste">
+        <h2>Web-Dienste</h2>
+        <p class="section-desc">Eigene Dienste im Heimnetz oder VPN, deren Erreichbarkeit der Pi regelmäßig prüft (z.B. Home Assistant, NAS, Grafana). Jede Antwort unter HTTP 400 zählt als erreichbar – auch eine Login-Seite.</p>
+        <div class="wol-settings-list" id="health-settings-list"></div>
+        <form class="inline-form wol-add" id="health-form" autocomplete="off">
+          <label class="login-field grow">
+            <span>Name</span>
+            <input type="text" id="health-name" maxlength="40" placeholder="Home Assistant" required>
+          </label>
+          <label class="login-field grow">
+            <span>Adresse</span>
+            <input type="text" id="health-url" placeholder="http://192.168.178.45:8123" spellcheck="false" required>
+          </label>
+          <label class="login-field">
+            <span>Intervall</span>
+            <select id="health-interval">
+              <option value="1">1 Minute</option>
+              <option value="5" selected>5 Minuten</option>
+              <option value="15">15 Minuten</option>
+            </select>
+          </label>
+          <label class="toggle-label health-tls">
+            <input type="checkbox" id="health-tls">
+            Zertifikat prüfen
+          </label>
+          <button type="submit" class="btn-primary">Hinzufügen</button>
+        </form>
+        <p class="field-hint">Ohne „Zertifikat prüfen“ werden auch selbst-signierte HTTPS-Zertifikate akzeptiert (üblich im Heimnetz).</p>
       </section>
 
       <!-- Auto-Update -->

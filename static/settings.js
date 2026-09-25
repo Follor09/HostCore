@@ -197,6 +197,77 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Web services (health checks)
+  // ---------------------------------------------------------------------------
+  function renderHealthSettings(h) {
+    const list = $('health-settings-list');
+    list.innerHTML = '';
+    if (!h.checks.length) {
+      const p = document.createElement('p');
+      p.className = 'field-hint';
+      p.textContent = 'Noch keine Dienste.';
+      list.appendChild(p);
+    }
+    h.checks.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'wol-item';
+      const main = document.createElement('div');
+      main.className = 'workload-main';
+      const n = document.createElement('span');
+      n.className = 'workload-name';
+      n.textContent = c.name;
+      n.setAttribute('data-no-i18n', '');
+      const sub = document.createElement('span');
+      sub.className = 'workload-sub';
+      const state = !c.last ? 'Noch nicht geprüft' : c.last.ok ? `OK (HTTP ${c.last.status}, ${Math.round(c.last.ms)} ms)` : c.last.error;
+      sub.textContent = `${c.url} · alle ${c.interval} Min.${c.verify_tls ? ' · Zertifikat geprüft' : ''} · ${state}`;
+      main.append(n, sub);
+      const run = document.createElement('button');
+      run.className = 'btn-secondary';
+      run.textContent = 'Jetzt prüfen';
+      run.addEventListener('click', async () => {
+        run.disabled = true;
+        try { renderHealthSettings(await api(`/api/settings/health/${encodeURIComponent(c.id)}/run`, {})); }
+        catch (err) { toast(err.message, 'error'); run.disabled = false; }
+      });
+      const del = document.createElement('button');
+      del.className = 'btn-danger';
+      del.textContent = 'Entfernen';
+      confirmClick(del, 'Sicher?', async () => {
+        try {
+          renderHealthSettings(await api(`/api/settings/health/${encodeURIComponent(c.id)}/delete`, {}));
+          toast(`${c.name} entfernt.`, 'success');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+      const actions = document.createElement('div');
+      actions.className = 'item-actions';
+      actions.append(run, del);
+      item.append(main, actions);
+      list.appendChild(item);
+    });
+  }
+
+  async function addHealthCheck(e) {
+    e.preventDefault();
+    const btn = e.submitter || $('health-form').querySelector('button');
+    btn.disabled = true;
+    try {
+      renderHealthSettings(await api('/api/settings/health', {
+        name: $('health-name').value, url: $('health-url').value,
+        interval: +$('health-interval').value, verify_tls: $('health-tls').checked
+      }));
+      ['health-name', 'health-url'].forEach(id => { $(id).value = ''; });
+      toast('Dienst hinzugefügt und geprüft.', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
   async function saveServices() {
@@ -312,6 +383,18 @@
       }
     });
 
+    $('health-form').addEventListener('submit', addHealthCheck);
+    const syncTheme = () => document.querySelectorAll('#theme-switch button').forEach(b => {
+      const on = window.PiTheme && b.dataset.theme === window.PiTheme.choice();
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+    document.querySelectorAll('#theme-switch button').forEach(b => {
+      b.setAttribute('role', 'radio');
+      b.addEventListener('click', () => { window.PiTheme && window.PiTheme.set(b.dataset.theme); syncTheme(); });
+    });
+    syncTheme();
+    api('/api/health').then(renderHealthSettings).catch(() => {});
     $('wol-form').addEventListener('submit', async e => {
       e.preventDefault();
       try {

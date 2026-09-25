@@ -34,7 +34,6 @@
     }],
     weather: ['Wetter-Ort ändern', 'stadt city', () => { scrollTo('[data-widget=weather]'); click('#weather-city-btn')(); }],
     customize: ['Dashboard anpassen', 'layout karten ausblenden reihenfolge', () => window.PiLayout && window.PiLayout.edit()],
-    theme: ['Design umschalten', 'theme farbe hell dunkel', click('#btn-theme-toggle')],
     fullscreen: ['Vollbild', 'kiosk fullscreen', click('#btn-fullscreen')]
   };
   const HISTORY_METRICS = [['cpu', 'CPU'], ['temp', 'Temperatur'], ['ram', 'RAM'], ['net', 'Netzwerk'], ['fan', 'Lüfter'], ['power', 'Leistung'], ['nvme', 'NVMe']];
@@ -68,14 +67,20 @@
     const section = (path, prefix, list) => list.forEach(([hash, label, keywords]) =>
       cmds.push({ id: `sec:${path}#${hash}`, label: `${t(prefix)} › ${t(label)}`, raw: true, group: 'Bereiche', keywords, href: `${path}#${hash}` }));
     section('/system', 'System-Werkzeuge', [
-      ['netzwerk', 'Netzwerk', 'ip wlan ports gateway dns'], ['firewall', 'Firewall', 'ufw regeln port blockieren'],
+      ['netzwerk', 'Netzwerk', 'ip wlan gateway dns interfaces'], ['datenverbrauch', 'Datenverbrauch', 'traffic monat tag daten usage'],
+      ['dns', 'DNS & Traceroute', 'nslookup dig mx txt route hops'], ['geraete', 'Geräte im Netzwerk', 'lan scan netzwerk geräte mac'],
+      ['port-check', 'Port-Check', 'ports offen erreichbar test'], ['firewall', 'Firewall', 'ufw regeln port blockieren'],
       ['ssh', 'SSH-Anmeldungen', 'login fail2ban angriffe gesperrt'], ['hardware', 'Hardware', 'modell seriennummer bootloader pcie usb'],
-      ['cpu-modus', 'CPU-Modus', 'governor takt leistung sparsam'], ['leistungstest', 'Leistungstest', 'benchmark speed test nvme'],
-      ['logs', 'Log-Suche', 'journal journalctl fehler'], ['aufraeumen', 'Speicher aufräumen', 'cleanup cache platz']
+      ['sensoren', 'Sensoren', 'temperatur spannung pmic rp1 volt'], ['ressourcen', 'Ressourcen-Verbrauch', 'prozesse cpu ram programme hogs'],
+      ['verfuegbarkeit', 'Verfügbarkeit', 'uptime ausfall dienste'], ['drosselung', 'Drosselung', 'throttling unterspannung hitze netzteil'],
+      ['luefterkurve', 'Lüfterkurve', 'fan lüfter temperatur leise'], ['cpu-modus', 'CPU-Modus', 'governor takt leistung sparsam'],
+      ['leistungstest', 'Leistungstest', 'benchmark speed test nvme'], ['logs', 'Log-Suche', 'journal journalctl fehler'],
+      ['aufraeumen', 'Speicher aufräumen', 'cleanup cache platz'], ['aktivitaet', 'Aktivität', 'audit protokoll wer was log']
     ]);
     section('/settings', 'Einstellungen', [
-      ['konto', 'Konto', 'passwort sitzung account'], ['sprache', 'Sprache', 'language english deutsch'], ['wetter', 'Wetter', 'ort stadt'],
-      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['auto-update', 'Auto-Update', 'github token git'],
+      ['konto', 'Konto', 'passwort sitzung account'], ['sprache', 'Sprache', 'language english deutsch'],
+      ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
+      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['auto-update', 'Auto-Update', 'github token git'],
       ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
     ]);
 
@@ -86,6 +91,9 @@
     const other = window.I18N && window.I18N.lang === 'en' ? 'de' : 'en';
     cmds.push({ id: 'lang', label: other === 'en' ? 'Sprache: English' : 'Language: Deutsch', raw: true, group: 'Aktionen',
       keywords: 'sprache language english deutsch', run: () => window.I18N && window.I18N.setLang(other) });
+    [['auto', 'Design: Automatisch'], ['light', 'Design: Hell'], ['dark', 'Design: Dunkel']].forEach(([mode, label]) =>
+      cmds.push({ id: `theme:${mode}`, label, group: 'Aktionen', keywords: 'theme design farbe hell dunkel light dark modus',
+        run: () => window.PiTheme && window.PiTheme.set(mode) }));
     cmds.push({ id: 'logout', label: 'Abmelden', group: 'Aktionen', keywords: 'logout ausloggen',
       run: async () => { try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* ignore */ } location.href = '/login'; } });
 
@@ -95,6 +103,10 @@
         const name = tile.dataset.name || tile.textContent.trim().split('\n')[0];
         cmds.push({ id: `svc:${name}`, label: `${t('Dienst')}: ${t(name)}`, raw: true, group: 'Dienste',
           keywords: 'service starten stoppen neustart log', run: () => tile.click() });
+      });
+      ((window.PiActions && window.PiActions.list()) || []).forEach(a => {
+        cmds.push({ id: `act:${a.id}`, label: `${t('Schnellaktion')}: ${a.name}`, raw: true, group: 'Aktionen',
+          keywords: `skript script ${a.id} ${a.description || ''}`, run: () => window.PiActions.run(a.id) });
       });
       document.querySelectorAll('.wol-item').forEach(item => {
         const name = item.querySelector('.workload-name')?.textContent || '';

@@ -893,12 +893,12 @@
   }
 
   function renderUptime(u) {
-    const list = $('uptime-list');
+    const list = $('avail-list');
     list.innerHTML = '';
     const span = u.now - u.since;
     u.services.forEach(svc => {
-      const row = el('div', 'uptime-row');
-      const head = el('div', 'uptime-head');
+      const row = el('div', 'avail-row');
+      const head = el('div', 'avail-head');
       head.appendChild(el('span', 'workload-name', svc.name));
       const pct = svc.uptime;
       // Never active in the whole range: not installed / switched off on purpose, not an outage
@@ -909,11 +909,11 @@
       row.appendChild(head);
 
       // Timeline: one segment per period, gaps show the "no data" background
-      const bar = el('div', 'uptime-bar');
+      const bar = el('div', 'avail-bar');
       bar.setAttribute('role', 'img');
       bar.setAttribute('aria-label', `${svc.name}: ${pct == null ? 'Keine Daten' : pct + '%'}`);
       svc.periods.forEach(p => {
-        const seg = el('span', `uptime-seg ${p.status}`);
+        const seg = el('span', `avail-seg ${p.status}`);
         seg.style.left = `${Math.max(0, (p.start - u.since) / span * 100)}%`;
         seg.style.width = `${Math.max(0.3, (p.end - p.start) / span * 100)}%`;
         seg.title = `${STATUS_LABEL[p.status] || p.status}: ${fmtTime(p.start)} – ${fmtTime(p.end)} (${fmtDuration(p.end - p.start)})`;
@@ -921,17 +921,17 @@
       });
       row.appendChild(bar);
 
-      const axis = el('div', 'uptime-axis');
+      const axis = el('div', 'avail-axis');
       axis.append(el('span', '', fmtTime(u.since)), el('span', '', 'Jetzt'));
       row.appendChild(axis);
 
       if (svc.outages.length && !neverUp) {
         const last = svc.outages[0];
-        const det = el('details', 'uptime-outages');
+        const det = el('details', 'avail-outages');
         det.appendChild(el('summary', '',
           `${svc.outages.length}× nicht aktiv · zuletzt ${fmtTime(last.start)} (${fmtDuration(last.duration)})`));
         svc.outages.slice(0, 10).forEach(o => {
-          det.appendChild(el('div', 'uptime-outage',
+          det.appendChild(el('div', 'avail-outage',
             `${STATUS_LABEL[o.status] || o.status}: ${fmtTime(o.start)} – ${fmtTime(o.end)} · ${fmtDuration(o.duration)}`));
         });
         row.appendChild(det);
@@ -1187,6 +1187,322 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Small inline charts
+  // ---------------------------------------------------------------------------
+  // Bar sparkline: one bar per value (null = no data), scaled to max
+  function sparkBars(values, color, max, title) {
+    const w = 120, h = 26;
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('class', 'sparkline');
+    svg.setAttribute('role', 'img');
+    if (title) svg.setAttribute('aria-label', title);
+    const top = max || Math.max(...values.filter(v => v != null), 1e-9);
+    const bw = w / values.length;
+    values.forEach((v, i) => {
+      if (v == null || !top) return;
+      const bh = Math.max(1, v / top * (h - 2));
+      svg.appendChild(svgEl('rect', { x: i * bw + 0.5, y: h - bh, width: Math.max(1, bw - 1), height: bh, fill: color, rx: 1 }));
+    });
+    return svg;
+  }
+
+  function sparkLine(points, color, title) {
+    const w = 140, h = 30;
+    const svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('class', 'sparkline');
+    svg.setAttribute('role', 'img');
+    if (title) svg.setAttribute('aria-label', title);
+    const vals = points.map(p => p.avg);
+    if (vals.length < 2) return svg;
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+    const t0 = points[0].ts, t1 = points[points.length - 1].ts || t0 + 1;
+    const d = points.map((p, i) => `${i ? 'L' : 'M'}${((p.ts - t0) / (t1 - t0 || 1) * (w - 2) + 1).toFixed(1)},${(h - 3 - (p.avg - lo) / span * (h - 6)).toFixed(1)}`).join('');
+    svg.appendChild(svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': 1.6, 'stroke-linejoin': 'round' }));
+    return svg;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resource hogs
+  // ---------------------------------------------------------------------------
+  let hogHours = 24;
+
+  function renderHogs(r) {
+    const fmtMb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
+    const table = (id, items, cols, spark) => {
+      const t = $(id);
+      t.innerHTML = '';
+      const head = t.createTHead().insertRow();
+      ['Programm', ...cols.map(c => c[0]), 'Verlauf'].forEach(h => head.appendChild(el('th', '', h)));
+      const body = t.createTBody();
+      items.slice(0, 10).forEach(i => {
+        const row = body.insertRow();
+        const name = row.insertCell();
+        name.className = 'wrap';
+        name.textContent = i.label;
+        name.setAttribute('data-no-i18n', '');
+        if (i.processes > 1) name.append(' ', el('span', 'health-tag', `${i.processes}×`));
+        cols.forEach(c => { row.insertCell().textContent = c[1](i); });
+        row.insertCell().appendChild(spark(i));
+      });
+      if (!items.length) {
+        const c = body.insertRow().insertCell();
+        c.colSpan = cols.length + 2;
+        c.textContent = 'Noch keine Messwerte – der erste kommt nach einer Minute.';
+      }
+    };
+    table('hogs-cpu', r.by_cpu, [
+      ['Ø CPU', i => `${i.cpu_avg.toFixed(1)}%`],
+      ['Spitze', i => `${i.cpu_max.toFixed(0)}%`],
+      ['CPU-Zeit', i => (i.cpu_minutes >= 60 ? `${(i.cpu_minutes / 60).toFixed(1)} Std.` : `${i.cpu_minutes.toFixed(1)} Min.`)]
+    ], i => sparkBars(i.cpu_series, 'var(--accent-cyan)', null, 'CPU-Verlauf'));  // each row on its own scale: shows *when*
+    table('hogs-ram', r.by_ram, [
+      ['Ø RAM', i => fmtMb(i.rss_avg)],
+      ['Maximum', i => fmtMb(i.rss_max)]
+    ], i => sparkBars(i.rss_series, 'var(--accent-violet)', null, 'RAM-Verlauf'));
+    $('hogs-hint').textContent = r.minutes
+      ? `${r.minutes} Messungen · CPU in % der gesamten CPU (alle Kerne) · CPU-Zeit = Minuten volle Auslastung eines ganzen Pi`
+      : '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sensors
+  // ---------------------------------------------------------------------------
+  const SENSOR_GROUPS = [['temp', 'Temperaturen'], ['volt', 'Spannungen & Ströme'], ['fan', 'Lüfter'], ['power', 'Leistung'], ['status', 'Status']];
+  let sensorHistory = null;
+
+  function renderSensors(r) {
+    const box = $('sensor-groups');
+    box.innerHTML = '';
+    if (!r.supported) {
+      $('sensor-hint').textContent = 'Keine Sensoren gefunden (nur auf Linux / Raspberry Pi).';
+      $('sensors-live').hidden = true;
+      return;
+    }
+    $('sensor-hint').textContent = '';
+    SENSOR_GROUPS.forEach(([group, title]) => {
+      const items = r.sensors.filter(x => x.group === group);
+      if (!items.length) return;
+      box.appendChild(el('h3', 'subhead', title));
+      const grid = el('div', 'sensor-grid');
+      items.forEach(x => {
+        const card = el('div', 'sensor-card');
+        const head = el('div', 'sensor-head');
+        head.appendChild(el('span', 'sensor-label', x.label));
+        let valueText, level = '';
+        if (group === 'status') {
+          valueText = x.value ? 'Ja' : 'Nein';
+          level = x.value ? 'critical' : 'good';
+        } else {
+          valueText = `${String(x.value).replace('.', LOCALE.startsWith('de') ? ',' : '.')} ${x.unit}`;
+          if (group === 'temp') level = x.value >= 80 ? 'critical' : x.value >= 70 ? 'warning' : '';
+          if (x.rail === 'EXT5V') level = x.value < 4.8 ? 'critical' : x.value < 4.95 ? 'warning' : '';
+        }
+        const value = el('span', `sensor-value ${level}`, valueText);
+        card.append(head, value);
+        const extra = [];
+        if (x.amp != null) extra.push(`${x.amp.toFixed(3)} A`);
+        if (x.watt != null) extra.push(`${x.watt.toFixed(2)} W`);
+        if (x.crit) extra.push(`kritisch ab ${x.crit} °C`);
+        if (extra.length) card.appendChild(el('span', 'sensor-sub', extra.join(' · ')));
+        const hist = sensorHistory && sensorHistory.series[x.id];
+        if (hist && hist.length > 1) {
+          const lo = Math.min(...hist.map(p => p.min)), hi = Math.max(...hist.map(p => p.max));
+          card.appendChild(sparkLine(hist, group === 'temp' ? 'var(--accent-amber)' : 'var(--accent-cyan)', `${x.label}: 24 Std.`));
+          card.appendChild(el('span', 'sensor-sub', `24 Std.: ${lo.toFixed(group === 'volt' ? 2 : 1)} – ${hi.toFixed(group === 'volt' ? 2 : 1)} ${x.unit}`));
+        }
+        grid.appendChild(card);
+      });
+      box.appendChild(grid);
+    });
+  }
+
+  async function refreshSensors() {
+    if (document.hidden) return;
+    try {
+      cache.sensors = await api('/api/sensors');
+      renderSensors(cache.sensors);
+    } catch (e) { /* keep last values */ }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Data usage
+  // ---------------------------------------------------------------------------
+  function drawUsageChart(r) {
+    const box = $('usage-chart'), svg = box.querySelector('svg'), tip = box.querySelector('.history-tooltip');
+    svg.innerHTML = '';
+    tip.hidden = true;
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W) return;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const n = 30;
+    const byDay = new Map(r.days.map(d => [d.day, d]));
+    const days = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      days.push({ key, date: d, ...(byDay.get(key) || { rx: null, tx: null }) });
+    }
+    const max = Math.max(...days.map(d => Math.max(d.rx || 0, d.tx || 0)), 1);
+    // Round axis in the unit shown
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let u = 0; while (max / Math.pow(1024, u + 1) >= 1 && u < 4) u++;
+    const div = Math.pow(1024, u);
+    const raw = max / div / 4, exp = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / exp;
+    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
+    const top = Math.ceil(max / div / step) * step;
+    const pad = { l: 58, r: 8, t: 10, b: 24 }, iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const y = v => pad.t + ih - v / div / top * ih;
+    for (let t = 0; t <= top + step / 2; t += step) {
+      svg.appendChild(svgEl('line', { x1: pad.l, x2: pad.l + iw, y1: y(t * div), y2: y(t * div), class: 'grid-line' }));
+      const l = svgEl('text', { x: pad.l - 8, y: y(t * div) + 3, 'text-anchor': 'end', class: 'axis-label' });
+      l.textContent = t ? `${+t.toFixed(2)} ${units[u]}` : '0';
+      svg.appendChild(l);
+    }
+    const slot = iw / n, bw = Math.max(1, Math.min(9, (slot - 3) / 2));
+    const bar = (x, v, color, i) => {
+      if (!v) return;
+      const h = Math.max(1, y(0) - y(v)), rad = Math.min(3, bw / 2, h);
+      const y0 = y(0) - h;
+      svg.appendChild(svgEl('path', { d: `M${x},${y0 + h}V${y0 + rad}Q${x},${y0} ${x + rad},${y0}H${x + bw - rad}Q${x + bw},${y0} ${x + bw},${y0 + rad}V${y0 + h}Z`, fill: color, class: 'bar', 'data-i': i }));
+    };
+    days.forEach((d, i) => {
+      const cx = pad.l + (i + 0.5) * slot;
+      bar(cx - bw - 1, d.rx, 'var(--chart-down)', i);   // 2px gap between the pair
+      bar(cx + 1, d.tx, 'var(--chart-up)', i);
+      if ((n - 1 - i) % 5 === 0) {
+        const l = svgEl('text', { x: cx, y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });
+        l.textContent = d.date.toLocaleDateString(LOCALE, { day: 'numeric', month: 'numeric' });
+        svg.appendChild(l);
+      }
+    });
+    svg.onpointermove = evt => {
+      const i = Math.floor((evt.clientX - svg.getBoundingClientRect().left - pad.l) / slot);
+      const d = days[i];
+      if (!d) { svg.onpointerleave(); return; }
+      svg.querySelectorAll('.bar').forEach(b => b.classList.toggle('dim', +b.dataset.i !== i));
+      tip.innerHTML = '';
+      tip.appendChild(el('div', 'tt-time', d.date.toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'numeric' })));
+      [['Empfangen', d.rx, 'var(--chart-down)'], ['Gesendet', d.tx, 'var(--chart-up)']].forEach(([label, v, c]) => {
+        const row = el('div', 'tt-row');
+        const key = el('span', 'line-key');
+        key.style.setProperty('--key-color', c);
+        row.append(key, el('b', '', v == null ? '–' : fmtBytes(v)), document.createTextNode(label));
+        tip.appendChild(row);
+      });
+      tip.hidden = false;
+      const cx = pad.l + (i + 0.5) * slot;
+      tip.style.left = `${cx + 14 + tip.offsetWidth > W ? cx - 14 - tip.offsetWidth : cx + 14}px`;
+    };
+    svg.onpointerleave = () => { svg.querySelectorAll('.bar.dim').forEach(b => b.classList.remove('dim')); tip.hidden = true; };
+  }
+
+  function renderUsage(r) {
+    const select = $('usage-iface');
+    if (select.options.length === 1) {
+      r.interfaces.forEach(i => { const o = el('option', '', i); o.value = i; select.appendChild(o); });
+      select.value = r.iface;
+    }
+    benchValues($('usage-stats'), [
+      ['Heute empfangen', fmtBytes(r.today.rx)], ['Heute gesendet', fmtBytes(r.today.tx)],
+      ['Monat empfangen', fmtBytes(r.month.rx)], ['Monat gesendet', fmtBytes(r.month.tx)]
+    ]);
+    drawUsageChart(r);
+    const t = $('usage-months');
+    t.innerHTML = '';
+    const head = t.createTHead().insertRow();
+    ['Monat', 'Empfangen', 'Gesendet', 'Gesamt'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = t.createTBody();
+    [...r.months].reverse().forEach(m => {
+      const row = body.insertRow();
+      const [yy, mm] = m.month.split('-');
+      [new Date(+yy, +mm - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' }), fmtBytes(m.rx), fmtBytes(m.tx), fmtBytes(m.rx + m.tx)]
+        .forEach(v => { row.insertCell().textContent = v; });
+    });
+    if (!r.months.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 4;
+      c.textContent = 'Noch keine Daten – die Zählung beginnt jetzt.';
+    }
+    $('usage-hint').textContent = r.since ? `Gezählt seit ${new Date(`${r.since}T12:00:00`).toLocaleDateString(LOCALE)}.` : '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // DNS & traceroute
+  // ---------------------------------------------------------------------------
+  async function runDns(e) {
+    e.preventDefault();
+    const custom = $('dns-server').value === 'custom';
+    const status = $('dns-status');
+    status.textContent = 'Frage an…';
+    try {
+      const r = await api('/api/tools/dns', {
+        name: $('dns-name').value, type: $('dns-type').value, server: custom ? $('dns-custom').value : $('dns-server').value
+      });
+      status.textContent = `${r.rcode} · ${r.ms} ms · Server ${r.server}${r.authoritative ? ' · autoritativ' : ''}`;
+      status.className = `field-hint ${r.ok ? '' : 'warn-text'}`;
+      const t = $('dns-results');
+      t.innerHTML = '';
+      const head = t.createTHead().insertRow();
+      ['Typ', 'Wert', 'TTL', 'Name'].forEach(h => head.appendChild(el('th', '', h)));
+      const body = t.createTBody();
+      r.answers.forEach(a => {
+        const row = body.insertRow();
+        row.insertCell().textContent = a.type;
+        const v = row.insertCell();
+        v.className = 'wrap mono';
+        v.textContent = a.value;
+        v.setAttribute('data-no-i18n', '');
+        row.insertCell().textContent = `${a.ttl} s`;
+        const n = row.insertCell();
+        n.textContent = a.name;
+        n.setAttribute('data-no-i18n', '');
+      });
+      if (!r.answers.length) {
+        const c = body.insertRow().insertCell();
+        c.colSpan = 4;
+        c.textContent = 'Keine Einträge dieses Typs.';
+      }
+      $('dns-wrap').hidden = false;
+    } catch (err) {
+      status.textContent = err.message;
+      status.className = 'field-hint warn-text';
+    }
+  }
+
+  async function runTrace(e) {
+    e.preventDefault();
+    const btn = e.submitter || $('trace-form').querySelector('button');
+    const status = $('trace-status');
+    btn.disabled = true;
+    status.textContent = 'Läuft – das kann bis zu 30 Sekunden dauern…';
+    try {
+      const r = await api('/api/tools/traceroute', { host: $('trace-host').value });
+      status.textContent = `${r.host}${r.target !== r.host ? ` (${r.target})` : ''} · ${r.hops.length} Stationen · ${r.reached ? 'Ziel erreicht' : 'Ziel nicht erreicht'} · ${r.seconds} s · ${r.tool}`;
+      const t = $('trace-results');
+      t.innerHTML = '';
+      const head = t.createTHead().insertRow();
+      ['#', 'Adresse', 'Name', 'Zeit'].forEach(h => head.appendChild(el('th', '', h)));
+      const body = t.createTBody();
+      r.hops.forEach(h => {
+        const row = body.insertRow();
+        row.insertCell().textContent = h.hop;
+        row.insertCell().textContent = h.ip || '*';
+        const n = row.insertCell();
+        n.className = 'wrap';
+        n.textContent = h.name || (h.ip ? '–' : 'keine Antwort');
+        row.insertCell().textContent = h.ms != null ? `${h.ms} ms` : '–';
+      });
+      $('trace-wrap').hidden = false;
+    } catch (err) {
+      status.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
@@ -1202,7 +1518,9 @@
     throttle: ['/api/monitor/throttle?days=30', renderThrottle],
     lan: ['/api/tools/lan', renderLan],
     ports: ['/api/tools/ports', renderPorts],
-    fan: ['/api/tools/fan-curve', renderFanCurve]
+    fan: ['/api/tools/fan-curve', renderFanCurve],
+    hogs: ['/api/monitor/hogs?hours=24', renderHogs],
+    usage: ['/api/monitor/usage', renderUsage]
   };
 
   async function load(key) {
@@ -1252,9 +1570,26 @@
     $('activity-form').addEventListener('submit', e => { e.preventDefault(); loadActivity(); });
     $('activity-more').addEventListener('click', () => loadActivity(true));
     loadActivity();
-    document.querySelectorAll('#uptime-range button').forEach(b => b.addEventListener('click', () => {
+    // Sensors: history once, live values every 5 s while the page is open
+    api('/api/sensors/history').then(h => { sensorHistory = h; return refreshSensors(); }).catch(() => refreshSensors());
+    setInterval(refreshSensors, 5000);
+    document.querySelectorAll('#hogs-range button').forEach(b => b.addEventListener('click', () => {
+      hogHours = +b.dataset.hours;
+      document.querySelectorAll('#hogs-range button').forEach(x => x.classList.toggle('active', x === b));
+      LOADERS.hogs[0] = `/api/monitor/hogs?hours=${hogHours}`;
+      load('hogs');
+    }));
+    $('usage-iface').addEventListener('change', () => {
+      LOADERS.usage[0] = `/api/monitor/usage?iface=${encodeURIComponent($('usage-iface').value)}`;
+      load('usage');
+    });
+    new ResizeObserver(() => cache.usage && drawUsageChart(cache.usage)).observe($('usage-chart'));
+    $('dns-server').addEventListener('change', () => { $('dns-custom').hidden = $('dns-server').value !== 'custom'; });
+    $('dns-form').addEventListener('submit', runDns);
+    $('trace-form').addEventListener('submit', runTrace);
+    document.querySelectorAll('#avail-range button').forEach(b => b.addEventListener('click', () => {
       uptimeDays = +b.dataset.days;
-      document.querySelectorAll('#uptime-range button').forEach(x => x.classList.toggle('active', x === b));
+      document.querySelectorAll('#avail-range button').forEach(x => x.classList.toggle('active', x === b));
       LOADERS.uptime[0] = `/api/monitor/uptime?days=${uptimeDays}`;
       load('uptime');
     }));

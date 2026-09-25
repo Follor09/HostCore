@@ -1553,19 +1553,13 @@
       });
     }
 
-    if (els.btnThemeToggle) {
+    if (els.btnThemeToggle && window.PiTheme) {
+      const THEME_LABEL = { auto: 'Design: Automatisch (wie das Gerät)', light: 'Design: Hell', dark: 'Design: Dunkel' };
+      const syncThemeTitle = () => { els.btnThemeToggle.title = THEME_LABEL[window.PiTheme.choice()]; };
+      syncThemeTitle();
       els.btnThemeToggle.addEventListener('click', () => {
-        if (state.theme === 'cyber') {
-          document.body.classList.remove('theme-cyber');
-          document.body.classList.add('theme-solar');
-          state.theme = 'solar';
-          showToast('Design: Solar Cyber aktiviert');
-        } else {
-          document.body.classList.remove('theme-solar');
-          document.body.classList.add('theme-cyber');
-          state.theme = 'cyber';
-          showToast('Design: Neon Cyber aktiviert');
-        }
+        showToast(THEME_LABEL[window.PiTheme.cycle()]);
+        syncThemeTitle();
       });
     }
 
@@ -2844,7 +2838,7 @@
   window.fetch = async (...args) => {
     const res = await nativeFetch(...args);
     // The notes card is private even in public view: it shows its own hint instead
-    if (res.status === 401 && !/^\/api\/(auth\/|notes)/.test(String(args[0]))) location.href = '/login';
+    if (res.status === 401 && !/^\/api\/(auth\/|notes|actions)/.test(String(args[0]))) location.href = '/login';
     return res;
   };
 

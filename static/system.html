@@ -11,6 +11,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
   <title>System-Werkzeuge | PiCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,11 +44,15 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#netzwerk" class="active">Netzwerk</a>
+      <a href="#datenverbrauch">Datenverbrauch</a>
+      <a href="#dns">DNS &amp; Traceroute</a>
       <a href="#geraete">Geräte im Netzwerk</a>
       <a href="#port-check">Port-Check</a>
       <a href="#firewall">Firewall</a>
       <a href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
+      <a href="#sensoren">Sensoren</a>
+      <a href="#ressourcen">Ressourcen</a>
       <a href="#verfuegbarkeit">Verfügbarkeit</a>
       <a href="#drosselung">Drosselung</a>
       <a href="#luefterkurve">Lüfterkurve</a>
@@ -75,6 +80,69 @@
           Container- &amp; Loopback-Schnittstellen anzeigen
         </label>
         <p class="field-hint">Offene Ports und ihre Erreichbarkeit: <a class="text-btn" href="#port-check">Port-Check</a></p>
+      </section>
+
+      <!-- Datenverbrauch -->
+      <section class="glass-card settings-section" id="datenverbrauch">
+        <div class="section-head">
+          <h2>Datenverbrauch</h2>
+          <select id="usage-iface" class="inline-select" aria-label="Schnittstelle">
+            <option value="">LAN + WLAN</option>
+          </select>
+        </div>
+        <p class="section-desc">Wie viel der Pi empfangen und gesendet hat – pro Tag und Monat. VPN-Verkehr läuft zusätzlich über LAN/WLAN und ist deshalb nur einzeln wählbar.</p>
+        <div class="bench-values ssh-stats" id="usage-stats"></div>
+        <div class="nvme-chart-head">
+          <h4 class="nvme-chart-title">Pro Tag (30 Tage)</h4>
+          <div class="chart-legend">
+            <span><i class="bar-key down"></i>Empfangen</span>
+            <span><i class="bar-key up"></i>Gesendet</span>
+          </div>
+        </div>
+        <div class="history-chart nvme-chart usage-chart" id="usage-chart">
+          <svg role="img" aria-label="Datenverbrauch pro Tag"></svg>
+          <div class="history-tooltip" hidden></div>
+        </div>
+        <h3 class="subhead">Pro Monat</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="usage-months"></table>
+        </div>
+        <p class="field-hint" id="usage-hint"></p>
+      </section>
+
+      <!-- DNS & Traceroute -->
+      <section class="glass-card settings-section" id="dns">
+        <h2>DNS &amp; Traceroute</h2>
+        <p class="section-desc">Namen auflösen (auch MX, TXT …) und den Weg zu einem Host verfolgen.</p>
+        <h3 class="subhead">DNS-Abfrage</h3>
+        <form class="log-filters" id="dns-form">
+          <input type="text" id="dns-name" placeholder="Name oder IP, z.B. github.com" autocomplete="off" spellcheck="false" aria-label="Name" required>
+          <select id="dns-type" aria-label="Typ">
+            <option>A</option><option>AAAA</option><option>CNAME</option><option>MX</option><option>TXT</option><option>NS</option><option>PTR</option>
+          </select>
+          <select id="dns-server" aria-label="DNS-Server">
+            <option value="system">System-DNS</option>
+            <option value="cloudflare">Cloudflare (1.1.1.1)</option>
+            <option value="google">Google (8.8.8.8)</option>
+            <option value="quad9">Quad9 (9.9.9.9)</option>
+            <option value="custom">Eigener Server…</option>
+          </select>
+          <input type="text" id="dns-custom" class="short" placeholder="IP des Servers" autocomplete="off" aria-label="Eigener DNS-Server" hidden>
+          <button type="submit" class="btn-primary">Abfragen</button>
+        </form>
+        <p class="field-hint" id="dns-status"></p>
+        <div class="table-scroll" id="dns-wrap" hidden>
+          <table class="data-table" id="dns-results"></table>
+        </div>
+        <h3 class="subhead">Traceroute</h3>
+        <form class="log-filters" id="trace-form">
+          <input type="text" id="trace-host" placeholder="Host oder IP, z.B. 1.1.1.1" autocomplete="off" spellcheck="false" aria-label="Host" required>
+          <button type="submit" class="btn-primary">Starten</button>
+        </form>
+        <p class="field-hint" id="trace-status"></p>
+        <div class="table-scroll" id="trace-wrap" hidden>
+          <table class="data-table" id="trace-results"></table>
+        </div>
       </section>
 
       <!-- Geräte im Netzwerk -->
@@ -224,12 +292,44 @@
         <div class="iface-list" id="hw-usb"></div>
       </section>
 
+      <!-- Sensoren -->
+      <section class="glass-card settings-section" id="sensoren">
+        <div class="section-head">
+          <h2>Sensoren</h2>
+          <span class="health-tag" id="sensors-live">live</span>
+        </div>
+        <p class="section-desc">Alle Temperaturen, Spannungen und Ströme, die der Pi meldet. Die Kurven zeigen die letzten 24 Stunden.</p>
+        <div id="sensor-groups"></div>
+        <p class="field-hint" id="sensor-hint"></p>
+      </section>
+
+      <!-- Ressourcen -->
+      <section class="glass-card settings-section" id="ressourcen">
+        <div class="section-head">
+          <h2>Ressourcen-Verbrauch</h2>
+          <div class="segmented" id="hogs-range" role="tablist" aria-label="Zeitraum">
+            <button class="active" data-hours="24">24 Std.</button>
+            <button data-hours="168">7 Tage</button>
+          </div>
+        </div>
+        <p class="section-desc">Welche Programme über die Zeit am meisten CPU und Arbeitsspeicher brauchen – nicht nur gerade jetzt. Einmal pro Minute gemessen.</p>
+        <h3 class="subhead">CPU</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="hogs-cpu"></table>
+        </div>
+        <h3 class="subhead">Arbeitsspeicher</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="hogs-ram"></table>
+        </div>
+        <p class="field-hint" id="hogs-hint"></p>
+      </section>
+
       <!-- Verfügbarkeit -->
       <section class="glass-card settings-section" id="verfuegbarkeit">
         <div class="section-head">
           <h2>Verfügbarkeit</h2>
           <div class="head-tools">
-            <div class="segmented" id="uptime-range" role="tablist" aria-label="Zeitraum">
+            <div class="segmented" id="avail-range" role="tablist" aria-label="Zeitraum">
               <button data-days="1">24 Std.</button>
               <button class="active" data-days="7">7 Tage</button>
               <button data-days="30">30 Tage</button>
@@ -237,13 +337,13 @@
           </div>
         </div>
         <p class="section-desc">Wie lange jeder Dienst aktiv war – gemessen jede Minute, solange das Dashboard läuft.</p>
-        <div class="chart-legend uptime-legend">
-          <span><i class="uptime-key active"></i>Aktiv</span>
-          <span><i class="uptime-key inactive"></i>Inaktiv</span>
-          <span><i class="uptime-key error"></i>Fehler</span>
-          <span><i class="uptime-key unknown"></i>Keine Daten</span>
+        <div class="chart-legend avail-legend">
+          <span><i class="avail-key active"></i>Aktiv</span>
+          <span><i class="avail-key inactive"></i>Inaktiv</span>
+          <span><i class="avail-key error"></i>Fehler</span>
+          <span><i class="avail-key unknown"></i>Keine Daten</span>
         </div>
-        <div class="uptime-list" id="uptime-list"></div>
+        <div class="avail-list" id="avail-list"></div>
       </section>
 
       <!-- Drosselung -->

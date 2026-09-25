@@ -13,7 +13,7 @@
     clock: 'Uhrzeit & Betriebszeit', weather: 'Wetter', services: 'Server-Dienste',
     cpu: 'CPU-Auslastung', temp: 'CPU-Temperatur', ram: 'Arbeitsspeicher', disk: 'Speicher & NVMe',
     network: 'Netzwerk', fan: 'Lüfter', power: 'Stromversorgung', updates: 'System-Updates', wol: 'Wake-on-LAN',
-    notes: 'Notizen', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
+    notes: 'Notizen', actions: 'Schnellaktionen', health: 'Web-Dienste', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
   };
 
   let layout = { order: {}, hidden: [] };
