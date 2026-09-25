@@ -43,7 +43,8 @@
 
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
-      <a href="#netzwerk" class="active">Netzwerk</a>
+      <a href="#ereignisse" class="active">Ereignisse</a>
+      <a href="#netzwerk">Netzwerk</a>
       <a href="#datenverbrauch">Datenverbrauch</a>
       <a href="#dns">DNS &amp; Traceroute</a>
       <a href="#geraete">Geräte im Netzwerk</a>
@@ -51,6 +52,7 @@
       <a href="#firewall">Firewall</a>
       <a href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
+      <a href="#speicherprognose">Speicherprognose</a>
       <a href="#sensoren">Sensoren</a>
       <a href="#ressourcen">Ressourcen</a>
       <a href="#verfuegbarkeit">Verfügbarkeit</a>
@@ -64,6 +66,37 @@
     </nav>
 
     <div class="settings-sections">
+      <!-- Ereignisse -->
+      <section class="glass-card settings-section" id="ereignisse">
+        <div class="section-head">
+          <h2>Ereignisse</h2>
+          <a class="text-btn" href="/report">Wochenbericht →</a>
+        </div>
+        <p class="section-desc">Alles Wichtige der letzten Tage in einer Zeitleiste: Ausfälle und Erholung von Diensten, Drosselung, fehlgeschlagene Anmeldungen, Updates, Neustarts, neue Geräte.</p>
+        <form class="log-filters" id="events-form">
+          <select id="events-days" aria-label="Zeitraum">
+            <option value="1">Letzte 24 Std.</option>
+            <option value="7" selected>Letzte 7 Tage</option>
+            <option value="30">Letzte 30 Tage</option>
+          </select>
+          <select id="events-level" aria-label="Schweregrad">
+            <option value="">Alle Ereignisse</option>
+            <option value="problems">Nur Probleme</option>
+            <option value="critical">Nur kritische</option>
+          </select>
+          <select id="events-category" aria-label="Bereich">
+            <option value="">Alle Bereiche</option>
+            <option value="services">Dienste</option>
+            <option value="hardware">Hardware</option>
+            <option value="security">Sicherheit</option>
+            <option value="changes">Änderungen</option>
+            <option value="network">Netzwerk</option>
+            <option value="system">System</option>
+          </select>
+        </form>
+        <p class="field-hint" id="events-summary"></p>
+        <ol class="event-list event-list-full" id="events-all"></ol>
+      </section>
       <!-- Netzwerk -->
       <section class="glass-card settings-section" id="netzwerk">
         <div class="section-head">
@@ -292,6 +325,15 @@
         <div class="iface-list" id="hw-usb"></div>
       </section>
 
+      <!-- Speicherprognose -->
+      <section class="glass-card settings-section" id="speicherprognose">
+        <h2>Speicherprognose</h2>
+        <p class="section-desc">Wie schnell sich die Laufwerke füllen – aus dem täglichen Füllstand hochgerechnet (letzte 30 Tage). Ordnergrößen werden einmal täglich mit niedriger Priorität gemessen.</p>
+        <div class="forecast-list" id="forecast-list"></div>
+        <div class="forecast-growth" id="forecast-growth"></div>
+        <p class="field-hint" id="forecast-hint"></p>
+      </section>
+
       <!-- Sensoren -->
       <section class="glass-card settings-section" id="sensoren">
         <div class="section-head">
@@ -489,7 +531,9 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
+  <script src="/static/overview.js"></script>
   <script src="/static/system.js"></script>
+  <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>
   <script src="/static/footer.js"></script>

@@ -1,5 +1,6 @@
 """
-Read-only file explorer + storage analysis for mounted drives.
+File explorer + storage analysis for mounted drives: browse, preview, download,
+upload (where the dashboard user may write) and temporary share links.
 
 Runs with the dashboard user's permissions (no sudo): whatever that user can't read
 stays hidden. On top of that a denylist keeps secrets out of reach even when they are
@@ -10,6 +11,8 @@ Every path is resolved with realpath first, so symlinks can't sneak around the c
 
 import heapq
 import os
+import re
+import secrets
 import stat
 import subprocess
 import time
@@ -27,6 +30,8 @@ SCAN_TIME_LIMIT = 60  # seconds for "largest files"
 DENIED = [os.path.realpath(p) for p in (
     os.path.join(BASE_DIR, "auth.json"),
     os.path.join(BASE_DIR, "settings.json"),
+    os.path.join(BASE_DIR, "history.db"),          # activity + login log
+    os.path.join(BASE_DIR, "history.db-journal"),
     os.path.join(BASE_DIR, ".git"),
     os.path.join(HOME, ".ssh"),
     os.path.join(HOME, ".kube"),
@@ -185,3 +190,128 @@ def download_path(path: str) -> str:
     if not os.access(real, os.R_OK):
         raise FileAccessError("Keine Leserechte für diese Datei.")
     return real
+
+
+
+# ---------------------------------------------------------------------------
+# Preview
+# ---------------------------------------------------------------------------
+PREVIEW_BYTES = 1024 * 1024
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+               ".webp": "image/webp", ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif"}
+# SVG is deliberately not an image here: it can carry scripts, so it is shown as text
+
+
+def image_type(real: str) -> Optional[str]:
+    return IMAGE_TYPES.get(os.path.splitext(real)[1].lower())
+
+
+def preview(path: str) -> Dict[str, Any]:
+    real = download_path(path)
+    size = os.path.getsize(real)
+    info = {"path": real, "name": os.path.basename(real), "size": size, "mtime": int(os.path.getmtime(real))}
+    if image_type(real):
+        return {**info, "kind": "image"}
+    with open(real, "rb") as f:
+        head = f.read(PREVIEW_BYTES)
+    if b"\x00" in head[:8192]:
+        return {**info, "kind": "binary"}
+    text = head.decode("utf-8", errors="replace")
+    if size > PREVIEW_BYTES:
+        text = text[:text.rfind("\n") + 1] or text  # don't end mid-line
+    return {**info, "kind": "text", "content": text, "truncated": size > PREVIEW_BYTES}
+
+
+# ---------------------------------------------------------------------------
+# Upload
+# ---------------------------------------------------------------------------
+MAX_UPLOAD = 4 * 1024 ** 3        # 4 GB per file
+FREE_RESERVE = 200 * 1024 ** 2    # never fill the disk completely
+
+
+def upload_target(directory: str, name: str, overwrite: bool, size: Optional[int]) -> str:
+    real_dir = resolve(directory)
+    if not os.path.isdir(real_dir):
+        raise FileAccessError("Kein Ordner.")
+    if not os.access(real_dir, os.W_OK | os.X_OK):
+        raise FileAccessError("Keine Schreibrechte in diesem Ordner.")
+    name = (name or "").strip()
+    if not name or name in (".", "..") or "/" in name or "\\" in name or "\x00" in name or len(name.encode()) > 255:
+        raise FileAccessError("Ungültiger Dateiname.")
+    target = os.path.join(real_dir, name)
+    if is_denied(os.path.realpath(target)):
+        raise FileAccessError("Dieser Pfad ist aus Sicherheitsgründen gesperrt.")
+    if os.path.lexists(target):
+        if os.path.isdir(target) or os.path.islink(target):
+            raise FileAccessError("Dort gibt es schon einen Ordner oder Link mit diesem Namen.")
+        if not overwrite:
+            raise FileExistsError(name)
+    if size is not None:
+        if size > MAX_UPLOAD:
+            raise FileAccessError("Datei zu groß (max. 4 GB).")
+        if size > shutil_free(real_dir) - FREE_RESERVE:
+            raise FileAccessError("Nicht genug freier Speicher.")
+    return target
+
+
+def shutil_free(path: str) -> int:
+    st = os.statvfs(path)
+    return st.f_bavail * st.f_frsize
+
+
+# ---------------------------------------------------------------------------
+# Share links
+# ---------------------------------------------------------------------------
+SHARE_HOURS = (1, 24, 168)
+
+
+def _shares() -> Dict[str, Dict[str, Any]]:
+    import settings_store
+    items = settings_store.get("shares", {}) or {}
+    now = time.time()
+    live = {t: s for t, s in items.items() if s.get("expires", 0) > now}
+    if len(live) != len(items):
+        settings_store.set("shares", live)
+    return live
+
+
+def create_share(path: str, hours: int, user: str) -> Dict[str, Any]:
+    import settings_store
+    real = download_path(path)
+    if hours not in SHARE_HOURS:
+        raise FileAccessError("Gültigkeit muss 1 Std., 24 Std. oder 7 Tage sein.")
+    shares = _shares()
+    if len(shares) >= 50:
+        raise FileAccessError("Zu viele aktive Freigaben (max. 50) – alte zuerst beenden.")
+    token = secrets.token_urlsafe(24)
+    shares[token] = {"path": real, "name": os.path.basename(real), "size": os.path.getsize(real),
+                     "created": int(time.time()), "expires": int(time.time() + hours * 3600),
+                     "user": user or "", "downloads": 0}
+    settings_store.set("shares", shares)
+    return {"token": token, **shares[token]}
+
+
+def list_shares() -> List[Dict[str, Any]]:
+    return sorted(({"token": t, **s} for t, s in _shares().items()), key=lambda s: -s["created"])
+
+
+def delete_share(token: str) -> None:
+    import settings_store
+    shares = _shares()
+    shares.pop(token, None)
+    settings_store.set("shares", shares)
+
+
+def shared_file(token: str) -> Dict[str, Any]:
+    """The file behind a share link - checked again on every download."""
+    import settings_store
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", token or ""):
+        raise FileAccessError("Link ungültig.")
+    shares = _shares()
+    share = shares.get(token)
+    if not share:
+        raise FileAccessError("Link abgelaufen oder ungültig.")
+    real = download_path(share["path"])   # still on a drive, not blocked, readable
+    share["downloads"] = share.get("downloads", 0) + 1
+    settings_store.set("shares", shares)
+    return {**share, "path": real}

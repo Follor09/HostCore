@@ -378,6 +378,11 @@ class Monitor:
                     logger.warning(f"Monitor {name} sample failed: {e}")
             if now - self.last_cleanup > 3600:
                 self.last_cleanup = now
+                try:
+                    import insights
+                    insights.disk_snapshot()
+                except Exception as e:
+                    logger.warning(f"Disk snapshot failed: {e}")
                 cutoff = now - RETENTION_DAYS * 86400
                 conn.execute("DELETE FROM throttle_events WHERE end < ?", (cutoff,))
                 conn.execute("DELETE FROM service_periods WHERE end < ?", (cutoff,))

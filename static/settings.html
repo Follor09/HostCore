@@ -53,6 +53,8 @@
       <a href="#dienste">Dienste</a>
       <a href="#wake-on-lan">Wake-on-LAN</a>
       <a href="#web-dienste">Web-Dienste</a>
+      <a href="#links">Eigene Links</a>
+      <a href="#freigaben">Freigaben</a>
       <a href="#auto-update">Auto-Update</a>
       <a href="#verlauf">Verlauf</a>
       <a href="#system">System</a>
@@ -123,11 +125,20 @@
       <!-- Darstellung -->
       <section class="glass-card settings-section" id="darstellung">
         <h2>Darstellung</h2>
-        <p class="section-desc">Hell, dunkel oder automatisch passend zur Einstellung deines Geräts. Wird in diesem Browser gespeichert.</p>
+        <p class="section-desc">Hell, dunkel oder automatisch passend zur Einstellung deines Geräts, dazu eine Akzentfarbe. Wird in diesem Browser gespeichert.</p>
         <div class="segmented" id="theme-switch" role="radiogroup" aria-label="Design">
           <button data-theme="auto">Automatisch</button>
           <button data-theme="dark">Dunkel</button>
           <button data-theme="light">Hell</button>
+        </div>
+        <h3 class="subhead">Akzentfarbe</h3>
+        <div class="accent-swatches" id="accent-switch" role="radiogroup" aria-label="Akzentfarbe">
+          <button class="accent-swatch" data-accent="cyan" style="--swatch:#00c8d7"><i></i>Cyan</button>
+          <button class="accent-swatch" data-accent="green" style="--swatch:#10b981"><i></i>Grün</button>
+          <button class="accent-swatch" data-accent="violet" style="--swatch:#8b5cf6"><i></i>Violett</button>
+          <button class="accent-swatch" data-accent="orange" style="--swatch:#f97316"><i></i>Orange</button>
+          <button class="accent-swatch" data-accent="pink" style="--swatch:#ec4899"><i></i>Pink</button>
+          <button class="accent-swatch" data-accent="blue" style="--swatch:#3b82f6"><i></i>Blau</button>
         </div>
       </section>
 
@@ -205,6 +216,31 @@
         <p class="field-hint">Ohne „Zertifikat prüfen“ werden auch selbst-signierte HTTPS-Zertifikate akzeptiert (üblich im Heimnetz).</p>
       </section>
 
+      <!-- Eigene Links -->
+      <section class="glass-card settings-section" id="links">
+        <h2>Eigene Links</h2>
+        <p class="section-desc">Links zu deinen Diensten (Home Assistant, Router, Grafana …). Sie erscheinen oben im Dashboard unter „Links“ und in der Suche (Strg+K) – auf allen Geräten.</p>
+        <div class="wol-settings-list" id="links-list"></div>
+        <form class="inline-form wol-add" id="links-form" autocomplete="off">
+          <label class="login-field grow">
+            <span>Name</span>
+            <input type="text" id="link-name" maxlength="30" placeholder="Home Assistant" required>
+          </label>
+          <label class="login-field grow">
+            <span>Adresse</span>
+            <input type="text" id="link-url" placeholder="http://192.168.178.45:8123" spellcheck="false" required>
+          </label>
+          <button type="submit" class="btn-primary">Hinzufügen</button>
+        </form>
+      </section>
+
+      <!-- Freigaben -->
+      <section class="glass-card settings-section" id="freigaben">
+        <h2>Freigabe-Links</h2>
+        <p class="section-desc">Aktive Download-Links für einzelne Dateien (erstellt in der Datei-Vorschau). Jeder mit dem Link kann die Datei ohne Anmeldung laden, bis der Link abläuft oder du ihn beendest.</p>
+        <div class="wol-settings-list" id="shares-list"></div>
+      </section>
+
       <!-- Auto-Update -->
       <section class="glass-card settings-section" id="auto-update">
         <h2>Auto-Update</h2>
@@ -238,6 +274,7 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
   <script src="/static/settings.js"></script>
+  <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>
   <script src="/static/footer.js"></script>

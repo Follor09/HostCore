@@ -1503,6 +1503,95 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Events (full list)
+  // ---------------------------------------------------------------------------
+  async function loadAllEvents() {
+    const days = $('events-days').value, level = $('events-level').value, cat = $('events-category').value;
+    try {
+      const r = await api(`/api/events?days=${days}`);
+      const list = $('events-all');
+      list.innerHTML = '';
+      const shown = r.events.filter(e => (!cat || e.category === cat)
+        && (!level || (level === 'critical' ? e.level === 'critical' : ['warning', 'critical'].includes(e.level))));
+      shown.forEach(e => list.appendChild(window.PiOverview.eventItem(e)));
+      if (!shown.length) list.appendChild(el('li', 'notes-empty', 'Keine Ereignisse für diesen Filter.'));
+      const c = r.counts;
+      $('events-summary').textContent = `${r.total} Ereignisse · ${c.critical} kritisch · ${c.warning} Warnungen · ${c.good} erholt`;
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Disk forecast
+  // ---------------------------------------------------------------------------
+  function renderForecast(f) {
+    const list = $('forecast-list');
+    list.innerHTML = '';
+    f.mounts.forEach(m => {
+      const card = el('div', 'forecast-card');
+      const head = el('div', 'forecast-head');
+      head.appendChild(el('span', 'workload-name', m.mount === '/' ? 'System (/)' : m.mount));
+      let tag;
+      if (m.days_left != null) {
+        const lvl = m.days_left < 30 ? 'critical' : m.days_left < 180 ? 'warning' : 'good';
+        tag = el('span', `health-tag ${lvl}`, m.days_left > 3650 ? 'voll in > 10 Jahren' : `voll in ~${m.days_left} Tagen`);
+      } else if (m.per_day != null) {
+        tag = el('span', 'health-tag good', 'kein nennenswerter Zuwachs');
+      } else {
+        tag = el('span', 'health-tag', `Sammle Daten (${m.days_tracked}/3 Tage)`);
+      }
+      head.appendChild(tag);
+      card.appendChild(head);
+      const bar = el('div', 'progress-bar-bg');
+      const fill = el('div', `progress-bar-fill fill-emerald ${m.percent > 85 ? 'danger' : m.percent > 70 ? 'warn' : ''}`);
+      fill.style.width = `${m.percent || 0}%`;
+      bar.appendChild(fill);
+      card.appendChild(bar);
+      const sub = [`${fmtBytes(m.used)} von ${fmtBytes(m.total)} belegt (${m.percent}%)`, `${fmtBytes(m.free)} frei`];
+      if (m.per_day != null) sub.push(m.per_day >= 0 ? `+${fmtBytes(m.per_day)} pro Tag` : `${fmtBytes(-m.per_day)} weniger pro Tag`);
+      card.appendChild(el('span', 'workload-sub', sub.join(' · ')));
+      if (m.history.length > 1) {
+        card.appendChild(sparkLine(m.history.map(h => ({ ts: Date.parse(`${h.day}T12:00:00`) / 1000, avg: h.used })),
+          'var(--accent-cyan)', `${m.mount}: Füllstand`));
+      }
+      list.appendChild(card);
+    });
+    if (!f.mounts.length) list.appendChild(emptyRow('Noch keine Daten – der erste Tageswert wird innerhalb einer Stunde gespeichert.'));
+
+    const growth = $('forecast-growth');
+    growth.innerHTML = '';
+    const folderTable = (title, rows, withDelta) => {
+      growth.appendChild(el('h3', 'subhead', title));
+      const wrap = el('div', 'table-scroll');
+      const t = el('table', 'data-table');
+      const head = t.createTHead().insertRow();
+      ['Ordner', 'Größe', ...(withDelta ? ['Zuwachs'] : [])].forEach(h => head.appendChild(el('th', '', h)));
+      const body = t.createTBody();
+      rows.forEach(r => {
+        const row = body.insertRow();
+        const p = row.insertCell();
+        p.textContent = r.path;
+        p.setAttribute('data-no-i18n', '');
+        row.insertCell().textContent = fmtBytes(r.kb * 1024);
+        if (withDelta) {
+          const d = row.insertCell();
+          d.appendChild(el('span', `health-tag ${r.delta_kb > 0 ? 'warning' : 'good'}`,
+            `${r.delta_kb > 0 ? '+' : '−'}${fmtBytes(Math.abs(r.delta_kb) * 1024)}${r.new ? ' (neu)' : ''}`));
+        }
+      });
+      wrap.appendChild(t);
+      growth.appendChild(wrap);
+    };
+    if (f.growth.week && f.growth.week.folders.length) folderTable('Am stärksten gewachsen – letzte 7 Tage', f.growth.week.folders, true);
+    if (f.growth.month && f.growth.month.folders.length) folderTable('Am stärksten gewachsen – letzte 30 Tage', f.growth.month.folders, true);
+    if (f.top_folders.length) folderTable('Größte Ordner', f.top_folders, false);
+    $('forecast-hint').textContent = f.folders_day
+      ? `Ordnergrößen vom ${new Date(`${f.folders_day}T12:00:00`).toLocaleDateString(LOCALE)} (nur Ordner ab 50 MB, ohne Inhalte, die dein Benutzer nicht lesen darf).`
+      : 'Ordnergrößen werden das erste Mal innerhalb einer Stunde gemessen.';
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
@@ -1520,7 +1609,8 @@
     ports: ['/api/tools/ports', renderPorts],
     fan: ['/api/tools/fan-curve', renderFanCurve],
     hogs: ['/api/monitor/hogs?hours=24', renderHogs],
-    usage: ['/api/monitor/usage', renderUsage]
+    usage: ['/api/monitor/usage', renderUsage],
+    forecast: ['/api/disk-forecast', renderForecast]
   };
 
   async function load(key) {
@@ -1586,6 +1676,8 @@
     new ResizeObserver(() => cache.usage && drawUsageChart(cache.usage)).observe($('usage-chart'));
     $('dns-server').addEventListener('change', () => { $('dns-custom').hidden = $('dns-server').value !== 'custom'; });
     $('dns-form').addEventListener('submit', runDns);
+    ['events-days', 'events-level', 'events-category'].forEach(id => $(id).addEventListener('change', loadAllEvents));
+    loadAllEvents();
     $('trace-form').addEventListener('submit', runTrace);
     document.querySelectorAll('#avail-range button').forEach(b => b.addEventListener('click', () => {
       uptimeDays = +b.dataset.days;

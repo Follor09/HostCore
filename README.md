@@ -131,6 +131,21 @@ Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder die Lupe oben rechts ein
 
 Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit + Datum), Link zum Quellcode sowie Hinweise zu Open-Meteo (Wetterdaten, CC BY 4.0), xterm.js (MIT) und den Schriften (SIL OFL). Der Name steht in `static/footer.js` (`OWNER`).
 
+### 📋 Überblick
+
+- **Statusleiste** oben im Dashboard: „Alles in Ordnung“ – oder genau, was Aufmerksamkeit braucht (Dienst mit Fehler, Web-Dienst nicht erreichbar, Laufwerk fast voll / bald voll, zu heiß, Unterspannung, NVMe-Verschleiß, Sicherheitsupdates, Dashboard-Update). Ein Klick springt an die richtige Stelle.
+- **Ereignisse:** Zeitleiste (Karte auf dem Dashboard, komplett unter System-Werkzeuge → Ereignisse) mit Ausfällen und Erholung von Diensten, Drosselung, fehlgeschlagenen Anmeldungen (Dashboard + SSH), Updates, Neustarts und neuen Geräten.
+- **Speicherprognose:** „voll in ~N Tagen“ aus dem täglichen Füllstand, dazu die am stärksten gewachsenen Ordner (7 / 30 Tage). Ordnergrößen misst der Pi einmal täglich mit niedrigster Priorität (`du`).
+- **Wochenbericht** (`/report`): die letzten 7 Tage auf einer Seite – Kennzahlen, Verfügbarkeit, Drosselung, Speicher, Top-Programme, Änderungen, neue Geräte. „Drucken / PDF“ erzeugt eine saubere Druckansicht.
+
+### 📁 Dateien
+
+Im Datei-Browser (Laufwerk → „Öffnen“): **Hochladen** per Button oder Drag & Drop (nur wo dein Benutzer schreiben darf, max. 4 GB, bestehende Dateien werden nur nach Rückfrage überschrieben), **Vorschau** für Text/Logs/Configs (mit Suche) und Bilder, **Teilen** als Download-Link für 1 Std., 24 Std. oder 7 Tage – funktioniert ohne Anmeldung für alle, die den Pi erreichen. Aktive Links unter Einstellungen → Freigaben. Gesperrte Dateien (Login, Tokens, SSH-Schlüssel, Aktivitätsprotokoll) lassen sich weder ansehen noch teilen.
+
+### 🎨 Personalisieren
+
+Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → Darstellung; Kartenbreite im Anpassen-Modus (Messwert-Karten breit, Verlauf/Container halb); eigene Links (Home Assistant, Router …) unter Einstellungen → Eigene Links – erscheinen oben unter dem Link-Symbol und in der Suche.
+
 ### 🧩 Dashboard anpassen
 
 Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil oder Ziehen umsortieren (innerhalb ihres Bereichs – obere Reihe, Messwerte, untere Reihe – und ganze Bereiche wie „Verlauf“ nach oben/unten) und per Auge ausblenden. Gespeichert pro Browser, „Zurücksetzen“ stellt das Standard-Layout wieder her.

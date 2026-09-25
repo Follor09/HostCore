@@ -13,10 +13,13 @@
     clock: 'Uhrzeit & Betriebszeit', weather: 'Wetter', services: 'Server-Dienste',
     cpu: 'CPU-Auslastung', temp: 'CPU-Temperatur', ram: 'Arbeitsspeicher', disk: 'Speicher & NVMe',
     network: 'Netzwerk', fan: 'Lüfter', power: 'Stromversorgung', updates: 'System-Updates', wol: 'Wake-on-LAN',
-    notes: 'Notizen', actions: 'Schnellaktionen', health: 'Web-Dienste', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
+    notes: 'Notizen', events: 'Ereignisse', actions: 'Schnellaktionen', health: 'Web-Dienste', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
   };
 
-  let layout = { order: {}, hidden: [] };
+  let layout = { order: {}, hidden: [], sizes: {} };
+  // Which cards can change width: metric cards get wider, page sections get half width
+  const SIZE_OPTIONS = { metrics: ['normal', 'wide'], main: ['full', 'half'] };
+  const RESIZABLE_MAIN = ['history', 'workloads'];
   let editing = false;
   let dragged = null;
 
@@ -28,7 +31,8 @@
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
       if (saved && typeof saved === 'object') {
-        layout = { order: saved.order || {}, hidden: Array.isArray(saved.hidden) ? saved.hidden : [] };
+        layout = { order: saved.order || {}, hidden: Array.isArray(saved.hidden) ? saved.hidden : [],
+                   sizes: saved.sizes && typeof saved.sizes === 'object' ? saved.sizes : {} };
       }
     } catch (e) { /* storage unavailable: default layout */ }
   }
@@ -52,7 +56,36 @@
       order.forEach(id => { const w = byId.get(id); if (w) g.insertBefore(w, tail); });
       widgetsOf(g).filter(w => !order.includes(w.dataset.widget)).forEach(w => g.insertBefore(w, tail));
     });
+    applySizes();
     refreshVisibility();
+  }
+
+  function sizeOptions(w) {
+    const group = w.parentElement && w.parentElement.dataset.widgetGroup;
+    if (group === 'metrics') return SIZE_OPTIONS.metrics;
+    if (group === 'main' && RESIZABLE_MAIN.includes(w.dataset.widget)) return SIZE_OPTIONS.main;
+    return null;
+  }
+
+  function applySizes() {
+    document.querySelectorAll('[data-widget]').forEach(w => {
+      const size = layout.sizes[w.dataset.widget];
+      w.classList.toggle('size-wide', size === 'wide');
+      w.classList.toggle('size-half', size === 'half');
+    });
+  }
+
+  function toggleSize(w) {
+    const opts = sizeOptions(w);
+    if (!opts) return;
+    const cur = layout.sizes[w.dataset.widget] || opts[0];
+    const next = opts[(opts.indexOf(cur) + 1) % opts.length];
+    if (next === opts[0]) delete layout.sizes[w.dataset.widget];
+    else layout.sizes[w.dataset.widget] = next;
+    save();
+    applySizes();
+    updateTools();
+    window.dispatchEvent(new Event('resize'));
   }
 
   function refreshVisibility() {
@@ -100,6 +133,7 @@
     up: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>',
     down: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
     eye: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+    width: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M3 12h18"/></svg>',
     eyeOff: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
   };
 
@@ -129,6 +163,7 @@
       toolButton(vertical ? ICONS.up : ICONS.left, vertical ? 'Nach oben' : 'Nach vorne', () => move(w, -1), { 'data-move': '-1' }),
       toolButton(vertical ? ICONS.down : ICONS.right, vertical ? 'Nach unten' : 'Nach hinten', () => move(w, 1), { 'data-move': '1' })
     );
+    if (sizeOptions(w)) bar.append(toolButton(ICONS.width, 'Breite ändern', () => toggleSize(w), { 'data-size': '' }));
     if (!isContainer(w)) bar.append(toolButton(ICONS.eye, 'Ausblenden', () => toggleHidden(w), { 'data-hide': '' }));
     w.prepend(bar);
 
@@ -145,6 +180,15 @@
       const i = siblings.indexOf(w);
       bar.querySelector('[data-move="-1"]').disabled = i === 0;
       bar.querySelector('[data-move="1"]').disabled = i === siblings.length - 1;
+      const sizeBtn = bar.querySelector('[data-size]');
+      if (sizeBtn) {
+        const opts = sizeOptions(w);
+        const cur = layout.sizes[w.dataset.widget] || opts[0];
+        const label = { normal: 'Normal', wide: 'Breit', full: 'Volle Breite', half: 'Halbe Breite' }[cur];
+        sizeBtn.title = `Breite: ${label}`;
+        sizeBtn.setAttribute('aria-label', sizeBtn.title);
+        sizeBtn.setAttribute('aria-pressed', String(cur !== opts[0]));
+      }
       const hide = bar.querySelector('[data-hide]');
       if (hide) {
         const off = w.classList.contains('widget-off');

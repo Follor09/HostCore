@@ -39,6 +39,11 @@ class _Cache:
         self._data[key] = (time.time(), value)
         return value
 
+    def peek(self, key: str) -> Any:
+        """Last value without refreshing (None if never computed)."""
+        hit = self._data.get(key)
+        return hit[1] if hit else None
+
     def invalidate(self, key: str) -> None:
         self._data.pop(key, None)
 

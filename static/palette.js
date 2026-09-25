@@ -67,11 +67,11 @@
     const section = (path, prefix, list) => list.forEach(([hash, label, keywords]) =>
       cmds.push({ id: `sec:${path}#${hash}`, label: `${t(prefix)} › ${t(label)}`, raw: true, group: 'Bereiche', keywords, href: `${path}#${hash}` }));
     section('/system', 'System-Werkzeuge', [
-      ['netzwerk', 'Netzwerk', 'ip wlan gateway dns interfaces'], ['datenverbrauch', 'Datenverbrauch', 'traffic monat tag daten usage'],
+      ['ereignisse', 'Ereignisse', 'events timeline ausfall feed'], ['netzwerk', 'Netzwerk', 'ip wlan gateway dns interfaces'], ['datenverbrauch', 'Datenverbrauch', 'traffic monat tag daten usage'],
       ['dns', 'DNS & Traceroute', 'nslookup dig mx txt route hops'], ['geraete', 'Geräte im Netzwerk', 'lan scan netzwerk geräte mac'],
       ['port-check', 'Port-Check', 'ports offen erreichbar test'], ['firewall', 'Firewall', 'ufw regeln port blockieren'],
       ['ssh', 'SSH-Anmeldungen', 'login fail2ban angriffe gesperrt'], ['hardware', 'Hardware', 'modell seriennummer bootloader pcie usb'],
-      ['sensoren', 'Sensoren', 'temperatur spannung pmic rp1 volt'], ['ressourcen', 'Ressourcen-Verbrauch', 'prozesse cpu ram programme hogs'],
+      ['speicherprognose', 'Speicherprognose', 'disk voll forecast ordner wachstum'], ['sensoren', 'Sensoren', 'temperatur spannung pmic rp1 volt'], ['ressourcen', 'Ressourcen-Verbrauch', 'prozesse cpu ram programme hogs'],
       ['verfuegbarkeit', 'Verfügbarkeit', 'uptime ausfall dienste'], ['drosselung', 'Drosselung', 'throttling unterspannung hitze netzteil'],
       ['luefterkurve', 'Lüfterkurve', 'fan lüfter temperatur leise'], ['cpu-modus', 'CPU-Modus', 'governor takt leistung sparsam'],
       ['leistungstest', 'Leistungstest', 'benchmark speed test nvme'], ['logs', 'Log-Suche', 'journal journalctl fehler'],
@@ -80,7 +80,7 @@
     section('/settings', 'Einstellungen', [
       ['konto', 'Konto', 'passwort sitzung account'], ['sprache', 'Sprache', 'language english deutsch'],
       ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
-      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['auto-update', 'Auto-Update', 'github token git'],
+      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
       ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
     ]);
 
@@ -94,6 +94,11 @@
     [['auto', 'Design: Automatisch'], ['light', 'Design: Hell'], ['dark', 'Design: Dunkel']].forEach(([mode, label]) =>
       cmds.push({ id: `theme:${mode}`, label, group: 'Aktionen', keywords: 'theme design farbe hell dunkel light dark modus',
         run: () => window.PiTheme && window.PiTheme.set(mode) }));
+    ((window.PiLinks && window.PiLinks.list()) || []).forEach(l => cmds.push({
+      id: `link:${l.id}`, label: `${t('Link')}: ${l.name}`, raw: true, group: 'Links', keywords: `link ${l.url}`,
+      run: () => window.open(l.url, '_blank', 'noopener')
+    }));
+    cmds.push({ id: 'page:report', label: 'Wochenbericht', group: 'Seiten', keywords: 'report bericht woche zusammenfassung drucken', href: '/report' });
     cmds.push({ id: 'logout', label: 'Abmelden', group: 'Aktionen', keywords: 'logout ausloggen',
       run: async () => { try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* ignore */ } location.href = '/login'; } });
 
@@ -157,7 +162,7 @@
   // UI
   // ---------------------------------------------------------------------------
   let root, input, list, commands = [], shown = [], active = 0, lastFocus = null;
-  const GROUP_ORDER = ['Zuletzt verwendet', 'Aktionen', 'Seiten', 'Bereiche', 'Dienste', 'Wake-on-LAN', 'Verlauf'];
+  const GROUP_ORDER = ['Zuletzt verwendet', 'Aktionen', 'Links', 'Seiten', 'Bereiche', 'Dienste', 'Wake-on-LAN', 'Verlauf'];
 
   function build() {
     root = document.createElement('div');

@@ -7,6 +7,9 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 import asyncio
 import platform
 import re
+import secrets
+import contextlib
+from html import escape as html_escape
 import time
 from contextlib import asynccontextmanager
 import logging
@@ -40,6 +43,7 @@ import actions
 import nettools
 import healthchecks
 import storage
+import insights
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -49,6 +53,10 @@ logger = logging.getLogger("pi_dashboard")
 async def lifespan(app: FastAPI):
     # Startup: Initial git check & background poller
     updater.refresh_git_info()
+    try:
+        insights.record_start(updater.update_state.get("current_commit", ""))
+    except Exception as e:
+        logger.warning(f"Could not record start: {e}")
     poller_task = asyncio.create_task(updater.background_update_poller())
     await asyncio.to_thread(systools.restore_governor)
     history_task = asyncio.create_task(history.background_sampler())
@@ -89,7 +97,7 @@ async def audit_log(request: Request, call_next):
     """Record changing requests in the activity log (runs inside require_login, so the user is known)."""
     response = await call_next(request)
     path = request.url.path
-    if request.method == "POST" or path == "/api/files/download":
+    if request.method in ("POST", "PUT") or path == "/api/files/download":
         user = getattr(request.state, "audit_user", None) or getattr(request.state, "user", None) or ""
         detail = getattr(request.state, "audit_detail", "")
         if path == "/api/files/download":
@@ -108,15 +116,16 @@ async def require_login(request: Request, call_next):
     user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
     request.state.user = user
 
-    if path.startswith("/static/") or path in PUBLIC_PATHS:
+    if path.startswith(("/static/", "/s/")) or path in PUBLIC_PATHS:
         return await call_next(request)
     # The GitHub webhook authenticates itself via HMAC - but only if a secret is configured
     if path == "/api/webhook/github" and updater.WEBHOOK_SECRET:
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = (path in ("/settings", "/terminal", "/system")
-                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/", "/api/notes", "/api/actions"))
+    always_private = (path in ("/settings", "/terminal", "/system", "/report")
+                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/", "/api/notes", "/api/actions",
+                                         "/api/events", "/api/report", "/api/disk-forecast", "/api/links"))
                       or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
@@ -411,6 +420,89 @@ async def api_files_download(path: str, request: Request):
     return FileResponse(real, filename=os.path.basename(real))
 
 
+class ShareRequest(BaseModel):
+    path: str
+    hours: int = 24
+
+
+@app.get("/api/files/preview")
+async def api_files_preview(path: str):
+    return await _files_call(files.preview, path)
+
+
+@app.get("/api/files/raw")
+async def api_files_raw(path: str):
+    """Images for the preview only - served inline, sandboxed, never HTML/SVG."""
+    real = await _files_call(files.download_path, path)
+    media = files.image_type(real)
+    if not media:
+        raise HTTPException(status_code=400, detail="Keine Bilddatei.")
+    return FileResponse(real, media_type=media, headers={
+        "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-store"})
+
+
+@app.put("/api/files/upload")
+async def api_files_upload(request: Request, dir: str, name: str, overwrite: bool = False):
+    length = request.headers.get("content-length")
+    size = int(length) if length and length.isdigit() else None
+    request.state.audit_detail = f"{dir.rstrip('/')}/{name}"[:250]
+    try:
+        target = await asyncio.to_thread(files.upload_target, dir, name, overwrite, size)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="Eine Datei mit diesem Namen gibt es dort schon.")
+    except files.FileAccessError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Write next to the target first, rename when complete: no half files on abort
+    tmp = os.path.join(os.path.dirname(target), f".{os.path.basename(target)}.upload-{secrets.token_hex(4)}")
+    written = 0
+    try:
+        with open(tmp, "xb") as f:
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > files.MAX_UPLOAD:
+                    raise HTTPException(status_code=413, detail="Datei zu groß (max. 4 GB).")
+                await asyncio.to_thread(f.write, chunk)
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+    logger.info(f"Upload {target} ({written} bytes) by '{request.state.user}'")
+    return {"ok": True, "path": target, "size": written}
+
+
+@app.post("/api/files/share")
+async def api_files_share(req: ShareRequest, request: Request):
+    request.state.audit_detail = f"{req.path[:200]} · {req.hours} Std."
+    return await _files_call(lambda p: files.create_share(p, req.hours, request.state.user), req.path)
+
+
+@app.get("/api/files/shares")
+async def api_files_shares():
+    return {"shares": await asyncio.to_thread(files.list_shares)}
+
+
+@app.post("/api/files/shares/{token}/delete")
+async def api_files_share_delete(token: str):
+    await asyncio.to_thread(files.delete_share, token)
+    return {"shares": await asyncio.to_thread(files.list_shares)}
+
+
+@app.get("/s/{token}")
+async def public_share(token: str, request: Request):
+    """Public download for a share link (no login) - expiry and file checked on every call."""
+    try:
+        share = await asyncio.to_thread(files.shared_file, token)
+    except files.FileAccessError as e:
+        return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Link ungültig</title>"
+                            f"<body style='font-family:sans-serif;padding:40px'><h2>{html_escape(str(e))}</h2>"
+                            f"<p>Bitte bei der Person nachfragen, die dir den Link geschickt hat.</p>", status_code=404)
+    ip = request.client.host if request.client else ""
+    await asyncio.to_thread(audit.record, "Freigabe-Link", ip, "GET", "/s/", 200, share["path"])
+    return FileResponse(share["path"], filename=share["name"])
+
+
 @app.get("/api/nvme/history")
 async def api_nvme_history(days: int = 90):
     return await asyncio.to_thread(history.get_nvme_history, days)
@@ -687,6 +779,57 @@ async def api_settings_health_run(check_id: str):
         raise HTTPException(status_code=404, detail="Prüfung nicht gefunden.")
     await healthchecks.run_check(check)
     return await asyncio.to_thread(healthchecks.status)
+
+
+class LinkRequest(BaseModel):
+    name: str
+    url: str
+
+
+def _links() -> list:
+    return settings_store.get("custom_links", []) or []
+
+
+@app.get("/api/links")
+async def api_links():
+    return {"links": _links()}
+
+
+@app.post("/api/settings/links")
+async def api_settings_links_add(req: LinkRequest, request: Request):
+    name, url = req.name.strip()[:30], req.url.strip()[:500]
+    request.state.audit_detail = f"{name} · {url[:120]}"
+    if not name:
+        raise HTTPException(status_code=400, detail="Bitte einen Namen angeben.")
+    if not re.match(r"^https?://[^\s<>\"']+$", url, re.I):
+        if re.match(r"^[\w.-]+(:\d+)?(/[^\s<>\"']*)?$", url):
+            url = "http://" + url
+        else:
+            raise HTTPException(status_code=400, detail="Adresse muss mit http:// oder https:// beginnen.")
+    links = _links()
+    if len(links) >= 20:
+        raise HTTPException(status_code=400, detail="Höchstens 20 Links.")
+    links.append({"id": secrets.token_hex(5), "name": name, "url": url})
+    settings_store.set("custom_links", links)
+    return {"links": links}
+
+
+@app.post("/api/settings/links/{link_id}/delete")
+async def api_settings_links_delete(link_id: str):
+    links = [l for l in _links() if l["id"] != link_id]
+    settings_store.set("custom_links", links)
+    return {"links": links}
+
+
+@app.post("/api/settings/links/{link_id}/move")
+async def api_settings_links_move(link_id: str, direction: int = -1):
+    links = _links()
+    i = next((n for n, l in enumerate(links) if l["id"] == link_id), None)
+    j = None if i is None else i + (1 if direction > 0 else -1)
+    if i is not None and 0 <= j < len(links):
+        links[i], links[j] = links[j], links[i]
+        settings_store.set("custom_links", links)
+    return {"links": links}
 
 
 @app.get("/api/actions")
@@ -971,6 +1114,11 @@ async def get_index():
     return _serve_page("index.html")
 
 
+@app.get("/report")
+async def get_report_page():
+    return _serve_page("report.html")
+
+
 @app.get("/settings")
 async def get_settings_page():
     return _serve_page("settings.html")
@@ -1027,6 +1175,26 @@ async def api_sensors_history(hours: int = 24):
 @app.get("/api/monitor/usage")
 async def api_monitor_usage(iface: str = ""):
     return await asyncio.to_thread(monitor.data_usage, iface[:32])
+
+
+@app.get("/api/events")
+async def api_events(days: int = 7):
+    return await asyncio.to_thread(insights.events, max(1, min(days, 30)))
+
+
+@app.get("/api/status-summary")
+async def api_status_summary():
+    return await asyncio.to_thread(insights.status_summary)
+
+
+@app.get("/api/disk-forecast")
+async def api_disk_forecast():
+    return await asyncio.to_thread(insights.disk_forecast)
+
+
+@app.get("/api/report")
+async def api_report():
+    return await asyncio.to_thread(insights.weekly_report)
 
 
 @app.get("/api/monitor/throttle")

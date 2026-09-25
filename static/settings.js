@@ -197,6 +197,84 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Custom links + share links
+  // ---------------------------------------------------------------------------
+  function itemRow(title, sub, buttons) {
+    const item = document.createElement('div');
+    item.className = 'wol-item';
+    const main = document.createElement('div');
+    main.className = 'workload-main';
+    const n = document.createElement('span');
+    n.className = 'workload-name';
+    n.textContent = title;
+    n.setAttribute('data-no-i18n', '');
+    const s = document.createElement('span');
+    s.className = 'workload-sub';
+    s.textContent = sub;
+    s.setAttribute('data-no-i18n', '');
+    main.append(n, s);
+    const actions = document.createElement('div');
+    actions.className = 'item-actions';
+    buttons.forEach(b => actions.appendChild(b));
+    item.append(main, actions);
+    return item;
+  }
+
+  function smallButton(label, cls, onClick) {
+    const b = document.createElement('button');
+    b.className = cls;
+    b.textContent = label;
+    if (onClick) b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function renderLinks(links) {
+    const list = $('links-list');
+    list.innerHTML = '';
+    if (!links.length) {
+      const p = document.createElement('p');
+      p.className = 'field-hint';
+      p.textContent = 'Noch keine Links.';
+      list.appendChild(p);
+    }
+    links.forEach((l, i) => {
+      const post = async url => { try { renderLinks((await api(url, {})).links); } catch (err) { toast(err.message, 'error'); } };
+      const up = smallButton('↑', 'btn-secondary', () => post(`/api/settings/links/${l.id}/move?direction=-1`));
+      up.disabled = i === 0;
+      up.title = 'Nach oben';
+      const down = smallButton('↓', 'btn-secondary', () => post(`/api/settings/links/${l.id}/move?direction=1`));
+      down.disabled = i === links.length - 1;
+      down.title = 'Nach unten';
+      const del = smallButton('Entfernen', 'btn-danger');
+      confirmClick(del, 'Sicher?', () => post(`/api/settings/links/${l.id}/delete`));
+      list.appendChild(itemRow(l.name, l.url, [up, down, del]));
+    });
+  }
+
+  function renderShares(shares) {
+    const list = $('shares-list');
+    list.innerHTML = '';
+    if (!shares.length) {
+      const p = document.createElement('p');
+      p.className = 'field-hint';
+      p.textContent = 'Keine aktiven Freigaben.';
+      list.appendChild(p);
+    }
+    shares.forEach(sh => {
+      const until = new Date(sh.expires * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const copy = smallButton('Link kopieren', 'btn-secondary', async () => {
+        const url = `${location.origin}/s/${sh.token}`;
+        try { await navigator.clipboard.writeText(url); toast('Link kopiert.', 'success'); } catch (e) { window.prompt('Link:', url); }
+      });
+      const end = smallButton('Beenden', 'btn-danger');
+      confirmClick(end, 'Sicher?', async () => {
+        try { renderShares((await api(`/api/files/shares/${sh.token}/delete`, {})).shares); } catch (err) { toast(err.message, 'error'); }
+      });
+      list.appendChild(itemRow(sh.name, `${sh.path} · gültig bis ${until} · ${sh.downloads}× geladen`, [copy, end]));
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Web services (health checks)
   // ---------------------------------------------------------------------------
   function renderHealthSettings(h) {
@@ -384,6 +462,18 @@
     });
 
     $('health-form').addEventListener('submit', addHealthCheck);
+    api('/api/links').then(r => renderLinks(r.links)).catch(() => {});
+    api('/api/files/shares').then(r => renderShares(r.shares)).catch(() => {});
+    $('links-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        renderLinks((await api('/api/settings/links', { name: $('link-name').value, url: $('link-url').value })).links);
+        ['link-name', 'link-url'].forEach(id => { $(id).value = ''; });
+        toast('Link hinzugefügt.', 'success');
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
     const syncTheme = () => document.querySelectorAll('#theme-switch button').forEach(b => {
       const on = window.PiTheme && b.dataset.theme === window.PiTheme.choice();
       b.classList.toggle('active', on);
@@ -394,6 +484,13 @@
       b.addEventListener('click', () => { window.PiTheme && window.PiTheme.set(b.dataset.theme); syncTheme(); });
     });
     syncTheme();
+    const syncAccent = () => document.querySelectorAll('#accent-switch button').forEach(b => {
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(window.PiTheme && b.dataset.accent === window.PiTheme.accent()));
+    });
+    document.querySelectorAll('#accent-switch button').forEach(b =>
+      b.addEventListener('click', () => { window.PiTheme && window.PiTheme.setAccent(b.dataset.accent); syncAccent(); }));
+    syncAccent();
     api('/api/health').then(renderHealthSettings).catch(() => {});
     $('wol-form').addEventListener('submit', async e => {
       e.preventDefault();

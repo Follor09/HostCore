@@ -58,10 +58,17 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/settings/health/[^/]+/delete$", "settings", "Web-Dienst-Prüfung entfernt"),
     ("POST", r"^/api/settings/health/[^/]+/run$", "settings", "Web-Dienst geprüft"),
     ("POST", r"^/api/settings/health$", "settings", "Web-Dienst-Prüfung hinzugefügt"),
+    ("POST", r"^/api/settings/links/[^/]+/delete$", "settings", "Eigener Link entfernt"),
+    ("POST", r"^/api/settings/links/[^/]+/move$", "settings", "Eigene Links sortiert"),
+    ("POST", r"^/api/settings/links$", "settings", "Eigener Link hinzugefügt"),
     ("POST", r"^/api/terminal/ticket$", "security", "Terminal freigeschaltet"),
     ("POST", r"^/api/actions/[^/]+/run$", "system", "Schnellaktion ausgeführt"),
     ("POST", r"^/api/actions/runs/[^/]+/stop$", "system", "Schnellaktion gestoppt"),
     ("GET", r"^/api/files/download$", "files", "Datei heruntergeladen"),
+    ("PUT", r"^/api/files/upload$", "files", "Datei hochgeladen"),
+    ("POST", r"^/api/files/share$", "files", "Freigabe-Link erstellt"),
+    ("POST", r"^/api/files/shares/[^/]+/delete$", "files", "Freigabe-Link beendet"),
+    ("GET", r"^/s/$", "files", "Download über Freigabe-Link"),
     ("WS", r"^/ws/terminal$", "security", "Terminal-Sitzung"),
 ]
 # Frequent, harmless requests that would flood the log

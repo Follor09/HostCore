@@ -443,6 +443,7 @@
       const tile = document.createElement('div');
       tile.className = `service-tile ${status}${srv.unit ? ' clickable' : ''}`;
       tile.dataset.name = srv.name;
+      tile.dataset.id = srv.id;
       if (srv.unit) {
         tile.tabIndex = 0;
         tile.setAttribute('role', 'button');
@@ -752,16 +753,6 @@
     return span;
   }
 
-  function downloadLink(path, text) {
-    const a = document.createElement('a');
-    a.className = 'file-name';
-    a.href = `/api/files/download?path=${encodeURIComponent(path)}`;
-    a.setAttribute('download', '');
-    a.textContent = text;
-    a.title = `${path} herunterladen`;
-    return a;
-  }
-
   function fileRow(e, maxSize) {
     const row = document.createElement('div');
     row.className = `file-row ${e.type}${e.locked ? ' locked' : ''}`;
@@ -779,7 +770,11 @@
       name.textContent = e.name + '/';
       name.addEventListener('click', () => openFilesPath(e.path));
     } else if (e.type === 'file') {
-      name = downloadLink(e.path, e.name);
+      name = document.createElement('button');
+      name.className = 'file-name';
+      name.textContent = e.name;
+      name.title = `${e.path}: Vorschau`;
+      name.addEventListener('click', () => openPreview(e.path));
     } else {
       name = document.createElement('span');
       name.className = 'file-name';
@@ -900,6 +895,153 @@
     modal.setAttribute('aria-hidden', 'true');
   }
 
+  // ---- File preview + share links ----
+  const previewState = { path: null, text: '' };
+
+  function previewHighlight() {
+    const pre = document.querySelector('#preview-body pre');
+    if (!pre) return;
+    const q = $('preview-search').value;
+    const text = previewState.text;
+    pre.textContent = '';
+    if (!q) { pre.textContent = text; $('preview-hits').textContent = ''; return; }
+    const lower = text.toLowerCase(), needle = q.toLowerCase();
+    let pos = 0, idx, hits = 0, first = null;
+    while ((idx = lower.indexOf(needle, pos)) !== -1 && hits < 2000) {
+      pre.appendChild(document.createTextNode(text.slice(pos, idx)));
+      const m = document.createElement('mark');
+      m.textContent = text.slice(idx, idx + q.length);
+      pre.appendChild(m);
+      if (!first) first = m;
+      pos = idx + q.length;
+      hits++;
+    }
+    pre.appendChild(document.createTextNode(text.slice(pos)));
+    $('preview-hits').textContent = hits ? `${hits} Treffer` : 'Keine Treffer';
+    if (first) first.scrollIntoView({ block: 'center' });
+  }
+
+  async function openPreview(path) {
+    previewState.path = path;
+    const modal = $('preview-modal');
+    const body = $('preview-body');
+    body.innerHTML = '<p class="field-hint">Lade…</p>';
+    $('preview-title').textContent = path.split('/').pop();
+    $('preview-sub').textContent = path;
+    $('preview-download').href = `/api/files/download?path=${encodeURIComponent(path)}`;
+    $('share-panel').hidden = true;
+    $('share-result').hidden = true;
+    $('preview-search-wrap').hidden = true;
+    $('preview-search').value = '';
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    $('preview-close').focus();
+    try {
+      const p = await filesApi('preview', path);
+      $('preview-sub').textContent = `${fmtSize(p.size)} · ${fmtDate(p.mtime)} · ${p.path}`;
+      body.innerHTML = '';
+      if (p.kind === 'image') {
+        const img = document.createElement('img');
+        img.src = `/api/files/raw?path=${encodeURIComponent(p.path)}`;
+        img.alt = p.name;
+        img.className = 'preview-image';
+        body.appendChild(img);
+      } else if (p.kind === 'text') {
+        previewState.text = p.content;
+        const pre = document.createElement('pre');
+        pre.className = 'preview-text';
+        pre.setAttribute('data-no-i18n', '');
+        pre.textContent = p.content;
+        body.appendChild(pre);
+        $('preview-search-wrap').hidden = false;
+        if (p.truncated) {
+          const note = document.createElement('p');
+          note.className = 'field-hint';
+          note.textContent = 'Nur das erste MB wird angezeigt – für die ganze Datei herunterladen.';
+          body.appendChild(note);
+        }
+      } else {
+        body.innerHTML = '<p class="files-empty">Keine Vorschau für diese Datei (Binärdatei) – bitte herunterladen.</p>';
+      }
+    } catch (err) {
+      body.innerHTML = '';
+      const msg = document.createElement('p');
+      msg.className = 'files-empty';
+      msg.textContent = err.message;
+      body.appendChild(msg);
+    }
+  }
+
+  function closePreview() {
+    const modal = $('preview-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function createShare() {
+    const hours = +(document.querySelector('#share-hours .active')?.dataset.hours || 24);
+    const btn = $('share-create');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/files/share', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: previewState.path, hours })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `Fehler ${res.status}`);
+      $('share-url').value = `${location.origin}/s/${data.token}`;
+      $('share-result').hidden = false;
+      $('share-url').select();
+      showToast(`Link gültig bis ${new Date(data.expires * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ---- Upload (streamed PUT per file, progress via XHR) ----
+  function uploadOne(file, dir, overwrite, row) {
+    return new Promise(resolve => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', `/api/files/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(file.name)}&overwrite=${overwrite ? 1 : 0}`);
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) row.querySelector('.upload-fill').style.width = `${e.loaded / e.total * 100}%`;
+      };
+      xhr.onload = () => {
+        let detail = '';
+        try { detail = JSON.parse(xhr.responseText).detail || ''; } catch (e) { /* ignore */ }
+        resolve({ status: xhr.status, detail });
+      };
+      xhr.onerror = () => resolve({ status: 0, detail: 'Verbindung abgebrochen.' });
+      xhr.send(file);
+    });
+  }
+
+  async function uploadFiles(fileList) {
+    const dir = filesState.path;
+    if (!dir || !fileList.length) return;
+    const box = $('files-uploads');
+    box.hidden = false;
+    for (const file of fileList) {
+      const row = document.createElement('div');
+      row.className = 'upload-row';
+      row.innerHTML = '<span class="upload-name"></span><span class="upload-bar"><span class="upload-fill"></span></span><span class="upload-state">…</span>';
+      row.querySelector('.upload-name').textContent = file.name;
+      box.appendChild(row);
+      let r = await uploadOne(file, dir, false, row);
+      if (r.status === 409 && window.confirm(`„${file.name}“ gibt es dort schon. Überschreiben?`)) {
+        r = await uploadOne(file, dir, true, row);
+      }
+      const ok = r.status === 200;
+      const state = row.querySelector('.upload-state');
+      state.textContent = ok ? `✓ ${fmtSize(file.size)}` : (r.status === 409 ? 'übersprungen' : r.detail || `Fehler ${r.status}`);
+      row.classList.add(ok ? 'done' : 'failed');
+    }
+    openFilesPath(dir);
+    setTimeout(() => { box.querySelectorAll('.upload-row.done').forEach(r => r.remove()); if (!box.children.length) box.hidden = true; }, 6000);
+  }
+
   function initFilesModal() {
     // Drive list is rebuilt on every live update: delegate the "Öffnen" clicks
     els.drivesListContainer.addEventListener('click', e => {
@@ -909,11 +1051,41 @@
     $('files-modal-close').addEventListener('click', closeFilesModal);
     $('files-modal').addEventListener('click', e => { if (e.target.id === 'files-modal') closeFilesModal(); });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && $('files-modal').classList.contains('open')) closeFilesModal();
+      if (e.key !== 'Escape') return;
+      if ($('preview-modal').classList.contains('open')) closePreview();
+      else if ($('files-modal').classList.contains('open')) closeFilesModal();
     });
     $('files-up').addEventListener('click', () => {
       if (filesState.data && filesState.data.parent) openFilesPath(filesState.data.parent);
     });
+    // Upload: button or drag & drop onto the list
+    $('files-upload-btn').addEventListener('click', () => $('files-upload-input').click());
+    $('files-upload-input').addEventListener('change', e => { uploadFiles([...e.target.files]); e.target.value = ''; });
+    const sheet = document.querySelector('#files-modal .files-sheet');
+    let dragDepth = 0;
+    sheet.addEventListener('dragenter', e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); dragDepth++; $('files-drop').hidden = false; } });
+    sheet.addEventListener('dragover', e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); });
+    sheet.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('files-drop').hidden = true; });
+    sheet.addEventListener('drop', e => {
+      e.preventDefault();
+      dragDepth = 0;
+      $('files-drop').hidden = true;
+      if (e.dataTransfer.files.length) uploadFiles([...e.dataTransfer.files]);
+    });
+    // Preview + share
+    $('preview-close').addEventListener('click', closePreview);
+    $('preview-modal').addEventListener('click', e => { if (e.target.id === 'preview-modal') closePreview(); });
+    $('preview-share-btn').addEventListener('click', () => { $('share-panel').hidden = !$('share-panel').hidden; });
+    document.querySelectorAll('#share-hours button').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('#share-hours button').forEach(x => x.classList.toggle('active', x === b));
+    }));
+    $('share-create').addEventListener('click', createShare);
+    $('share-copy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText($('share-url').value); showToast('Link kopiert.'); }
+      catch (e) { $('share-url').select(); document.execCommand('copy'); showToast('Link kopiert.'); }
+    });
+    let searchTimer = null;
+    $('preview-search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(previewHighlight, 200); });
     $('files-sizes').addEventListener('click', async () => {
       const btn = $('files-sizes');
       btn.disabled = true;
@@ -1293,7 +1465,9 @@
 
       state.history.cpu.push(sys.cpu.percent);
       if (state.history.cpu.length > state.history.maxPoints) state.history.cpu.shift();
-      drawSparkline(els.cpuChart, state.history.cpu, '#00f0ff', 'rgba(0, 240, 255, 0.25)');
+      const accent = getComputedStyle(document.documentElement);
+      drawSparkline(els.cpuChart, state.history.cpu, accent.getPropertyValue('--accent-cyan').trim() || '#00f0ff',
+        `rgba(${accent.getPropertyValue('--accent-rgb').trim() || '0, 240, 255'}, 0.25)`);
 
       if (els.coresGridContainer && sys.cpu.cores) {
         els.coresGridContainer.innerHTML = '';
@@ -2927,7 +3101,7 @@
   window.fetch = async (...args) => {
     const res = await nativeFetch(...args);
     // The notes card is private even in public view: it shows its own hint instead
-    if (res.status === 401 && !/^\/api\/(auth\/|notes|actions)/.test(String(args[0]))) location.href = '/login';
+    if (res.status === 401 && !/^\/api\/(auth\/|notes|actions|events|disk-forecast)/.test(String(args[0]))) location.href = '/login';
     return res;
   };
 
