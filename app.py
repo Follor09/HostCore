@@ -73,7 +73,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Login: everything requires a session, except the login page itself and static assets.
 # With "public view" enabled, GET requests are open and only actions need a login.
 # ---------------------------------------------------------------------------
-PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/favicon.ico"}
+PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/api/about", "/favicon.ico"}
 
 
 def _same_origin(request: Request) -> bool:
@@ -140,6 +140,36 @@ async def login_page(request: Request):
     if request.state.user:
         return RedirectResponse("/", status_code=303)
     return _serve_page("login.html")
+
+
+_about_cache: dict = {"ts": 0.0, "data": None}
+
+
+def _about() -> dict:
+    """Version info for the footer: commit, its date and the repo link (never with credentials)."""
+    now = time.time()
+    if _about_cache["data"] and now - _about_cache["ts"] < 60:
+        return _about_cache["data"]
+    url = updater.update_state.get("remote_url") or ""
+    url = re.sub(r"^https?://[^/@]*@", "https://", url)              # drop user:token@
+    url = re.sub(r"^git@github\.com:", "https://github.com/", url)
+    url = re.sub(r"\.git$", "", url) if url.startswith("https://") else ""
+    date = ""
+    try:
+        date = subprocess.run(["git", "-C", BASE_DIR, "log", "-1", "--format=%cs"],
+                              capture_output=True, text=True, timeout=3).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    commit = updater.update_state.get("current_commit") or ""
+    data = {"name": "PiCore Server", "commit": commit if re.fullmatch(r"[0-9a-f]{4,40}", commit) else "",
+            "date": date, "repo": url, "year": time.localtime().tm_year}
+    _about_cache.update(ts=now, data=data)
+    return data
+
+
+@app.get("/api/about")
+async def api_about():
+    return await asyncio.to_thread(_about)
 
 
 @app.get("/api/auth/status")

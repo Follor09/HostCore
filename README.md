@@ -126,6 +126,10 @@ Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem P
 
 Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder die Lupe oben rechts eine Suche über alle Seiten, Bereiche (z.B. „Firewall“, „SSH-Anmeldungen“, „Sprache“) und Aktionen („System-Updates öffnen“, „NVMe-Verlauf“, „Dateien durchsuchen“, „Prozess suchen“, Dienste steuern, Wake-on-LAN-Geräte wecken, Verlauf-Diagramme, Sprache, Abmelden). Pfeiltasten + Enter, tippfehlertolerant, zuletzt verwendete Befehle stehen oben. Im Web-Terminal gehört Strg+K der Shell – dort die Lupe benutzen.
 
+### © Fußzeile
+
+Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit + Datum), Link zum Quellcode sowie Hinweise zu Open-Meteo (Wetterdaten, CC BY 4.0), xterm.js (MIT) und den Schriften (SIL OFL). Der Name steht in `static/footer.js` (`OWNER`).
+
 ### 🧩 Dashboard anpassen
 
 Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil oder Ziehen umsortieren (innerhalb ihres Bereichs – obere Reihe, Messwerte, untere Reihe – und ganze Bereiche wie „Verlauf“ nach oben/unten) und per Auge ausblenden. Gespeichert pro Browser, „Zurücksetzen“ stellt das Standard-Layout wieder her.
