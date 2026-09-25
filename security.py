@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -256,6 +257,28 @@ def ssh_port() -> int:
     return 22
 
 
+_RE_ATTRIBS = re.compile(r"\s*\(((?:log-all|log|out)(?:,\s*(?:log-all|log|out))*)\)\s*$")
+_RE_ON = re.compile(r"\s+on\s+(\S+)")
+
+
+def _rule_fields(rule: Dict[str, Any]) -> Dict[str, Any]:
+    """Pull "on eth0" and "(log, out)" out of ufw's To/From columns into own fields."""
+    rule["log"] = False
+    for key in ("to", "from"):
+        text = rule[key]
+        m = _RE_ATTRIBS.search(text)
+        if m:
+            rule["log"] = rule["log"] or "log" in m.group(1)
+            text = text[:m.start()]
+        m = _RE_ON.search(text)
+        if m:
+            rule["iface"] = m.group(1)
+            text = text[:m.start()] + text[m.end():]
+        rule[key] = text.strip()
+    rule.setdefault("iface", "")
+    return rule
+
+
 _RE_ADDED = re.compile(r"^ufw (allow|deny|reject|limit)\s+(.+?)(?:\s+comment '(.*)')?$")
 
 
@@ -281,16 +304,25 @@ def parse_ufw(out: str) -> Dict[str, Any]:
         if not rm:
             continue
         num, to, action, direction, source, comment = rm.groups()
-        rules.append({"num": int(num), "to": to.strip(), "action": action.lower(),
-                      "direction": (direction or "IN").lower(), "from": source.strip(),
-                      "comment": (comment or "").strip(), "v6": "(v6)" in to})
+        rules.append(_rule_fields({"num": int(num), "to": to.strip(), "action": action.lower(),
+                                   "direction": (direction or "IN").lower(), "from": source.strip(),
+                                   "comment": (comment or "").strip(), "v6": "(v6)" in to}))
     if not active:
         # An inactive ufw lists no rules in `status`; `show added` still has the saved ones
         for line in added.splitlines():
             am = _RE_ADDED.match(line.strip())
             if am:
-                rules.append({"num": None, "to": am.group(2), "action": am.group(1), "direction": "in",
-                              "from": "", "comment": am.group(3) or "", "v6": False})
+                spec = am.group(2)
+                direction = "out" if re.match(r"out\b", spec) else "in"
+                spec = re.sub(r"^(in|out)\s+", "", spec)
+                iface = ""
+                m = re.match(r"on (\S+)\s*", spec)
+                if m:
+                    iface, spec = m.group(1), spec[m.end():]
+                log = bool(re.match(r"log(-all)?\b", spec))
+                spec = re.sub(r"^log(-all)?\s+", "", spec)
+                rules.append({"num": None, "to": spec, "action": am.group(1), "direction": direction,
+                              "from": "", "comment": am.group(3) or "", "v6": False, "iface": iface, "log": log})
     return {"active": active, "defaults": defaults, "logging": logging_, "rules": rules}
 
 
@@ -324,6 +356,8 @@ def firewall_status() -> Dict[str, Any]:
         return {"installed": True, "error": str(e)}
     status.update(installed=True, ssh_port=ssh_port(), dashboard_port=DASHBOARD_PORT,
                   suggestions=_suggestions(status["rules"]),
+                  interfaces=sorted(i for i in psutil.net_if_addrs()
+                                    if i != "lo" and not i.startswith(("veth", "cali", "flannel.", "cni", "br-"))),
                   docker=bool(shutil.which("docker")))
     return status
 
@@ -333,33 +367,117 @@ def _rule_ports(rule: Dict[str, Any]) -> set:
     return {int(m.group(1))} if m else set()
 
 
-def firewall_action(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
+_RE_PORTS = re.compile(r"\d{1,5}(?::\d{1,5})?(?:,\d{1,5}(?::\d{1,5})?){0,14}")
+
+
+def _parse_ports(value: Any, label: str) -> Optional[List[range]]:
+    """"" / any -> None, else 443, 6000:6010 or 80,443 -> list of ranges."""
+    text = str(value or "").replace(" ", "")
+    if text.lower() in ("", "any", "alle", "*"):
+        return None
+    if not _RE_PORTS.fullmatch(text):
+        raise ValueError(f"{label}: Port 1–65535, Bereich wie 6000:6010 oder Liste wie 80,443 (max. 15).")
+    out = []
+    for part in text.split(","):
+        a, _, b = part.partition(":")
+        lo, hi = int(a), int(b or a)
+        if not (1 <= lo <= 65535 and 1 <= hi <= 65535) or (b and lo >= hi):
+            raise ValueError(f"{label}: Port 1–65535, Bereich wie 6000:6010 oder Liste wie 80,443 (max. 15).")
+        out.append(range(lo, hi + 1))
+    return out
+
+
+def _parse_addr(value: Any, label: str):
+    text = str(value or "").strip()
+    if text.lower() in ("", "any", "alle", "*"):
+        return None
+    try:
+        return ipaddress.ip_network(text, strict=False)
+    except ValueError:
+        raise ValueError(f"{label} muss leer (alle), eine IP oder ein Netz wie 192.168.1.0/24 sein.")
+
+
+def _addr_str(net) -> str:
+    if net is None:
+        return "any"
+    return str(net.network_address) if net.prefixlen == net.max_prefixlen else str(net)
+
+
+def _covers(ports: Optional[List[range]], port: int) -> bool:
+    return ports is None or any(port in r for r in ports)
+
+
+def _rule_args(params: Dict[str, Any], client_ip: str = "") -> List[str]:
+    """Validate a rule from the form and return the pi-helper.sh ufw-rule arguments."""
+    rule_action = str(params.get("action", ""))
+    direction = str(params.get("direction", "in"))
+    iface = str(params.get("iface", "") or "any").strip()
+    proto = str(params.get("proto", "tcp"))
+    position = str(params.get("position", "end"))
+    log = bool(params.get("log"))
+    comment = str(params.get("comment", "")).strip()
+    if rule_action not in ("allow", "deny", "reject", "limit"):
+        raise ValueError("Ungültige Aktion.")
+    if direction not in ("in", "out"):
+        raise ValueError("Ungültige Richtung.")
+    if iface != "any" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,14}", iface):
+        raise ValueError("Ungültige Schnittstelle.")
+    if proto not in ("tcp", "udp", "any"):
+        raise ValueError("Ungültiges Protokoll.")
+    if position not in ("top", "end"):
+        raise ValueError("Ungültige Position.")
+    if not re.fullmatch(r"[A-Za-z0-9 ._()-]{0,40}", comment):
+        raise ValueError("Kommentar: nur Buchstaben, Zahlen, Leerzeichen und . _ - ( ) (max. 40).")
+    # "port" is the old single-field form
+    dport_text = params.get("dport", params.get("port", ""))
+    sport_text = params.get("sport", "")
+    dports = _parse_ports(dport_text, "Zielport")
+    sports = _parse_ports(sport_text, "Quellport")
+    src = _parse_addr(params.get("from"), "Quelle")
+    dst = _parse_addr(params.get("to"), "Ziel")
+    if src and dst and src.version != dst.version:
+        raise ValueError("Quelle und Ziel müssen beide IPv4 oder beide IPv6 sein.")
+    if proto == "any" and re.search(r"[:,]", f"{str(sport_text or '').replace(' ', '')}{str(dport_text or '').replace(' ', '')}"):
+        raise ValueError("Portbereiche und -listen brauchen TCP oder UDP.")
+    if not any([src, dst, sports, dports, iface != "any"]):
+        raise ValueError("Die Regel würde für jeden Verkehr gelten – dafür die Standardrichtlinie ändern, keine Regel.")
+
+    if direction == "in" and rule_action in ("deny", "reject") and not sports and proto != "udp":
+        # Never lock the admin out: their own address, SSH for everyone
+        try:
+            me = ipaddress.ip_address(client_ip) if client_ip else None
+        except ValueError:
+            me = None
+        if me and not me.is_loopback and (src is None or (src.version == me.version and me in src)) \
+                and (dst is None or dst.version == me.version) and _covers(dports, DASHBOARD_PORT):
+            raise ValueError(f"Das würde deine eigene Verbindung ({client_ip}) zum Dashboard sperren.")
+        if (src is None or src.prefixlen == 0) and _covers(dports, ssh_port()):
+            raise ValueError("Das würde SSH für alle sperren.")
+        if (src is None or src.prefixlen == 0) and _covers(dports, DASHBOARD_PORT):
+            raise ValueError("Das würde das Dashboard für alle sperren.")
+    if direction == "out" and rule_action in ("deny", "reject") and dst is None and dports is None:
+        raise ValueError("Das würde fast allen ausgehenden Verkehr sperren (auch DNS und Updates) – Ziel oder Port angeben.")
+
+    fmt_ports = lambda text: "any" if text is None else str(text).replace(" ", "")
+    return [rule_action, direction, iface, proto,
+            _addr_str(src), fmt_ports(sport_text) if sports else "any",
+            _addr_str(dst), fmt_ports(dport_text) if dports else "any",
+            position, "log" if log else "nolog", *([comment] if comment else [])]
+
+
+def firewall_action(action: str, params: Dict[str, Any], client_ip: str = "") -> Dict[str, Any]:
     if action == "enable":
         _helper("ufw-enable", str(ssh_port()))
     elif action == "disable":
         _helper("ufw-disable")
     elif action == "rule":
-        rule_action = str(params.get("action", ""))
-        port = str(params.get("port", "")).strip()
-        proto = str(params.get("proto", "tcp"))
-        source = str(params.get("from", "") or "any").strip()
-        comment = str(params.get("comment", "")).strip()
-        if rule_action not in ("allow", "deny", "limit"):
-            raise ValueError("Ungültige Aktion.")
-        pm = re.fullmatch(r"(\d{1,5})(?::(\d{1,5}))?", port)
-        if not pm or not all(1 <= int(p) <= 65535 for p in pm.groups() if p) or (pm.group(2) and int(pm.group(1)) >= int(pm.group(2))):
-            raise ValueError("Port muss 1–65535 sein (oder ein Bereich wie 6000:6010).")
-        if proto not in ("tcp", "udp", "any"):
-            raise ValueError("Ungültiges Protokoll.")
-        if pm.group(2) and proto == "any":
-            raise ValueError("Portbereiche brauchen TCP oder UDP.")
-        if source != "any" and not _valid_ip(source, allow_network=True):
-            raise ValueError("Quelle muss „any“, eine IP oder ein Netz wie 192.168.1.0/24 sein.")
-        if not re.fullmatch(r"[A-Za-z0-9 ._()-]{0,40}", comment):
-            raise ValueError("Kommentar: nur Buchstaben, Zahlen, Leerzeichen und . _ - ( ) (max. 40).")
-        if rule_action == "deny" and source == "any" and int(pm.group(1)) in (ssh_port(), DASHBOARD_PORT) and not pm.group(2):
-            raise ValueError("Das würde SSH oder das Dashboard für alle sperren.")
-        _helper("ufw-rule", rule_action, port, proto, source, *([comment] if comment else []))
+        _helper("ufw-rule", *_rule_args(params, client_ip))
+    elif action == "logging":
+        level = str(params.get("level", ""))
+        if level not in ("off", "low", "medium"):
+            raise ValueError("Ungültige Stufe.")
+        _helper("ufw-logging", level)
+        _traffic_cache.clear()
     elif action == "delete":
         num = int(params.get("num", 0))
         status = parse_ufw(_helper("ufw-status"))
@@ -382,3 +500,234 @@ def firewall_action(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     else:
         raise ValueError("Unbekannte Aktion.")
     return firewall_status()
+
+
+# ---------------------------------------------------------------------------
+# Firewall traffic: what ufw logged (kernel messages "[UFW BLOCK] IN=eth0 SRC=... DPT=...")
+# ---------------------------------------------------------------------------
+TRAFFIC_RANGES = {"1h": (3600, 300), "24h": (86400, 3600), "7d": (7 * 86400, 6 * 3600)}  # span, bucket
+TRAFFIC_MAX_LINES = 50000
+TRAFFIC_CACHE_TTL = 20
+_traffic_cache: Dict[str, Any] = {}
+
+_RE_UFW_LOG = re.compile(r"\[UFW (BLOCK|ALLOW|LIMIT BLOCK|AUDIT|AUDIT INVALID)\]\s*(.*)")
+_RE_KV = re.compile(r"([A-Z]+)=(\S*)")
+
+
+def parse_ufw_log(message: str, ts: float) -> Optional[Dict[str, Any]]:
+    m = _RE_UFW_LOG.search(message)
+    if not m:
+        return None
+    kind = m.group(1)
+    if kind.startswith("AUDIT"):
+        return None  # "high" logging: every packet, not useful here
+    f = dict(_RE_KV.findall(m.group(2)))
+    src, dst = f.get("SRC", ""), f.get("DST", "")
+    if not src:
+        return None
+    iface_in, iface_out = f.get("IN", ""), f.get("OUT", "")
+    direction = "fwd" if iface_in and iface_out else "out" if iface_out else "in"
+    proto = f.get("PROTO", "").lower()
+    if proto == "icmpv6":
+        proto = "icmp"
+    ev = {"ts": ts, "action": "allow" if kind == "ALLOW" else "limit" if kind == "LIMIT BLOCK" else "block",
+          "direction": direction, "iface": iface_in or iface_out, "src": src, "dst": dst, "proto": proto,
+          "sport": int(f["SPT"]) if f.get("SPT", "").isdigit() else None,
+          "dport": int(f["DPT"]) if f.get("DPT", "").isdigit() else None,
+          "len": int(f["LEN"]) if f.get("LEN", "").isdigit() else 0}
+    # Which side is "the other one": the sender for incoming, the target for outgoing
+    ev["remote"] = dst if direction == "out" else src
+    ev["scope"] = ip_scope(ev["remote"])
+    ev["syn"] = " SYN " in f" {m.group(2)} " and " ACK " not in f" {m.group(2)} "
+    return ev
+
+
+def _read_ufw_log(since_ts: float) -> Dict[str, Any]:
+    """Kernel messages across boots (-k would only show the current boot)."""
+    if not shutil.which("journalctl"):
+        return _read_ufw_logfile(since_ts)
+    base = ["journalctl", "--no-pager", "-o", "json", "--output-fields=MESSAGE", "_TRANSPORT=kernel",
+            "--since", f"@{int(since_ts)}", "-n", str(TRAFFIC_MAX_LINES)]
+    try:
+        res = subprocess.run(base + ["--grep", "UFW "], capture_output=True, text=True, timeout=25, errors="replace")
+        if res.returncode != 0 and "pattern" in res.stderr.lower():
+            res = subprocess.run(base, capture_output=True, text=True, timeout=25, errors="replace")
+    except subprocess.TimeoutExpired:
+        return {"events": [], "error": "Journal antwortet nicht."}
+    events = []
+    lines = res.stdout.splitlines()
+    for line in lines:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        msg = e.get("MESSAGE", "")
+        if isinstance(msg, list):
+            msg = bytes(msg).decode("utf-8", errors="replace")
+        ev = parse_ufw_log(msg, int(e.get("__REALTIME_TIMESTAMP", 0)) / 1e6)
+        if ev:
+            events.append(ev)
+    hint = ""
+    stderr = res.stderr.lower()
+    if not events and ("insufficient permissions" in stderr or "not seeing messages" in stderr):
+        fallback = _read_ufw_logfile(since_ts)
+        if fallback["events"]:
+            return fallback
+        user = os.environ.get("USER", "$USER")
+        hint = f"Keine Berechtigung für System-Logs: sudo usermod -aG systemd-journal {user} && sudo systemctl restart raspberry-dashboard"
+    return {"events": events, "hint": hint, "truncated": len(lines) >= TRAFFIC_MAX_LINES, "source": "journal"}
+
+
+def _read_ufw_logfile(since_ts: float) -> Dict[str, Any]:
+    """Fallback for systems with rsyslog: /var/log/ufw.log (readable for the adm group)."""
+    path = "/var/log/ufw.log"
+    try:
+        with open(path, errors="replace") as f:
+            lines = f.readlines()[-TRAFFIC_MAX_LINES:]
+    except OSError:
+        return {"events": [], "hint": "", "source": "none"}
+    events = []
+    year = time.localtime().tm_year
+    for line in lines:
+        ts = None
+        m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)", line)  # rsyslog high-precision format
+        if m:
+            ts = time.mktime(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
+        else:
+            m = re.match(r"(\w{3}\s+\d+ \d\d:\d\d:\d\d)", line)
+            if m:
+                try:
+                    ts = time.mktime(time.strptime(f"{year} {m.group(1)}", "%Y %b %d %H:%M:%S"))
+                except ValueError:
+                    ts = None
+        if ts is None or ts < since_ts:
+            continue
+        ev = parse_ufw_log(line, ts)
+        if ev:
+            events.append(ev)
+    return {"events": events, "hint": "", "truncated": len(lines) >= TRAFFIC_MAX_LINES, "source": "file"}
+
+
+def _service_name(port: Optional[int], proto: str) -> str:
+    if not port:
+        return ""
+    try:
+        return socket.getservbyport(port, proto if proto in ("tcp", "udp") else "tcp")
+    except OSError:
+        return ""
+
+
+def _lan_names() -> Dict[str, str]:
+    try:
+        import netscan
+        return {d["ip"]: d.get("alias") or d.get("hostname") or d.get("vendor") or ""
+                for d in netscan.devices()["devices"] if d.get("ip")}
+    except Exception:
+        return {}
+
+
+def firewall_traffic(range_: str = "24h", action: str = "block", direction: str = "all", query: str = "") -> Dict[str, Any]:
+    if range_ not in TRAFFIC_RANGES:
+        range_ = "24h"
+    span, bucket = TRAFFIC_RANGES[range_]
+    now = time.time()
+    cached = _traffic_cache.get(range_)
+    if cached and now - cached["ts"] < TRAFFIC_CACHE_TTL:
+        raw = cached["raw"]
+    else:
+        raw = _read_ufw_log(now - span)
+        _traffic_cache[range_] = {"ts": now, "raw": raw}
+
+    fw = {}
+    if shutil.which("ufw") or os.path.exists("/usr/sbin/ufw"):
+        try:
+            fw = parse_ufw(_helper("ufw-status"))
+        except (PermissionError, RuntimeError, subprocess.TimeoutExpired):
+            fw = {}
+
+    all_events = raw["events"]
+    counts = {"block": 0, "allow": 0, "limit": 0}
+    for e in all_events:
+        counts[e["action"]] += 1
+
+    q = query.strip().lower()
+    port_q = int(q) if q.isdigit() else None
+
+    def keep(e):
+        if action == "block" and e["action"] == "allow":
+            return False
+        if action == "allow" and e["action"] != "allow":
+            return False
+        if direction != "all" and e["direction"] != direction:
+            return False
+        if q:
+            if port_q is not None:
+                return e["dport"] == port_q or e["sport"] == port_q
+            return q in e["src"].lower() or q in e["dst"].lower() or q == e["iface"].lower()
+        return True
+
+    events = [e for e in all_events if keep(e)]
+
+    # Timeline: Internet vs. local network, per bucket
+    n = span // bucket
+    start = (int(now) // bucket - n + 1) * bucket
+    timeline = [{"ts": start + i * bucket, "internet": 0, "local": 0} for i in range(n)]
+    for e in events:
+        i = int((e["ts"] - start) // bucket)
+        if 0 <= i < n:
+            timeline[i]["internet" if e["scope"] == "internet" else "local"] += 1
+
+    names = _lan_names()
+    remotes: Dict[str, Dict[str, Any]] = {}
+    ports: Dict[tuple, Dict[str, Any]] = {}
+    for e in events:
+        r = remotes.setdefault(e["remote"], {"ip": e["remote"], "scope": e["scope"], "count": 0, "ports": {},
+                                             "first": e["ts"], "last": e["ts"], "directions": set(),
+                                             "name": names.get(e["remote"], "")})
+        r["count"] += 1
+        r["last"] = max(r["last"], e["ts"])
+        r["first"] = min(r["first"], e["ts"])
+        r["directions"].add(e["direction"])
+        key = f"{e['dport']}/{e['proto']}" if e["dport"] else e["proto"] or "?"
+        r["ports"][key] = r["ports"].get(key, 0) + 1
+        pk = (e["dport"], e["proto"])
+        p = ports.setdefault(pk, {"port": e["dport"], "proto": e["proto"], "count": 0, "sources": set(),
+                                  "service": _service_name(e["dport"], e["proto"]), "directions": set()})
+        p["count"] += 1
+        p["sources"].add(e["remote"])
+        p["directions"].add(e["direction"])
+
+    listening: Dict[tuple, str] = {}
+    for c in _safe_connections():
+        if c.laddr and c.status in (psutil.CONN_LISTEN, psutil.CONN_NONE):
+            key = (c.laddr.port, "udp" if c.type == socket.SOCK_DGRAM else "tcp")
+            name = ""
+            try:
+                name = psutil.Process(c.pid).name() if getattr(c, "pid", None) else ""
+            except (psutil.Error, OSError):
+                pass
+            listening[key] = listening.get(key) or name
+    top_sources = []
+    for r in sorted(remotes.values(), key=lambda r: r["count"], reverse=True)[:25]:
+        r["ports"] = [k for k, _ in sorted(r["ports"].items(), key=lambda kv: kv[1], reverse=True)[:4]]
+        r["directions"] = sorted(r["directions"])
+        top_sources.append(r)
+    top_ports = []
+    for p in sorted(ports.values(), key=lambda p: p["count"], reverse=True)[:25]:
+        top_ports.append({**p, "sources": len(p["sources"]), "directions": sorted(p["directions"]),
+                          "listening": bool(p["port"]) and (p["port"], p["proto"]) in listening,
+                          "program": listening.get((p["port"], p["proto"]), "")})
+
+    internet = sum(1 for e in events if e["scope"] == "internet")
+    return {
+        "range": range_, "bucket": bucket, "timeline": timeline,
+        "summary": {"total": len(events), "sources": len(remotes), "ports": len(ports),
+                    "internet": internet, "per_hour": round(len(events) / (span / 3600), 1),
+                    "counts": counts, "top_port": top_ports[0] if top_ports else None},
+        "top_sources": top_sources, "top_ports": top_ports,
+        "recent": sorted(events, key=lambda e: e["ts"], reverse=True)[:200],
+        "firewall": {"installed": bool(fw) or bool(shutil.which("ufw")), "active": fw.get("active", False),
+                     "logging": fw.get("logging", "")},
+        "hint": raw.get("hint", ""), "error": raw.get("error", ""),
+        "truncated": raw.get("truncated", False), "source": raw.get("source", ""),
+    }

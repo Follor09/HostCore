@@ -50,6 +50,7 @@
       <a href="#geraete">Geräte im Netzwerk</a>
       <a href="#port-check">Port-Check</a>
       <a data-perm="security.view" href="#firewall">Firewall</a>
+      <a data-perm="security.view" href="#firewall-traffic">Firewall-Traffic</a>
       <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
@@ -254,26 +255,136 @@
             <table class="data-table" id="fw-rules"></table>
           </div>
           <h3 class="subhead">Regel hinzufügen</h3>
-          <form data-perm="firewall.manage" class="log-filters" id="fw-form">
-            <select id="fw-action" aria-label="Aktion">
-              <option value="allow">Erlauben</option>
-              <option value="deny">Blockieren</option>
-              <option value="limit">Begrenzen</option>
-            </select>
-            <input type="text" id="fw-port" class="short" placeholder="Port, z.B. 443" inputmode="numeric" autocomplete="off" aria-label="Port" required>
-            <select id="fw-proto" aria-label="Protokoll">
-              <option value="tcp">TCP</option>
-              <option value="udp">UDP</option>
-              <option value="any">TCP + UDP</option>
-            </select>
-            <input type="text" id="fw-from" placeholder="Von: alle, IP oder Netz (192.168.1.0/24)" autocomplete="off" spellcheck="false" aria-label="Quelle">
-            <input type="text" id="fw-comment" placeholder="Kommentar (optional)" maxlength="40" autocomplete="off" aria-label="Kommentar">
-            <button type="submit" class="btn-primary">Hinzufügen</button>
+          <form data-perm="firewall.manage" class="fw-rule-form" id="fw-form">
+            <div class="fw-rule-row">
+              <label class="fw-field"><span>Aktion</span>
+                <select id="fw-action">
+                  <option value="allow">Erlauben</option>
+                  <option value="deny">Blockieren</option>
+                  <option value="reject">Ablehnen</option>
+                  <option value="limit">Begrenzen</option>
+                </select>
+              </label>
+              <label class="fw-field"><span>Richtung</span>
+                <select id="fw-direction">
+                  <option value="in">Eingehend</option>
+                  <option value="out">Ausgehend</option>
+                </select>
+              </label>
+              <label class="fw-field"><span>Schnittstelle</span>
+                <select id="fw-iface">
+                  <option value="any">Alle</option>
+                </select>
+              </label>
+              <label class="fw-field"><span>Protokoll</span>
+                <select id="fw-proto">
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="any">TCP + UDP</option>
+                </select>
+              </label>
+            </div>
+            <div class="fw-rule-row fw-endpoints">
+              <fieldset class="fw-endpoint">
+                <legend>Quelle</legend>
+                <div class="fw-endpoint-inputs">
+                  <input type="text" id="fw-from" placeholder="Alle, IP oder Netz (192.168.1.0/24)" autocomplete="off" spellcheck="false" aria-label="Quelladresse">
+                  <input type="text" id="fw-sport" class="fw-port" placeholder="Port: alle" autocomplete="off" spellcheck="false" aria-label="Quellport">
+                </div>
+              </fieldset>
+              <fieldset class="fw-endpoint">
+                <legend>Ziel</legend>
+                <div class="fw-endpoint-inputs">
+                  <input type="text" id="fw-to" placeholder="Alle, IP oder Netz" autocomplete="off" spellcheck="false" aria-label="Zieladresse">
+                  <input type="text" id="fw-port" class="fw-port" placeholder="Port, z.B. 443" autocomplete="off" spellcheck="false" aria-label="Zielport">
+                </div>
+              </fieldset>
+            </div>
+            <div class="fw-rule-row">
+              <label class="fw-field"><span>Reihenfolge</span>
+                <select id="fw-position">
+                  <option value="end">Am Ende anhängen</option>
+                  <option value="top">Ganz oben (hat Vorrang)</option>
+                </select>
+              </label>
+              <label class="fw-field fw-grow"><span>Kommentar</span>
+                <input type="text" id="fw-comment" placeholder="optional" maxlength="40" autocomplete="off">
+              </label>
+              <label class="toggle-label fw-log"><input type="checkbox" id="fw-log">Treffer protokollieren</label>
+            </div>
+            <div class="fw-rule-foot">
+              <code class="fw-preview" id="fw-preview" data-no-i18n></code>
+              <button type="submit" class="btn-primary">Hinzufügen</button>
+            </div>
+            <p class="form-msg" id="fw-form-msg" role="status"></p>
           </form>
-          <p class="field-hint">„Begrenzen“ blockiert eine IP, die sich in 30 Sekunden 6-mal oder öfter verbindet – gut gegen Passwort-Raten bei SSH.</p>
+          <p class="field-hint">Ports: einzeln (443), als Bereich (6000:6010) oder als Liste (80,443) – Bereiche und Listen nur mit TCP oder UDP. Die Firewall prüft die Regeln von oben nach unten, die erste passende gilt.</p>
+          <p class="field-hint">„Ablehnen“ antwortet dem Absender sofort, „Blockieren“ verwirft still. „Begrenzen“ blockiert eine IP, die sich in 30 Sekunden 6-mal oder öfter verbindet – gut gegen Passwort-Raten bei SSH.</p>
           <p class="field-hint" id="fw-docker-hint" hidden>Hinweis: Ports, die Docker-Container veröffentlichen, umgehen ufw und sind trotzdem erreichbar.</p>
         </div>
         <p class="field-hint" id="fw-hint"></p>
+      </section>
+
+      <!-- Firewall-Traffic -->
+      <section data-perm="security.view" class="glass-card settings-section" id="firewall-traffic">
+        <div class="section-head">
+          <h2>Firewall-Traffic</h2>
+          <div class="head-tools">
+            <div class="segmented" id="fwt-range" role="tablist" aria-label="Zeitraum">
+              <button data-range="1h">1 Std.</button>
+              <button class="active" data-range="24h">24 Std.</button>
+              <button data-range="7d">7 Tage</button>
+            </div>
+            <button class="mini-icon-btn" data-reload="fwTraffic" title="Neu laden">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+        </div>
+        <p class="section-desc">Was die Firewall blockiert hat – wer es versucht hat, auf welchen Port und wann. Gelesen aus dem Firewall-Protokoll; gezählt werden Pakete.</p>
+        <div class="fwt-notice" id="fwt-notice" hidden>
+          <span id="fwt-notice-text"></span>
+          <button data-perm="firewall.manage" class="btn-primary" id="fwt-enable-log" hidden>Protokollierung einschalten</button>
+        </div>
+        <form class="log-filters" id="fwt-filters">
+          <select id="fwt-action" aria-label="Aktion">
+            <option value="block">Blockiert</option>
+            <option value="allow">Erlaubt (protokolliert)</option>
+            <option value="all">Alle Einträge</option>
+          </select>
+          <select id="fwt-direction" aria-label="Richtung">
+            <option value="all">Alle Richtungen</option>
+            <option value="in">Eingehend</option>
+            <option value="out">Ausgehend</option>
+            <option value="fwd">Weitergeleitet</option>
+          </select>
+          <input type="search" id="fwt-query" placeholder="IP-Adresse, Schnittstelle oder Port" autocomplete="off" spellcheck="false" aria-label="Filter">
+        </form>
+        <div class="bench-values ssh-stats" id="fwt-stats"></div>
+        <div class="nvme-chart-head">
+          <h4 class="nvme-chart-title" id="fwt-chart-title">Pakete</h4>
+          <div class="chart-legend">
+            <span><i class="bar-key down"></i>Internet</span>
+            <span><i class="bar-key up"></i>LAN, VPN &amp; lokal</span>
+          </div>
+        </div>
+        <div class="history-chart nvme-chart usage-chart" id="fwt-chart">
+          <svg role="img" aria-label="Blockierte Pakete über die Zeit"></svg>
+          <div class="history-tooltip" hidden></div>
+        </div>
+        <div class="fwt-grid">
+          <div>
+            <h3 class="subhead">Häufigste Absender</h3>
+            <div class="table-scroll"><table class="data-table" id="fwt-sources"></table></div>
+          </div>
+          <div>
+            <h3 class="subhead">Häufigste Ziel-Ports</h3>
+            <div class="table-scroll"><table class="data-table" id="fwt-ports"></table></div>
+          </div>
+        </div>
+        <h3 class="subhead">Letzte Einträge</h3>
+        <div class="table-scroll"><table class="data-table" id="fwt-recent"></table></div>
+        <button type="button" class="btn-secondary fwt-more" id="fwt-more" hidden>Mehr anzeigen</button>
+        <p class="field-hint" id="fwt-hint"></p>
       </section>
 
       <!-- SSH-Anmeldungen -->

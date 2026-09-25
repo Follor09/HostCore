@@ -7,7 +7,11 @@
 #   pi-helper.sh ufw-status
 #   pi-helper.sh ufw-enable <ssh-port>            allows SSH + dashboard first, then enables
 #   pi-helper.sh ufw-disable
-#   pi-helper.sh ufw-rule <allow|deny|limit> <port|a:b> <tcp|udp|any> <any|ip|cidr> [comment]
+#   pi-helper.sh ufw-rule <allow|deny|reject|limit> <in|out> <iface|any> <tcp|udp|any>
+#                         <from: any|ip|cidr> <src-port|any> <to: any|ip|cidr> <dst-port|any>
+#                         <top|end> <log|nolog> [comment]
+#                         ports: 443, 6000:6010 or a list like 80,443 (lists/ranges need tcp/udp)
+#   pi-helper.sh ufw-logging <off|low|medium>
 #   pi-helper.sh ufw-delete <rule-number>
 #   pi-helper.sh ufw-preset <k3s|netbird|web>
 #   pi-helper.sh fan-curve set <t0> <t1> <t2> <t3> <s0> <s1> <s2> <s3>   (m°C, PWM 0-255)
@@ -24,10 +28,20 @@ die() { echo "$*" >&2; exit 2; }
 is_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
 is_port_spec() {
     if [[ "$1" =~ ^([0-9]{1,5}):([0-9]{1,5})$ ]]; then
-        is_port "${BASH_REMATCH[1]}" && is_port "${BASH_REMATCH[2]}" && [ "${BASH_REMATCH[1]}" -lt "${BASH_REMATCH[2]}" ]
+        local a="${BASH_REMATCH[1]}" b="${BASH_REMATCH[2]}"   # is_port overwrites BASH_REMATCH
+        is_port "$a" && is_port "$b" && [ "$a" -lt "$b" ]
     else
         is_port "$1"
     fi
+}
+is_port_list() {  # up to 15 ports/ranges, comma separated
+    local IFS=, n=0 p
+    [[ "$1" =~ ^[0-9:,]{1,90}$ ]] || return 1
+    for p in $1; do
+        n=$((n + 1))
+        [ "$n" -le 15 ] && is_port_spec "$p" || return 1
+    done
+    [ "$n" -ge 1 ]
 }
 is_ip() {  # IPv4/IPv6 address, optionally with /prefix
     [[ "$1" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?$ ]] || [[ "$1" =~ ^[0-9A-Fa-f:]{2,39}(/[0-9]{1,3})?$ ]]
@@ -60,19 +74,47 @@ case "$CMD" in
         ;;
     ufw-rule)
         need ufw
-        [ $# -ge 4 ] && [ $# -le 5 ] || die "Falsche Anzahl Argumente."
-        ACTION="$1" PORT="$2" PROTO="$3" FROM="$4" COMMENT="${5:-}"
-        [[ "$ACTION" =~ ^(allow|deny|limit)$ ]] || die "Ungültige Aktion."
-        is_port_spec "$PORT" || die "Ungültiger Port."
+        [ $# -ge 10 ] && [ $# -le 11 ] || die "Falsche Anzahl Argumente."
+        ACTION="$1" DIR="$2" IFACE="$3" PROTO="$4" FROM="$5" SPORT="$6" TO="$7" DPORT="$8" POS="$9" LOG="${10}" COMMENT="${11:-}"
+        [[ "$ACTION" =~ ^(allow|deny|reject|limit)$ ]] || die "Ungültige Aktion."
+        [[ "$DIR" =~ ^(in|out)$ ]] || die "Ungültige Richtung."
+        [ "$IFACE" = any ] || [[ "$IFACE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,14}$ ]] || die "Ungültige Schnittstelle."
         [[ "$PROTO" =~ ^(tcp|udp|any)$ ]] || die "Ungültiges Protokoll."
-        [[ "$PORT" == *:* && "$PROTO" == any ]] && die "Portbereiche brauchen TCP oder UDP."
         [ "$FROM" = any ] || is_ip "$FROM" || die "Ungültige Quelladresse."
+        [ "$TO" = any ] || is_ip "$TO" || die "Ungültige Zieladresse."
+        [ "$SPORT" = any ] || is_port_list "$SPORT" || die "Ungültiger Quellport."
+        [ "$DPORT" = any ] || is_port_list "$DPORT" || die "Ungültiger Zielport."
+        if [ "$PROTO" = any ]; then
+            [[ "$SPORT$DPORT" == *[:,]* ]] && die "Portbereiche und -listen brauchen TCP oder UDP."
+        fi
+        [[ "$POS" =~ ^(top|end)$ ]] || die "Ungültige Position."
+        [[ "$LOG" =~ ^(log|nolog)$ ]] || die "Ungültige Protokollierung."
         [[ "$COMMENT" =~ ^[A-Za-z0-9\ ._()-]{0,40}$ ]] || die "Ungültiger Kommentar."
-        ARGS=("$ACTION")
+        ARGS=()
+        if [ "$POS" = top ] && ufw status | grep -q '^Status: active'; then
+            # "insert 1" fails when the rule list is empty or starts with the other IP family
+            if [[ "$FROM$TO" == *:* ]]; then
+                FIRST="$(ufw status numbered | grep '(v6)' | head -n1 | sed -n 's/^\[ *\([0-9]*\)\].*/\1/p')"
+            else
+                FIRST="$(ufw status numbered | grep -v '(v6)' | sed -n 's/^\[ *\([0-9]*\)\].*/\1/p' | head -n1)"
+            fi
+            [ -n "$FIRST" ] && ARGS+=(insert "$FIRST")
+        fi
+        ARGS+=("$ACTION" "$DIR")
+        [ "$IFACE" != any ] && ARGS+=(on "$IFACE")
+        [ "$LOG" = log ] && ARGS+=(log)
         [ "$PROTO" != any ] && ARGS+=(proto "$PROTO")
-        ARGS+=(from "$FROM" to any port "$PORT")
+        ARGS+=(from "$FROM")
+        [ "$SPORT" != any ] && ARGS+=(port "$SPORT")
+        ARGS+=(to "$TO")
+        [ "$DPORT" != any ] && ARGS+=(port "$DPORT")
         [ -n "$COMMENT" ] && ARGS+=(comment "$COMMENT")
         ufw "${ARGS[@]}"
+        ;;
+    ufw-logging)
+        need ufw
+        [[ "${1:-}" =~ ^(off|low|medium)$ ]] || die "Ungültige Stufe."
+        ufw logging "$1"
         ;;
     ufw-delete)
         need ufw

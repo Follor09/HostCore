@@ -5198,6 +5198,176 @@ body.customizing .dashboard-container {
 
 
 /* ==========================================================================
+   Firewall: rule form + traffic analyser
+   ========================================================================== */
+.fw-rule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: rgba(var(--shade-rgb), 0.18);
+}
+
+.fw-rule-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.fw-rule-row.fw-endpoints {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.fw-field,
+.fw-endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fw-field > span,
+.fw-endpoint > legend {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 0;
+}
+
+.fw-endpoint > legend {
+  margin-bottom: 5px;
+}
+
+.fw-endpoint-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 6px;
+}
+
+.fw-rule-form select,
+.fw-rule-form input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--text-main);
+  background: rgba(var(--shade-rgb), 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 10px;
+  outline: none;
+}
+
+.fw-rule-form .fw-port {
+  font-family: var(--font-mono);
+}
+
+.fw-rule-form select:focus,
+.fw-rule-form input:focus {
+  border-color: var(--border-focus);
+}
+
+.fw-log {
+  padding-bottom: 8px;
+}
+
+.fw-rule-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fw-preview {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  background: rgba(var(--shade-rgb), 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}
+
+.fw-rule-form .form-msg:empty {
+  display: none;
+}
+
+.fwt-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent);
+}
+
+.fwt-notice[hidden] {
+  display: none;
+}
+
+#fwt-filters,
+#fwt-stats {
+  margin-bottom: 14px;
+}
+
+.fwt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+  gap: 0 18px;
+}
+
+.fwt-grid > div {
+  min-width: 0;
+}
+
+.text-btn.mono {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.fwt-more {
+  margin-top: 10px;
+}
+
+#fwt-range button {
+  white-space: nowrap;
+}
+
+#firewall-traffic .section-head {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .fwt-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fw-endpoint-inputs {
+    grid-template-columns: minmax(0, 1fr) 90px;
+  }
+  .fw-rule-foot .btn-primary {
+    width: 100%;
+  }
+}
+
+
+/* ==========================================================================
    Light theme (html[data-theme="light"], set by theme.js before first paint)
    ========================================================================== */
 :root[data-theme="light"] {

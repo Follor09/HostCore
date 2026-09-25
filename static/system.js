@@ -612,8 +612,8 @@
     });
   }
 
-  async function firewallAction(action, params = {}) {
-    const msg = $('fw-msg');
+  async function firewallAction(action, params = {}, msgId = 'fw-msg') {
+    const msg = $(msgId);
     document.querySelectorAll('#firewall button').forEach(b => { b.disabled = true; });
     msg.className = 'form-msg';
     msg.textContent = 'Wird ausgeführt…';
@@ -623,6 +623,7 @@
       document.querySelectorAll('#firewall button').forEach(b => { b.disabled = false; });
       toast('Firewall aktualisiert.', 'success');
       renderFirewall(cache.firewall);
+      if (action === 'rule' || action === 'logging') load('fwTraffic');
       return true;
     } catch (err) {
       msg.className = 'form-msg error';
@@ -700,6 +701,11 @@
       const to = row.insertCell();
       to.textContent = r.to.replace(' (v6)', '').replace(/^Anywhere/, 'Alles');
       if (r.v6) to.append(' ', el('span', 'health-tag', 'IPv6'));
+      if (r.iface) {
+        const tag = el('span', 'health-tag', `über ${r.iface}`);
+        to.append(' ', tag);
+      }
+      if (r.log) to.append(' ', el('span', 'health-tag', 'protokolliert'));
       const act = row.insertCell();
       const level = r.action === 'allow' ? 'good' : r.action === 'limit' ? 'warning' : 'critical';
       act.appendChild(el('span', `health-tag ${level}`, `${FW_ACTION[r.action] || r.action}${r.direction === 'out' ? ' (ausgehend)' : ''}`));
@@ -728,18 +734,319 @@
       c.textContent = 'Gespeicherte Regeln – sie gelten, sobald die Firewall eingeschaltet ist. Löschen geht nur bei eingeschalteter Firewall.';
     }
     $('fw-docker-hint').hidden = !f.docker;
+
+    const iface = $('fw-iface');
+    const keep = iface.value;
+    iface.innerHTML = '';
+    iface.appendChild(Object.assign(el('option', '', 'Alle'), { value: 'any' }));
+    (f.interfaces || []).forEach(i => {
+      const o = el('option', '', i);
+      o.value = i;
+      o.setAttribute('data-no-i18n', '');
+      iface.appendChild(o);
+    });
+    iface.value = [...iface.options].some(o => o.value === keep) ? keep : 'any';
+    updateRulePreview();
+  }
+
+  function ruleParams() {
+    return {
+      action: $('fw-action').value,
+      direction: $('fw-direction').value,
+      iface: $('fw-iface').value,
+      proto: $('fw-proto').value,
+      from: $('fw-from').value.trim(),
+      sport: $('fw-sport').value.trim(),
+      to: $('fw-to').value.trim(),
+      dport: $('fw-port').value.trim(),
+      position: $('fw-position').value,
+      log: $('fw-log').checked,
+      comment: $('fw-comment').value.trim()
+    };
+  }
+
+  // The ufw command the form turns into - shows exactly what will happen
+  function updateRulePreview() {
+    const p = ruleParams();
+    const any = v => !v || /^(any|alle|\*)$/i.test(v);
+    const parts = ['ufw'];
+    if (p.position === 'top') parts.push('insert 1');
+    parts.push(p.action, p.direction);
+    if (p.iface !== 'any') parts.push('on', p.iface);
+    if (p.log) parts.push('log');
+    if (p.proto !== 'any') parts.push('proto', p.proto);
+    parts.push('from', any(p.from) ? 'any' : p.from);
+    if (!any(p.sport)) parts.push('port', p.sport.replace(/\s/g, ''));
+    parts.push('to', any(p.to) ? 'any' : p.to);
+    if (!any(p.dport)) parts.push('port', p.dport.replace(/\s/g, ''));
+    if (p.comment) parts.push('comment', `'${p.comment}'`);
+    $('fw-preview').textContent = parts.join(' ');
+    $('fw-port').required = false;
   }
 
   async function addFirewallRule(e) {
     e.preventDefault();
-    const ok = await firewallAction('rule', {
-      action: $('fw-action').value,
-      port: $('fw-port').value.trim(),
-      proto: $('fw-proto').value,
-      from: $('fw-from').value.trim() || 'any',
-      comment: $('fw-comment').value.trim()
+    const ok = await firewallAction('rule', ruleParams(), 'fw-form-msg');
+    if (ok) {
+      ['fw-from', 'fw-sport', 'fw-to', 'fw-port', 'fw-comment'].forEach(id => { $(id).value = ''; });
+      $('fw-log').checked = false;
+      updateRulePreview();
+    }
+  }
+
+  // Fill the form from the traffic analyser and jump to it
+  function prepareRule(values) {
+    const defaults = { action: 'allow', direction: 'in', iface: 'any', proto: 'tcp', from: '', sport: '', to: '', port: '', position: 'end', log: false, comment: '' };
+    const v = { ...defaults, ...values };
+    ['action', 'direction', 'iface', 'proto', 'from', 'sport', 'to', 'port', 'position', 'comment'].forEach(k => { $(`fw-${k}`).value = v[k]; });
+    if (!$('fw-iface').value) $('fw-iface').value = 'any';
+    $('fw-log').checked = v.log;
+    $('fw-form-msg').textContent = '';
+    updateRulePreview();
+    $('fw-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('fw-comment').focus({ preventScroll: true });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Firewall traffic (what ufw logged)
+  // ---------------------------------------------------------------------------
+  const FWT_ACTION = { block: ['critical', 'Blockiert'], limit: ['warning', 'Begrenzt'], allow: ['good', 'Erlaubt'] };
+  const FWT_DIR = { in: 'Eingehend', out: 'Ausgehend', fwd: 'Weitergeleitet' };
+  let fwtShown = 25;
+
+  function fwtUrl() {
+    const range = document.querySelector('#fwt-range button.active').dataset.range;
+    const q = new URLSearchParams({ range, action: $('fwt-action').value, direction: $('fwt-direction').value, q: $('fwt-query').value.trim() });
+    return `/api/tools/firewall/traffic?${q}`;
+  }
+
+  function fmtEndpoint(ip, port) {
+    if (port == null) return ip;
+    return ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
+  }
+
+  function fwtBucketLabel(ts, bucket) {
+    const d = new Date(ts * 1000);
+    if (bucket >= 21600) return d.toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function drawTrafficChart(r) {
+    const box = $('fwt-chart'), svg = box.querySelector('svg'), tip = box.querySelector('.history-tooltip');
+    svg.innerHTML = '';
+    tip.hidden = true;
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W || !r) return;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const data = r.timeline, n = data.length;
+    const max = Math.max(...data.map(d => d.internet + d.local), 1);
+    const raw = max / 4, exp = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / exp;
+    const step = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp);
+    const top = Math.ceil(max / step) * step;
+    const pad = { l: 44, r: 8, t: 10, b: 24 }, iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const y = v => pad.t + ih - v / top * ih;
+    for (let t = 0; t <= top + step / 2; t += step) {
+      svg.appendChild(svgEl('line', { x1: pad.l, x2: pad.l + iw, y1: y(t), y2: y(t), class: 'grid-line' }));
+      const l = svgEl('text', { x: pad.l - 8, y: y(t) + 3, 'text-anchor': 'end', class: 'axis-label' });
+      l.textContent = fmtNum(t);
+      svg.appendChild(l);
+    }
+    const slot = iw / n, bw = Math.max(2, Math.min(18, slot - 3));
+    const labelEvery = Math.ceil(n / Math.max(2, Math.floor(iw / 70)));
+    data.forEach((d, i) => {
+      const x = pad.l + i * slot + (slot - bw) / 2;
+      // Stacked: Internet at the bottom, local on top, 2px surface gap between
+      const h1 = d.internet ? Math.max(1, y(0) - y(d.internet)) : 0;
+      const h2 = d.local ? Math.max(1, y(0) - y(d.local)) : 0;
+      const seg = (y0, h, color, roundTop) => {
+        if (!h) return;
+        const rad = roundTop ? Math.min(3, bw / 2, h) : 0;
+        svg.appendChild(svgEl('path', { d: `M${x},${y0 + h}V${y0 + rad}Q${x},${y0} ${x + rad},${y0}H${x + bw - rad}Q${x + bw},${y0} ${x + bw},${y0 + rad}V${y0 + h}Z`, fill: color, class: 'bar', 'data-i': i }));
+      };
+      seg(y(0) - h1, h1, 'var(--chart-down)', !h2);
+      seg(y(0) - h1 - h2 - (h1 && h2 ? 2 : 0), h2, 'var(--chart-up)', true);
+      if ((n - 1 - i) % labelEvery === 0) {
+        const l = svgEl('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });
+        l.textContent = r.bucket >= 21600
+          ? new Date(d.ts * 1000).toLocaleDateString(LOCALE, { weekday: 'short' })
+          : new Date(d.ts * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+        svg.appendChild(l);
+      }
     });
-    if (ok) ['fw-port', 'fw-from', 'fw-comment'].forEach(id => { $(id).value = ''; });
+    svg.onpointermove = evt => {
+      const i = Math.floor((evt.clientX - svg.getBoundingClientRect().left - pad.l) / slot);
+      const d = data[i];
+      if (!d) { svg.onpointerleave(); return; }
+      svg.querySelectorAll('.bar').forEach(b => b.classList.toggle('dim', +b.dataset.i !== i));
+      tip.innerHTML = '';
+      tip.appendChild(el('div', 'tt-time', `${fwtBucketLabel(d.ts, r.bucket)} – ${fwtBucketLabel(d.ts + r.bucket, r.bucket)}`));
+      [['Internet', d.internet, 'var(--chart-down)'], ['LAN, VPN & lokal', d.local, 'var(--chart-up)']].forEach(([label, v, c]) => {
+        const row = el('div', 'tt-row');
+        const key = el('span', 'line-key');
+        key.style.setProperty('--key-color', c);
+        row.append(key, el('b', '', fmtNum(v)), document.createTextNode(label));
+        tip.appendChild(row);
+      });
+      tip.hidden = false;
+      const cx = pad.l + (i + 0.5) * slot;
+      tip.style.left = `${cx + 14 + tip.offsetWidth > W ? cx - 14 - tip.offsetWidth : cx + 14}px`;
+    };
+    svg.onpointerleave = () => { svg.querySelectorAll('.bar.dim').forEach(b => b.classList.remove('dim')); tip.hidden = true; };
+  }
+
+  function setTrafficQuery(value) {
+    $('fwt-query').value = value;
+    load('fwTraffic');
+  }
+
+  function renderTrafficRecent(r) {
+    const t = $('fwt-recent');
+    t.innerHTML = '';
+    const head = t.createTHead().insertRow();
+    ['Zeit', 'Aktion', 'Richtung', 'Von', 'Nach', 'Protokoll'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = t.createTBody();
+    r.recent.slice(0, fwtShown).forEach(e => {
+      const row = body.insertRow();
+      row.insertCell().textContent = new Date(e.ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const [level, text] = FWT_ACTION[e.action];
+      row.insertCell().appendChild(el('span', `health-tag ${level}`, text));
+      const dir = row.insertCell();
+      dir.textContent = FWT_DIR[e.direction];
+      if (e.iface) dir.append(' ', el('span', 'health-tag', e.iface));
+      [[e.src, e.sport], [e.dst, e.dport]].forEach(([ip, port]) => {
+        const c = row.insertCell();
+        c.className = 'mono';
+        c.textContent = fmtEndpoint(ip, port);
+      });
+      const proto = row.insertCell();
+      proto.textContent = e.proto.toUpperCase();
+      if (e.syn) proto.append(' ', el('span', 'health-tag', 'Verbindungsversuch'));
+    });
+    if (!r.recent.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.className = 'wrap';
+      c.textContent = 'Keine Einträge im gewählten Zeitraum.';
+    }
+    const more = $('fwt-more');
+    more.hidden = r.recent.length <= fwtShown;
+  }
+
+  function renderTraffic(r) {
+    const fw = r.firewall || {};
+    const logOff = !fw.logging || /^off/.test(fw.logging);
+    const notice = $('fwt-notice');
+    let text = '';
+    if (!fw.installed) text = 'ufw ist nicht installiert – ohne Firewall gibt es nichts auszuwerten.';
+    else if (!fw.active) text = 'Die Firewall ist aus, sie blockiert gerade nichts.';
+    else if (logOff) text = 'Die Protokollierung der Firewall ist aus – blockierte Verbindungen werden nicht aufgezeichnet.';
+    notice.hidden = !text;
+    $('fwt-notice-text').textContent = text;
+    $('fwt-enable-log').hidden = !(fw.installed && fw.active && logOff);
+
+    const s = r.summary;
+    const top = s.top_port;
+    benchValues($('fwt-stats'), [
+      [$('fwt-action').value === 'allow' ? 'Erlaubte Pakete' : 'Blockierte Pakete', fmtNum(s.total)],
+      ['Pro Stunde', String(s.per_hour).replace('.', LOCALE.startsWith('de') ? ',' : '.')],
+      ['Verschiedene Absender', fmtNum(s.sources)],
+      ['Aus dem Internet', s.total ? `${Math.round(s.internet / s.total * 100)} %` : '–'],
+      ['Häufigster Port', top ? (top.port ? `${top.port}/${top.proto}` : top.proto.toUpperCase()) : '–']
+    ]);
+    $('fwt-chart-title').textContent = r.bucket === 300 ? 'Pakete pro 5 Minuten' : r.bucket === 3600 ? 'Pakete pro Stunde' : 'Pakete pro 6 Stunden';
+    drawTrafficChart(r);
+
+    const canManage = !window.PiAuth || window.PiAuth.can('firewall.manage');
+    // Top sources
+    const st = $('fwt-sources');
+    st.innerHTML = '';
+    let head = st.createTHead().insertRow();
+    ['Adresse', 'Herkunft', 'Pakete', 'Ports', 'Zuletzt', ''].forEach(h => head.appendChild(el('th', '', h)));
+    let body = st.createTBody();
+    r.top_sources.forEach(x => {
+      const row = body.insertRow();
+      const ip = row.insertCell();
+      const link = el('button', 'text-btn mono', x.ip);
+      link.type = 'button';
+      link.title = 'Nur diese Adresse anzeigen';
+      link.setAttribute('data-no-i18n', '');
+      link.addEventListener('click', () => setTrafficQuery(x.ip));
+      ip.appendChild(link);
+      if (x.name) {
+        const n = el('span', 'lan-sub', x.name);
+        n.setAttribute('data-no-i18n', '');
+        ip.appendChild(n);
+      }
+      row.insertCell().appendChild(scopeTag(x.scope));
+      row.insertCell().textContent = fmtNum(x.count);
+      const ports = row.insertCell();
+      ports.className = 'wrap mono';
+      ports.textContent = x.ports.join(', ');
+      row.insertCell().textContent = fmtTime(x.last);
+      const cell = row.insertCell();
+      cell.className = 'row-action';
+      if (canManage && x.scope !== 'local' && x.directions.includes('in')) {
+        const btn = el('button', 'btn-danger', 'IP sperren');
+        btn.title = 'Alles von dieser Adresse blockieren (Regel ganz oben)';
+        confirmClick(btn, 'IP sperren', 'Sicher?', async () => {
+          if (await firewallAction('rule', { action: 'deny', direction: 'in', from: x.ip, position: 'top', proto: 'any', comment: 'Blocked via PiCore' })) toast(`${x.ip} gesperrt.`, 'success');
+        });
+        cell.appendChild(btn);
+      }
+    });
+    if (!r.top_sources.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.textContent = 'Keine Einträge.';
+    }
+
+    // Top destination ports
+    const pt = $('fwt-ports');
+    pt.innerHTML = '';
+    head = pt.createTHead().insertRow();
+    ['Port', 'Dienst', 'Pakete', 'Absender', ''].forEach(h => head.appendChild(el('th', '', h)));
+    body = pt.createTBody();
+    r.top_ports.forEach(x => {
+      const row = body.insertRow();
+      const port = row.insertCell();
+      port.className = 'mono';
+      port.textContent = x.port ? `${x.port}/${x.proto}` : x.proto.toUpperCase();
+      const svc = row.insertCell();
+      if (x.service) {
+        const n = el('span', '', x.service);
+        n.setAttribute('data-no-i18n', '');
+        svc.appendChild(n);
+      } else svc.textContent = '–';
+      if (x.listening) {
+        const tag = el('span', 'health-tag warning', x.program ? `${x.program} lauscht` : 'läuft hier');
+        tag.title = 'Auf diesem Port lauscht ein Programm auf dem Pi – vielleicht soll er erreichbar sein?';
+        svc.append(' ', tag);
+      }
+      row.insertCell().textContent = fmtNum(x.count);
+      row.insertCell().textContent = fmtNum(x.sources);
+      const cell = row.insertCell();
+      cell.className = 'row-action';
+      if (canManage && x.port && (x.proto === 'tcp' || x.proto === 'udp') && x.directions.includes('in')) {
+        const btn = el('button', 'btn-secondary', 'Freigeben…');
+        btn.title = 'Regel im Formular vorbereiten';
+        btn.addEventListener('click', () => prepareRule({ action: 'allow', direction: 'in', proto: x.proto, port: String(x.port), comment: (x.program || x.service || '').replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 40) }));
+        cell.appendChild(btn);
+      }
+    });
+    if (!r.top_ports.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 5;
+      c.textContent = 'Keine Einträge.';
+    }
+
+    fwtShown = 25;
+    renderTrafficRecent(r);
+    const hints = [];
+    if (r.error) hints.push(r.error);
+    if (r.hint) hints.push(r.hint);
+    if (r.truncated) hints.push('Sehr viele Einträge – nur die neuesten 50.000 wurden ausgewertet.');
+    if (!r.error && !r.hint && fw.active && !logOff) hints.push('Die Firewall protokolliert gleiche Pakete nur begrenzt oft – echte Zahlen können höher sein. Erlaubte Verbindungen erscheinen nur bei Regeln mit „Treffer protokollieren“.');
+    $('fwt-hint').textContent = hints.join(' ');
   }
 
   // ---------------------------------------------------------------------------
@@ -1608,6 +1915,7 @@
     logUnits: ['/api/tools/log-units', renderLogUnits],
     cleanup: ['/api/tools/cleanup', renderCleanup],
     firewall: ['/api/tools/firewall', renderFirewall],
+    fwTraffic: ['/api/tools/firewall/traffic', renderTraffic],
     ssh: ['/api/tools/ssh', renderSsh],
     uptime: ['/api/monitor/uptime?days=7', renderUptime],
     throttle: ['/api/monitor/throttle?days=30', renderThrottle],
@@ -1619,13 +1927,19 @@
     forecast: ['/api/disk-forecast', renderForecast]
   };
 
-  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', logUnits: 'logs.view' };
+  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', fwTraffic: 'security.view', logUnits: 'logs.view' };
+
+  const loadSeq = {};
 
   async function load(key) {
     if (LOADER_PERMS[key] && window.PiAuth && !window.PiAuth.can(LOADER_PERMS[key])) return;
+    if (key === 'fwTraffic') LOADERS.fwTraffic[0] = fwtUrl();
     const [url, render] = LOADERS[key];
+    const seq = loadSeq[key] = (loadSeq[key] || 0) + 1;
     try {
-      cache[key] = await api(url);
+      const data = await api(url);
+      if (seq !== loadSeq[key]) return;  // a newer request (other filter) is on its way
+      cache[key] = data;
       render(cache[key]);
     } catch (err) {
       toast(`${key}: ${err.message}`, 'error');
@@ -1649,6 +1963,19 @@
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
     $('log-form').addEventListener('submit', searchLogs);
     $('fw-form').addEventListener('submit', addFirewallRule);
+    ['input', 'change'].forEach(ev => $('fw-form').addEventListener(ev, updateRulePreview));
+    updateRulePreview();
+    document.querySelectorAll('#fwt-range button').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('#fwt-range button').forEach(x => x.classList.toggle('active', x === b));
+      load('fwTraffic');
+    }));
+    ['fwt-action', 'fwt-direction'].forEach(id => $(id).addEventListener('change', () => load('fwTraffic')));
+    let fwtTimer = null;
+    $('fwt-query').addEventListener('input', () => { clearTimeout(fwtTimer); fwtTimer = setTimeout(() => load('fwTraffic'), 400); });
+    $('fwt-filters').addEventListener('submit', e => { e.preventDefault(); load('fwTraffic'); });
+    $('fwt-more').addEventListener('click', () => { fwtShown += 100; renderTrafficRecent(cache.fwTraffic); });
+    $('fwt-enable-log').addEventListener('click', () => firewallAction('logging', { level: 'low' }));
+    new ResizeObserver(() => cache.fwTraffic && drawTrafficChart(cache.fwTraffic)).observe($('fwt-chart'));
     $('lan-scan').addEventListener('click', runLanScan);
     ['input', 'change'].forEach(ev => {
       $('lan-filter').addEventListener(ev, () => cache.lan && renderLan(cache.lan));

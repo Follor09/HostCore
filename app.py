@@ -619,7 +619,7 @@ class UnbanRequest(BaseModel):
 
 
 class FirewallRequest(BaseModel):
-    action: str                  # enable, disable, rule, delete, preset
+    action: str                  # enable, disable, rule, delete, preset, logging
     params: dict = {}
 
 
@@ -644,10 +644,16 @@ async def api_tools_firewall():
     return await asyncio.to_thread(security.firewall_status)
 
 
+@app.get("/api/tools/firewall/traffic")
+async def api_tools_firewall_traffic(range: str = "24h", action: str = "block", direction: str = "all", q: str = ""):
+    return await asyncio.to_thread(security.firewall_traffic, range, action, direction, q[:64])
+
+
 @app.post("/api/tools/firewall")
 async def api_tools_firewall_action(req: FirewallRequest, request: Request):
     try:
-        result = await asyncio.to_thread(security.firewall_action, req.action, req.params)
+        client_ip = request.client.host if request.client else ""
+        result = await asyncio.to_thread(security.firewall_action, req.action, req.params, client_ip)
     except (ValueError, TypeError, PermissionError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"Firewall {req.action} {req.params} by '{request.state.user}'")
