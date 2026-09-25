@@ -383,6 +383,11 @@ class Monitor:
                     insights.disk_snapshot()
                 except Exception as e:
                     logger.warning(f"Disk snapshot failed: {e}")
+                try:
+                    import files
+                    files.trash_purge()
+                except Exception as e:
+                    logger.warning(f"Trash purge failed: {e}")
                 cutoff = now - RETENTION_DAYS * 86400
                 conn.execute("DELETE FROM throttle_events WHERE end < ?", (cutoff,))
                 conn.execute("DELETE FROM service_periods WHERE end < ?", (cutoff,))

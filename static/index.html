@@ -1066,10 +1066,14 @@
       </div>
       <nav class="files-breadcrumb" id="files-breadcrumb" aria-label="Pfad"></nav>
       <div class="files-toolbar">
-        <button class="btn-secondary" id="files-up" title="Übergeordneter Ordner">↑ Hoch</button>
-        <button class="btn-secondary" id="files-sizes">Ordnergrößen berechnen</button>
-        <button class="btn-secondary" id="files-largest">Größte Dateien</button>
-        <button data-perm="files.write" class="btn-secondary" id="files-upload-btn">Hochladen</button>
+        <button class="btn-secondary files-list-only" id="files-up" title="Übergeordneter Ordner">↑ Hoch</button>
+        <button class="btn-secondary files-list-only" id="files-sizes">Ordnergrößen berechnen</button>
+        <button class="btn-secondary files-list-only" id="files-largest">Größte Dateien</button>
+        <button data-perm="files.write" class="btn-secondary files-list-only" id="files-upload-btn">Hochladen</button>
+        <button data-perm="files.write" class="btn-secondary files-list-only" id="files-new-file">+ Datei</button>
+        <button data-perm="files.write" class="btn-secondary files-list-only" id="files-new-folder">+ Ordner</button>
+        <button data-perm="files.write" class="btn-secondary files-list-only" id="files-trash">Papierkorb</button>
+        <button data-perm="files.write" class="btn-danger files-trash-only" id="files-trash-empty" hidden>Papierkorb leeren</button>
         <input type="file" id="files-upload-input" multiple hidden>
         <span class="form-msg" id="files-msg" role="status"></span>
       </div>
@@ -1088,6 +1092,7 @@
           <p class="card-subtitle" id="preview-sub"></p>
         </div>
         <div class="sheet-head-actions">
+          <button data-perm="files.write" class="btn-secondary" id="preview-edit" hidden>Bearbeiten</button>
           <a class="btn-secondary" id="preview-download" download>Herunterladen</a>
           <button data-perm="files.share" class="btn-secondary" id="preview-share-btn">Teilen</button>
           <button class="mini-icon-btn" id="preview-close" title="Schließen (Esc)">
@@ -1155,6 +1160,7 @@
   <script src="/static/i18n.js"></script>
   <script src="/static/perms.js"></script>
 
+  <script src="/static/editor.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/notes.js"></script>
   <script src="/static/widgets.js"></script>

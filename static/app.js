@@ -730,7 +730,10 @@
     dir: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
-    other: '<circle cx="12" cy="12" r="9"></circle>'
+    other: '<circle cx="12" cy="12" r="9"></circle>',
+    edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>',
+    trash: '<path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path>',
+    restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path>'
   };
   const filesState = { path: null, data: null, sizes: null, mode: 'list' };
 
@@ -812,8 +815,161 @@
     const dt = document.createElement('span');
     dt.className = 'file-date';
     dt.textContent = fmtDate(e.mtime);
-    row.append(sz, dt);
+    row.append(sz, dt, fileActions(e));
     return row;
+  }
+
+  function iconButton(kind, title, onClick, cls = '') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `file-act ${cls}`;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${FILE_ICONS[kind]}</svg>`;
+    b.addEventListener('click', ev => { ev.stopPropagation(); onClick(b); });
+    return b;
+  }
+
+  function fileActions(e) {
+    const cell = document.createElement('div');
+    cell.className = 'file-actions';
+    if (e.locked || e.type === 'broken' || e.type === 'other' || !(window.PiAuth ? window.PiAuth.can('files.write') : true)) return cell;
+    if (e.type === 'file' && window.PiEditor) {
+      cell.appendChild(iconButton('edit', `${e.name}: Bearbeiten`, () => window.PiEditor.open(e.path, { onSaved: () => filesState.mode === 'list' && refreshFiles() })));
+    }
+    cell.appendChild(iconButton('trash', `${e.name}: In den Papierkorb`, btn => {
+      // second click within 3 s deletes
+      if (!btn.classList.contains('confirming')) {
+        btn.classList.add('confirming');
+        btn.title = 'Nochmal klicken zum Löschen';
+        setTimeout(() => { btn.classList.remove('confirming'); btn.title = `${e.name}: In den Papierkorb`; }, 3000);
+        return;
+      }
+      deleteEntry(e);
+    }, 'danger'));
+    return cell;
+  }
+
+  async function filesPost(url, body) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `Fehler ${res.status}`);
+    return data;
+  }
+
+  function refreshFiles() {
+    if (filesState.path) openFilesPath(filesState.path, true);
+  }
+
+  async function deleteEntry(e) {
+    try {
+      const info = await filesPost('/api/files/delete', { path: e.path });
+      showToast(`${info.name} liegt im Papierkorb.`, 'success');
+      if (filesState.mode === 'largest') {
+        filesState.largest.files = filesState.largest.files.filter(f => f.path !== e.path);
+        renderFiles();
+      } else refreshFiles();
+    } catch (err) {
+      setFilesMsg(err.message, 'error');
+    }
+  }
+
+  async function newEntry(kind) {
+    const name = window.prompt(kind === 'folder' ? 'Name des neuen Ordners' : 'Name der neuen Datei', kind === 'folder' ? '' : 'neu.txt');
+    if (!name || !name.trim()) return;
+    try {
+      const r = await filesPost('/api/files/new', { dir: filesState.path, name: name.trim(), kind });
+      await openFilesPath(filesState.path, true);
+      if (kind === 'file' && window.PiEditor) window.PiEditor.open(r.path, { onSaved: () => refreshFiles() });
+    } catch (err) {
+      setFilesMsg(err.message, 'error');
+    }
+  }
+
+  // ---- Recycle bin ----
+  async function openTrash() {
+    setFilesMsg('Lade…');
+    try {
+      filesState.trash = await (await fetch('/api/files/trash')).json();
+      filesState.mode = 'trash';
+      renderTrash();
+      setFilesMsg('');
+    } catch (err) {
+      setFilesMsg(err.message, 'error');
+    }
+  }
+
+  function renderTrash() {
+    const tr = filesState.trash;
+    $('files-modal').classList.add('trash-mode');
+    const nav = $('files-breadcrumb');
+    nav.innerHTML = '';
+    const back = document.createElement('button');
+    back.textContent = '← Zurück zu den Dateien';
+    back.addEventListener('click', () => { $('files-modal').classList.remove('trash-mode'); openFilesPath(filesState.path); });
+    const label = document.createElement('span');
+    label.className = 'trash-summary';
+    label.textContent = `Papierkorb · ${tr.items.length} ${tr.items.length === 1 ? 'Eintrag' : 'Einträge'} · ${fmtSize(tr.total) || '0 B'}`;
+    nav.append(back, label);
+    $('files-trash-empty').hidden = !tr.items.length;
+    const list = $('files-list');
+    list.innerHTML = '';
+    if (!tr.items.length) {
+      list.innerHTML = `<div class="files-empty">Der Papierkorb ist leer. Gelöschtes lässt sich hier ${tr.days} Tage lang wiederherstellen.</div>`;
+      return;
+    }
+    tr.items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = `file-row trash-row ${item.type}`;
+      row.appendChild(fileIcon(item.type === 'dir' ? 'dir' : 'file'));
+      const nameCell = document.createElement('div');
+      nameCell.style.minWidth = '0';
+      const name = document.createElement('span');
+      name.className = 'file-name';
+      name.textContent = item.name + (item.type === 'dir' ? '/' : '');
+      name.setAttribute('data-no-i18n', '');
+      const sub = document.createElement('span');
+      sub.className = 'file-sub trash-origin';
+      sub.textContent = `\u200e${item.path.slice(0, item.path.lastIndexOf('/') + 1) || '/'}`;
+      sub.title = item.path;
+      sub.setAttribute('data-no-i18n', '');
+      nameCell.append(name, sub);
+      const when = document.createElement('span');
+      when.className = 'file-bar-cell trash-when';
+      const days = Math.max(0, Math.ceil((item.expires - Date.now() / 1000) / 86400));
+      when.textContent = `gelöscht ${new Date(item.deleted * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${item.user ? ` von ${item.user}` : ''}`;
+      when.title = `Wird in ${days} Tagen endgültig entfernt`;
+      const sz = document.createElement('span');
+      sz.className = 'file-size';
+      sz.textContent = fmtSize(item.size);
+      const left = document.createElement('span');
+      left.className = 'file-date';
+      left.textContent = `noch ${days} T.`;
+      const actions = document.createElement('div');
+      actions.className = 'file-actions';
+      actions.appendChild(iconButton('restore', `${item.name}: Wiederherstellen`, async () => {
+        try {
+          const r = await filesPost(`/api/files/trash/${item.id}/restore`);
+          filesState.trash = r;
+          renderTrash();
+          showToast(`Wiederhergestellt: ${r.path}`, 'success');
+        } catch (err) { setFilesMsg(err.message, 'error'); }
+      }));
+      actions.appendChild(iconButton('trash', `${item.name}: Endgültig löschen`, async btn => {
+        if (!btn.classList.contains('confirming')) {
+          btn.classList.add('confirming');
+          btn.title = 'Nochmal klicken: endgültig löschen';
+          setTimeout(() => btn.classList.remove('confirming'), 3000);
+          return;
+        }
+        try {
+          filesState.trash = await filesPost(`/api/files/trash/${item.id}/delete`);
+          renderTrash();
+        } catch (err) { setFilesMsg(err.message, 'error'); }
+      }, 'danger'));
+      row.append(nameCell, when, sz, left, actions);
+      list.appendChild(row);
+    });
   }
 
   function renderBreadcrumb(path, root) {
@@ -860,16 +1016,18 @@
     return data;
   }
 
-  async function openFilesPath(path) {
+  async function openFilesPath(path, keepScroll = false) {
     setFilesMsg('Lade…');
     try {
       const data = await filesApi('list', path);
-      Object.assign(filesState, { path: data.path, data, sizes: null, mode: 'list' });
+      const scroll = $('files-list').scrollTop;
+      $('files-modal').classList.remove('trash-mode');
+      Object.assign(filesState, { path: data.path, data, sizes: keepScroll ? filesState.sizes : null, mode: 'list' });
       renderBreadcrumb(data.path, data.root);
       $('files-up').disabled = !data.parent;
       renderFiles();
       setFilesMsg(data.truncated ? 'Nur die ersten 2000 Einträge werden angezeigt.' : '');
-      $('files-list').scrollTop = 0;
+      $('files-list').scrollTop = keepScroll ? scroll : 0;
     } catch (err) {
       setFilesMsg(err.message, 'error');
     }
@@ -933,6 +1091,7 @@
     $('share-result').hidden = true;
     $('preview-search-wrap').hidden = true;
     $('preview-search').value = '';
+    $('preview-edit').hidden = true;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     $('preview-close').focus();
@@ -947,6 +1106,7 @@
         img.className = 'preview-image';
         body.appendChild(img);
       } else if (p.kind === 'text') {
+        $('preview-edit').hidden = false;
         previewState.text = p.content;
         const pre = document.createElement('pre');
         pre.className = 'preview-text';
@@ -1054,6 +1214,30 @@
       if (e.key !== 'Escape') return;
       if ($('preview-modal').classList.contains('open')) closePreview();
       else if ($('files-modal').classList.contains('open')) closeFilesModal();
+    });
+    $('preview-edit').addEventListener('click', () => {
+      const path = previewState.path;
+      closePreview();
+      window.PiEditor.open(path, { onSaved: () => refreshFiles() });
+    });
+    $('files-new-file').addEventListener('click', () => newEntry('file'));
+    $('files-new-folder').addEventListener('click', () => newEntry('folder'));
+    $('files-trash').addEventListener('click', openTrash);
+    $('files-trash-empty').addEventListener('click', async () => {
+      const btn = $('files-trash-empty');
+      if (!btn.classList.contains('confirming')) {
+        btn.classList.add('confirming');
+        btn.textContent = 'Wirklich alles löschen?';
+        setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = 'Papierkorb leeren'; }, 4000);
+        return;
+      }
+      btn.classList.remove('confirming');
+      btn.textContent = 'Papierkorb leeren';
+      try {
+        filesState.trash = await filesPost('/api/files/trash/empty');
+        renderTrash();
+        showToast('Papierkorb geleert.', 'success');
+      } catch (err) { setFilesMsg(err.message, 'error'); }
     });
     $('files-up').addEventListener('click', () => {
       if (filesState.data && filesState.data.parent) openFilesPath(filesState.data.parent);

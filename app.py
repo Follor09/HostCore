@@ -492,6 +492,85 @@ async def api_files_upload(request: Request, dir: str, name: str, overwrite: boo
     return {"ok": True, "path": target, "size": written}
 
 
+class TextSaveRequest(BaseModel):
+    path: str
+    content: str
+    mtime: Optional[str] = None
+
+
+class NewEntryRequest(BaseModel):
+    dir: str
+    name: str
+    kind: str = "file"            # file | folder
+
+
+class PathRequest(BaseModel):
+    path: str
+
+
+@app.get("/api/files/text")
+async def api_files_text(path: str):
+    return await _files_call(files.read_text, path)
+
+
+@app.post("/api/files/text")
+async def api_files_text_save(req: TextSaveRequest, request: Request):
+    request.state.audit_detail = req.path[:250]
+    try:
+        result = await asyncio.to_thread(files.write_text, req.path, req.content, req.mtime)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="Die Datei wurde inzwischen geändert – neu laden oder überschreiben.")
+    except (files.FileAccessError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Edited {result['path']} by '{request.state.user}'")
+    return result
+
+
+@app.post("/api/files/new")
+async def api_files_new(req: NewEntryRequest, request: Request):
+    request.state.audit_detail = f"{req.dir.rstrip('/')}/{req.name}"[:250]
+    fn = files.create_folder if req.kind == "folder" else files.create_file
+    try:
+        return await asyncio.to_thread(fn, req.dir, req.name)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="Den Namen gibt es dort schon.")
+    except (files.FileAccessError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/files/delete")
+async def api_files_delete(req: PathRequest, request: Request):
+    request.state.audit_detail = req.path[:250]
+    result = await _files_call(lambda p: files.trash_move(p, request.state.user), req.path)
+    logger.info(f"Moved {req.path} to the recycle bin by '{request.state.user}'")
+    return result
+
+
+@app.get("/api/files/trash")
+async def api_files_trash():
+    return await asyncio.to_thread(files.trash_list)
+
+
+@app.post("/api/files/trash/{item_id}/restore")
+async def api_files_trash_restore(item_id: str, request: Request):
+    result = await _files_call(files.trash_restore, item_id)
+    request.state.audit_detail = result["path"][:250]
+    return {**result, **await asyncio.to_thread(files.trash_list)}
+
+
+@app.post("/api/files/trash/{item_id}/delete")
+async def api_files_trash_delete(item_id: str):
+    await _files_call(files.trash_delete, item_id)
+    return await asyncio.to_thread(files.trash_list)
+
+
+@app.post("/api/files/trash/empty")
+async def api_files_trash_empty(request: Request):
+    count = await asyncio.to_thread(files.trash_empty)
+    request.state.audit_detail = f"{count}"
+    return await asyncio.to_thread(files.trash_list)
+
+
 @app.post("/api/files/share")
 async def api_files_share(req: ShareRequest, request: Request):
     request.state.audit_detail = f"{req.path[:200]} · {req.hours} Std."

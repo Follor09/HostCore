@@ -46,7 +46,9 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
 
     # --- Files
     ("GET", r"^/api/files/shares$", "files.share"),
+    ("GET", r"^/api/files/trash$", "files.write"),
     ("GET", r"^/api/files/.*$", "files.read"),
+    ("POST", r"^/api/files/(text|new|delete|trash/.+)$", "files.write"),
     ("PUT", r"^/api/files/upload$", "files.write"),
     ("POST", r"^/api/files/(share|shares/[^/]+/delete)$", "files.share"),
 
