@@ -1194,7 +1194,13 @@
 
     if (sys.uptime) {
       if (els.uptimeVal) els.uptimeVal.textContent = sys.uptime.formatted;
-      if (els.bootTimeVal) els.bootTimeVal.textContent = sys.uptime.boot_time;
+      if (els.bootTimeVal) {
+        // "2026-09-22 16:44:56" -> local short form, full value on hover
+        const boot = new Date(String(sys.uptime.boot_time).replace(' ', 'T'));
+        els.bootTimeVal.textContent = isNaN(boot) ? sys.uptime.boot_time
+          : boot.toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        els.bootTimeVal.title = sys.uptime.boot_time;
+      }
     }
 
     // CPU Metrics

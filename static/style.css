@@ -1330,11 +1330,13 @@ body {
 }
 
 .uptime-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr);
+  align-items: start;
+  column-gap: 14px;
+  row-gap: 10px;
   margin-top: 18px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: rgba(var(--shade-rgb), 0.25);
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
@@ -1344,30 +1346,74 @@ body {
   color: var(--accent-emerald);
   display: flex;
   align-items: center;
+  height: 1.9rem;           /* centred on label + value */
 }
 
 .uptime-info, .boot-time-info {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.boot-time-info {
+  padding-left: 14px;
+  border-left: 1px solid var(--border-subtle);
 }
 
 .uptime-label {
   font-size: 0.68rem;
+  line-height: 1.2;
   color: var(--text-dim);
   text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.uptime-value,
+.boot-time-val {
+  font-family: var(--font-mono);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .uptime-value {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-strong);
 }
 
 .boot-time-val {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+/* Narrow card (phones, tablet 3-column row): uptime and boot stack */
+.widget-clock-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 330px) {
+  .uptime-bar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .boot-time-info {
+    grid-column: 2;
+    padding-left: 0;
+    padding-top: 10px;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
+.widget-clock-card .widget-header {
+  gap: 10px;
+}
+
+.widget-clock-card .status-indicator-tag {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 2. Weather Card */
