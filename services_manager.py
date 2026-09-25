@@ -242,8 +242,9 @@ def get_mounted_drives() -> List[Dict[str, Any]]:
             continue
         seen_mounts.add(mount)
 
-        # Ignore special virtual mounts
-        if any(mount.startswith(p) for p in ["/proc", "/sys", "/dev", "/run", "/var/lib/docker"]):
+        # Ignore special virtual mounts and container bind mounts (k3s volumes live inside "/")
+        import storage
+        if any(mount.startswith(p) for p in ["/proc", "/sys", "/dev"]) or storage.is_noise(mount):
             continue
 
         try:
@@ -259,7 +260,7 @@ def get_mounted_drives() -> List[Dict[str, Any]]:
             elif mount.startswith("/media") or mount.startswith("/mnt") or mount.startswith("/Volumes"):
                 label = f"Extern: {os.path.basename(mount) or mount}"
             elif mount.startswith("/boot"):
-                label = "Boot Partition (/boot)"
+                label = f"Boot-Partition ({mount})"
             else:
                 label = mount
 

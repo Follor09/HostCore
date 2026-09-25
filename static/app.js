@@ -601,6 +601,88 @@
   // ---------------------------------------------------------------------------
   // Drives Explorer Component
   // ---------------------------------------------------------------------------
+  // ---- Storage like lsblk: disks -> partitions, swap, other devices ----
+  const DISK_KIND = { nvme: 'NVMe-SSD', sd: 'SD-Karte', usb: 'USB', sata: 'SATA', disk: 'Laufwerk' };
+
+  // Same precision as lsblk (238.5G): one decimal, binary units
+  function diskSize(b) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+    return `${i === 0 ? b : b.toFixed(1)} ${units[i]}`;
+  }
+
+  function partLabel(p) {
+    if (p.mount === '/') return 'System (/)';
+    if (p.mount && p.mount.startsWith('/boot')) return `Boot (${p.mount})`;
+    if (p.mount) return p.mount;
+    return p.label || p.name;
+  }
+
+  function usageBlock(pct, used, free, total) {
+    const level = pct > 85 ? 'danger' : pct > 70 ? 'warn' : '';
+    return `
+      <div class="progress-bar-bg"><div class="progress-bar-fill fill-emerald ${level}" style="width: ${pct}%;"></div></div>
+      <div class="drive-legend">
+        <span>Belegt: <b>${fmtSize(used)}</b></span>
+        ${free != null ? `<span>Frei: <b>${fmtSize(free)}</b></span>` : ''}
+        <span>Gesamt: <b>${fmtSize(total)}</b></span>
+      </div>`;
+  }
+
+  function renderStorage(o) {
+    const box = els.drivesListContainer;
+    if (!box || !o) return;
+    const html = [];
+    o.disks.forEach(d => {
+      if (d.name) {
+        const kind = DISK_KIND[d.kind] || d.kind.toUpperCase();
+        html.push(`<div class="disk-head"><span class="disk-name">${escapeHtml(d.model || kind)}</span>
+          <span class="drive-fstype">${escapeHtml(kind)}</span><span class="disk-meta">${escapeHtml(d.name)} · ${diskSize(d.size)}</span></div>`);
+      }
+      if (!d.partitions.length) html.push('<div class="disk-empty">Keine Partitionen</div>');
+      d.partitions.forEach(p => {
+        const pct = p.percent ?? 0;
+        const badge = pct > 85 ? 'danger' : pct > 70 ? 'warn' : '';
+        const extra = p.extra_mounts
+          ? `<span class="drive-fstype extra-mounts" title="${escapeHtml(p.extra_examples.join('\n'))}">+${p.extra_mounts} ${p.extra_kind === 'kubernetes' ? 'Kubernetes' : p.extra_kind === 'docker' ? 'Docker' : 'weitere'}</span>` : '';
+        html.push(`<div class="drive-item${p.mount ? '' : ' unmounted'}">
+          <div class="drive-header">
+            <div class="drive-title-wrap">
+              <span class="drive-label" title="${escapeHtml(p.path)}">${escapeHtml(partLabel(p))}</span>
+              ${p.fstype ? `<span class="drive-fstype">${escapeHtml(p.fstype)}</span>` : ''}
+              ${extra}
+              ${p.readonly ? '<span class="drive-fstype">nur lesen</span>' : ''}
+            </div>
+            <div>
+              ${p.mount ? `<button class="drive-open" data-mount="${escapeHtml(p.mount)}" title="Dateien durchsuchen & Speicher analysieren">Öffnen</button>
+              <span class="drive-percent-badge ${badge}">${pct}%</span>` : '<span class="drive-fstype">nicht eingehängt</span>'}
+            </div>
+          </div>
+          ${p.mount && p.total ? usageBlock(pct, p.used, p.free, p.total)
+            : `<div class="drive-legend"><span>${escapeHtml(p.name)} · ${fmtSize(p.size)}${p.label ? ` · ${escapeHtml(p.label)}` : ''}</span></div>`}
+        </div>`);
+      });
+    });
+    if (o.swap.length) {
+      html.push('<div class="disk-head"><span class="disk-name">Swap</span></div>');
+      o.swap.forEach(sw => {
+        const kind = sw.kind === 'zram' ? 'zram (komprimierter RAM)' : sw.kind === 'file' ? 'Datei' : 'Partition';
+        html.push(`<div class="drive-item">
+          <div class="drive-header">
+            <div class="drive-title-wrap"><span class="drive-label">${escapeHtml(sw.name)}</span><span class="drive-fstype">${escapeHtml(kind)}</span></div>
+            <div><span class="drive-percent-badge">${sw.percent ?? 0}%</span></div>
+          </div>
+          ${usageBlock(sw.percent ?? 0, sw.used, null, sw.total)}
+        </div>`);
+      });
+    }
+    if (o.other.length) {
+      html.push(`<div class="disk-other">Weitere: ${o.other.map(x => `${escapeHtml(x.name)} (${x.type}, ${fmtSize(x.size)}${x.mount ? `, ${escapeHtml(x.mount)}` : ''})`).join(' · ')}</div>`);
+    }
+    box.innerHTML = html.join('') || '<div class="disk-empty">Keine Laufwerke gefunden.</div>';
+  }
+
   function renderDrives(drives) {
     if (!els.drivesListContainer || !drives) return;
     els.drivesListContainer.innerHTML = '';
@@ -865,12 +947,12 @@
     });
   }
 
-  async function loadDrives() {
+  async function loadDrives(refresh = false) {
     try {
-      const res = await fetch('/api/drives');
+      const res = await fetch(`/api/drives${refresh ? '?refresh=1' : ''}`);
       if (res.ok) {
         const data = await res.json();
-        renderDrives(data.drives);
+        if (data.storage) renderStorage(data.storage); else renderDrives(data.drives);
       }
     } catch (e) {
       console.warn('Failed to load drives:', e);
@@ -1373,7 +1455,8 @@
           if (msg.system) updateSystemMetrics(msg.system);
           if (msg.processes) renderProcesses(msg.processes);
           if (msg.services) renderServices(msg.services);
-          if (msg.drives) renderDrives(msg.drives);
+          if (msg.storage) renderStorage(msg.storage);
+          else if (msg.drives) renderDrives(msg.drives);
           if (msg.updater) renderUpdater(msg.updater);
         }
       } catch (err) {
@@ -1600,7 +1683,7 @@
 
     if (els.btnRefreshDrives) {
       els.btnRefreshDrives.addEventListener('click', () => {
-        loadDrives();
+        loadDrives(true);
         showToast('Laufwerke aktualisiert');
       });
     }

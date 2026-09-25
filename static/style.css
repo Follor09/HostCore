@@ -5284,3 +5284,52 @@ body.customizing .dashboard-container {
 :root[data-theme="light"] .login-submit {
   color: #ffffff;
 }
+
+/* Storage like lsblk */
+.disk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 2px;
+}
+
+.disk-head:first-child {
+  margin-top: 0;
+}
+
+.disk-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.disk-meta {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.drive-item.unmounted {
+  opacity: 0.75;
+}
+
+.extra-mounts {
+  cursor: help;
+  color: var(--accent-violet);
+}
+
+.disk-other,
+.disk-empty {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+.drive-title-wrap {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.progress-bar-fill.warn { background: var(--accent-amber); }
+.progress-bar-fill.danger { background: var(--accent-rose); }

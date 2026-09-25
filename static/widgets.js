@@ -210,10 +210,10 @@
       row.appendChild(strip);
 
       const sub = [];
-      if (c.uptime != null) sub.push(`${String(c.uptime).replace('.', LOCALE.startsWith('de') ? ',' : '.')}% ${t('in 24 Std.')}`);
+      if (c.uptime != null) sub.push(`${String(c.uptime).replace('.', LOCALE.startsWith('de') ? ',' : '.')}% in 24 Std.`);
       if (c.avg_ms != null) sub.push(`Ø ${Math.round(c.avg_ms)} ms`);
       if (c.last && !c.last.ok && c.last.error) sub.push(c.last.error);
-      else if (c.last_failure) sub.push(`${t('Letzter Fehler')} ${new Date(c.last_failure.ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`);
+      else if (c.last_failure) sub.push(`Letzter Fehler ${new Date(c.last_failure.ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`);
       row.appendChild(el('span', 'health-sub', sub.join(' · ')));
       list.appendChild(row);
     });

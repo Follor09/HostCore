@@ -39,6 +39,7 @@ import sensors
 import actions
 import nettools
 import healthchecks
+import storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -1039,9 +1040,11 @@ async def api_services():
 
 
 @app.get("/api/drives")
-async def api_drives():
-    """Return mounted storage partitions and external USB drives."""
-    return {"drives": services_manager.get_mounted_drives()}
+async def api_drives(refresh: bool = False):
+    """Mounted partitions (legacy list) and the lsblk-style storage overview."""
+    if refresh:
+        storage._cache["data"] = None
+    return {"drives": services_manager.get_mounted_drives(), "storage": await asyncio.to_thread(storage.overview)}
 
 
 @app.get("/api/logs")
@@ -1302,6 +1305,7 @@ async def websocket_endpoint(websocket: WebSocket):
             processes = system_info.get_top_processes(limit=6)
             services = services_manager.get_services_status()
             drives = services_manager.get_mounted_drives()
+            storage_overview = storage.overview()
 
             payload = {
                 "type": "live_update",
@@ -1309,6 +1313,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 "processes": processes,
                 "services": services,
                 "drives": drives,
+                "storage": storage_overview,
                 "updater": updater.update_state
             }
             await websocket.send_json(payload)
