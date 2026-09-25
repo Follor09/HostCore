@@ -58,7 +58,7 @@
 
   // What a command needs (checked against PiAuth); unlisted = everyone
   const NEEDS = {
-    'page:system': 'system.view', 'page:report': 'system.view', 'page:terminal': 'terminal',
+    'page:system': 'system.view', 'page:report': 'system.view', 'page:terminal': 'terminal', 'page:containers': 'system.view',
     'sec:/system#logs': 'logs.view', 'sec:/system#ssh': 'security.view', 'sec:/system#aktivitaet': 'security.view',
     'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools',
     'sec:/settings#wetter': 'settings.manage', 'sec:/settings#dienste': 'settings.manage', 'sec:/settings#wake-on-lan': 'settings.manage',
@@ -70,7 +70,7 @@
   const allowed = c => {
     const auth = window.PiAuth;
     if (!auth || !auth.loaded) return true;
-    const need = NEEDS[c.id] || (c.id.startsWith('sec:/system#') ? 'system.view' : c.id.startsWith('act:') ? 'actions.run'
+    const need = NEEDS[c.id] || (c.id.startsWith('sec:/system#') || c.id.startsWith('sec:/containers#') ? 'system.view' : c.id.startsWith('act:') ? 'actions.run'
       : c.id.startsWith('wol:') ? 'network.tools' : null);
     return !need || auth.can(need);
   };
@@ -80,6 +80,7 @@
     const page = (id, label, href, keywords) => cmds.push({ id, label, group: 'Seiten', keywords, href });
     page('page:dashboard', 'Dashboard', '/', 'start übersicht home');
     page('page:system', 'System-Werkzeuge', '/system', 'tools');
+    page('page:containers', 'Container', '/containers', 'docker kubernetes k3s pods compose stacks images');
     page('page:settings', 'Einstellungen', '/settings', 'settings konfiguration');
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
 
@@ -96,6 +97,12 @@
       ['leistungstest', 'Leistungstest', 'benchmark speed test nvme'], ['logs', 'Log-Suche', 'journal journalctl fehler'],
       ['aufraeumen', 'Speicher aufräumen', 'cleanup cache platz'], ['aktivitaet', 'Aktivität', 'audit protokoll wer was log']
     ]);
+    section('/containers', 'Container', [
+      ['kubernetes', 'Kubernetes', 'k3s pods deployments services nodes kubectl'], ['docker', 'Docker-Container', 'docker container start stop logs'],
+      ['stacks', 'Compose-Stacks', 'docker compose stack yaml aktualisieren'], ['images', 'Image-Updates', 'image update neu version registry'],
+      ['statistik', 'Container-Statistik', 'cpu ram verlauf container stats']
+    ]);
+    section('/system', 'System-Werkzeuge', [['firewall-traffic', 'Firewall-Traffic', 'blockiert traffic ufw log länder country']]);
     section('/settings', 'Einstellungen', [
       ['konto', 'Konto', 'passwort sitzung account'], ['benutzer', 'Benutzer', 'users user accounts konten anlegen'],
       ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],

@@ -357,6 +357,11 @@ def data_usage(iface: str = "") -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Sampler hook (called from history.background_sampler once a minute)
 # ---------------------------------------------------------------------------
+def _sample_containers(conn, now: int) -> None:
+    import containers
+    containers.sample(conn, now)
+
+
 class Monitor:
     def __init__(self):
         self.throttle = _ThrottleWatch()
@@ -371,7 +376,8 @@ class Monitor:
                                ("services", lambda: _sample_services(conn, now)),
                                ("interfaces", lambda: self.ifaces.sample(conn, now)),
                                ("processes", lambda: self.procs.sample(conn, now)),
-                               ("sensors", lambda: _sample_sensors(conn, now))):
+                               ("sensors", lambda: _sample_sensors(conn, now)),
+                               ("containers", lambda: _sample_containers(conn, now))):
                 try:
                     step()
                 except Exception as e:
@@ -383,6 +389,11 @@ class Monitor:
                     insights.disk_snapshot()
                 except Exception as e:
                     logger.warning(f"Disk snapshot failed: {e}")
+                try:
+                    import imagecheck
+                    imagecheck.check_if_due()
+                except Exception as e:
+                    logger.warning(f"Image check failed: {e}")
                 try:
                     import geoip
                     geoip.refresh_if_old()

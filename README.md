@@ -187,6 +187,17 @@ Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil ode
 - **Speicher aufräumen:** System-Logs älter als 14 Tage, apt-Paket-Cache, ungenutzte Docker-Images & Build-Cache, `~/.cache` und Papierkorb – mit Größenvorschau, einzeln oder alles auf einmal. sudo nur für `journalctl --vacuum-time=14d` und `apt-get clean`.
 - **Hardware:** Modell, SoC, RAM, Revision, Seriennummer, Kernel, Firmware, Bootloader mit Update-Hinweis, NVMe mit PCIe-Generation (Tipp für Gen 3), Laufwerke, USB-Geräte mit Geschwindigkeit.
 
+### 🐳 Container (`/containers`, Würfel oben rechts)
+
+- **Übersicht:** laufende Pods, bereite Workloads, Docker-Container, Stacks, verfügbare Image-Updates und Kubernetes-Warnungen der letzten 24 Std. – plus eine Liste mit allem, was gerade kaputt ist (CrashLoop, OOMKilled, beendete Container …).
+- **Kubernetes (k3s):** Workloads (Deployments, StatefulSets, DaemonSets) mit Bereit-Status, Images und Aktionen **Neu starten** (`rollout restart`), **Stoppen** (auf 0 skalieren – „Starten“ holt die alte Anzahl zurück) und **Skalieren**; Pods mit Status, Neustarts, OOMKilled, CPU/RAM (metrics-server), **Logs** (Container-Auswahl, vorheriger Start, Filter, Live) und **Neu erstellen**; Services mit Ports/NodePorts/LoadBalancer-IP; Nodes mit Auslastung und Version; Warnungen (Events). Filter nach Namespace und Text, kube-system ausblendbar. Braucht eine lesbare kubeconfig (`~/.kube/config`, siehe Hinweis auf der Seite).
+- **Docker:** alle Container mit Status/Health, CPU (inkl. 24-Std.-Sparkline), RAM, Ports; Starten/Stoppen/Neu starten, Logs, Verlauf.
+- **Compose-Stacks:** aus `docker compose ls` und den Container-Labels; **Starten, Neu starten, Aktualisieren** (`pull` + `up -d`), **Stoppen, Entfernen** (`down`, Volumes bleiben) mit Live-Ausgabe; **Compose-Datei** öffnet den Editor – beim Speichern prüft `docker compose config` die Datei, kaputte YAML wird nicht gespeichert.
+- **Image-Updates:** alle 12 Std. (oder per „Jetzt prüfen“) wird der Digest jedes laufenden Images (Docker + k3s) mit der Registry verglichen – Docker Hub, GHCR, Quay, lscr.io & Co., anonym per `HEAD` (zählt nicht gegen das Docker-Hub-Limit). Bei Updates: Stack direkt aktualisieren oder Deployment neu starten. Nach einem Stack-Update wird automatisch neu geprüft.
+- **Statistik:** CPU, RAM und Netzwerk pro Container (Pods eines Deployments zusammengefasst) für 24 Std. / 7 Tage, einmal pro Minute gemessen (`docker stats`, `kubectl top`), 7 Tage aufbewahrt.
+
+Ansehen braucht „System ansehen“, Logs „Logs lesen“, alle Aktionen „Dienste steuern“, das Bearbeiten der Compose-Datei „Dateien ändern“.
+
 ### 🌐 Sprache / Language
 
 Deutsch oder Englisch – umschaltbar unter *Einstellungen → Sprache* oder unten auf der Login-Seite, pro Browser gespeichert (ohne Auswahl nach Browsersprache). `static/i18n.js` übersetzt alle Texte inkl. Live-Werten und Server-Meldungen; Logs, Terminal und Dateinamen bleiben unverändert. Neue deutsche Texte: im Browser `I18N.misses` (Konsole, bei aktivem Englisch) zeigt, was im Wörterbuch noch fehlt.

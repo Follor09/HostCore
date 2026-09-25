@@ -15,6 +15,7 @@ from typing import List, Optional, Tuple
 RULES: List[Tuple[str, str, Optional[str]]] = [
     # --- Pages
     ("GET", r"^/system$", "system.view"),
+    ("GET", r"^/containers$", "system.view"),
     ("GET", r"^/report$", "system.view"),
     ("GET", r"^/terminal$", "terminal"),
     ("GET", r"^/settings$", "login"),
@@ -40,6 +41,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/api/logs$", "logs.view"),
     ("GET", r"^/api/services/[^/]+/journal$", "logs.view"),
     ("GET", r"^/api/workloads/docker/[^/]+/logs$", "logs.view"),
+    ("GET", r"^/api/containers/kube/logs$", "logs.view"),
+    ("GET", r"^/api/containers/.*$", "system.view"),
     ("GET", r"^/api/tools/(ssh|activity|firewall|firewall/traffic|geoip|geoblock)$", "security.view"),
     ("GET", r"^/api/(tools/.*|events|report|disk-forecast|monitor/.*|sensors.*)$", "system.view"),
     ("POST", r"^/api/action/command$", "system.view"),        # read-only diagnostics (uptime, df ...)
@@ -62,6 +65,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     # --- System control
     ("POST", r"^/api/services/[^/]+/[^/]+$", "services.control"),
     ("POST", r"^/api/workloads/docker/[^/]+/[^/]+$", "services.control"),
+    ("POST", r"^/api/containers/(kube/.+|stacks/[^/]+/[^/]+|images/check)$", "services.control"),
     ("POST", r"^/api/processes/\d+/signal$", "processes.kill"),
     ("POST", r"^/api/tools/(cpu-mode|fan-curve|fan-curve/reset|cleanup|benchmark)$", "system.config"),
     ("POST", r"^/api/(updates/apt|updates/apply|updates/check)$", "updates.install"),

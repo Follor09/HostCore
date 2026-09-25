@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
+  <title>Container | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber settings-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">Container</h1>
+    </div>
+    <div class="header-right">
+      <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      </button>
+      <div class="user-chip" id="user-chip" hidden>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="user-name"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="settings-layout">
+    <nav class="settings-nav" aria-label="Bereiche">
+      <a href="#uebersicht" class="active">Übersicht</a>
+      <a href="#kubernetes">Kubernetes</a>
+      <a href="#docker">Docker</a>
+      <a href="#stacks">Compose-Stacks</a>
+      <a href="#images">Image-Updates</a>
+      <a href="#statistik">Statistik</a>
+    </nav>
+
+    <div class="settings-sections">
+      <!-- Übersicht -->
+      <section class="glass-card settings-section" id="uebersicht">
+        <div class="section-head">
+          <h2>Übersicht</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="ov-updated"></span>
+            <button class="mini-icon-btn" id="ov-reload" title="Neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+          </div>
+        </div>
+        <div class="bench-values ssh-stats" id="ov-stats"></div>
+        <div id="ov-problems"></div>
+      </section>
+
+      <!-- Kubernetes -->
+      <section class="glass-card settings-section" id="kubernetes">
+        <div class="section-head">
+          <h2>Kubernetes</h2>
+          <div class="head-tools">
+            <div class="segmented" id="k8s-tabs" role="tablist" aria-label="Ansicht">
+              <button class="active" data-tab="workloads">Workloads</button>
+              <button data-tab="pods">Pods</button>
+              <button data-tab="services">Services</button>
+              <button data-tab="nodes">Nodes</button>
+              <button data-tab="events">Warnungen</button>
+            </div>
+          </div>
+        </div>
+        <div class="k8s-body" id="k8s-body">
+          <form class="log-filters" id="k8s-filters">
+            <select id="k8s-ns" aria-label="Namespace"><option value="">Alle Namespaces</option></select>
+            <input type="search" id="k8s-q" placeholder="Name, Image oder Status filtern" autocomplete="off" spellcheck="false" aria-label="Filter">
+            <label class="toggle-label"><input type="checkbox" id="k8s-system"> kube-system zeigen</label>
+          </form>
+          <div class="table-scroll"><table class="data-table ctr-table" id="k8s-table"></table></div>
+        </div>
+        <p class="field-hint" id="k8s-hint"></p>
+      </section>
+
+      <!-- Docker -->
+      <section class="glass-card settings-section" id="docker">
+        <div class="section-head">
+          <h2>Docker-Container</h2>
+          <div class="head-tools">
+            <label class="toggle-label"><input type="checkbox" id="dk-stopped" checked> Gestoppte zeigen</label>
+          </div>
+        </div>
+        <div class="table-scroll"><table class="data-table ctr-table" id="dk-table"></table></div>
+        <p class="field-hint" id="dk-hint"></p>
+      </section>
+
+      <!-- Compose-Stacks -->
+      <section class="glass-card settings-section" id="stacks">
+        <div class="section-head">
+          <h2>Compose-Stacks</h2>
+        </div>
+        <p class="section-desc">Mit docker compose gestartete Anwendungen. „Aktualisieren“ lädt neue Images und startet geänderte Container neu; „Entfernen“ löscht die Container (Volumes und Daten bleiben).</p>
+        <div class="stack-grid" id="stack-grid"></div>
+        <p class="field-hint" id="stack-hint"></p>
+      </section>
+
+      <!-- Image-Updates -->
+      <section class="glass-card settings-section" id="images">
+        <div class="section-head">
+          <h2>Image-Updates</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="img-checked"></span>
+            <button data-perm="services.control" class="btn-secondary" id="img-check">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">Vergleicht die laufenden Images mit dem, was die Registry für denselben Tag gerade anbietet. Geprüft wird alle 12 Stunden – nur öffentliche Images, ohne Anmeldung.</p>
+        <div class="table-scroll"><table class="data-table ctr-table" id="img-table"></table></div>
+        <p class="field-hint" id="img-hint"></p>
+      </section>
+
+      <!-- Statistik -->
+      <section class="glass-card settings-section" id="statistik">
+        <div class="section-head">
+          <h2>Statistik</h2>
+          <div class="head-tools">
+            <select id="st-select" class="inline-select" aria-label="Container"></select>
+            <div class="segmented" id="st-range" role="tablist" aria-label="Zeitraum">
+              <button class="active" data-hours="24">24 Std.</button>
+              <button data-hours="168">7 Tage</button>
+            </div>
+          </div>
+        </div>
+        <p class="section-desc">CPU, Arbeitsspeicher und Netzwerk pro Container über die Zeit – einmal pro Minute gemessen. Pods eines Deployments werden zusammengefasst; 100 % CPU = ein voller Kern.</p>
+        <div class="bench-values ssh-stats" id="st-stats"></div>
+        <div class="st-charts">
+          <div>
+            <div class="nvme-chart-head"><h4 class="nvme-chart-title">CPU</h4></div>
+            <div class="history-chart nvme-chart" id="st-cpu"><svg role="img" aria-label="CPU-Verlauf"></svg><div class="history-tooltip" hidden></div></div>
+          </div>
+          <div>
+            <div class="nvme-chart-head"><h4 class="nvme-chart-title">Arbeitsspeicher</h4></div>
+            <div class="history-chart nvme-chart" id="st-mem"><svg role="img" aria-label="Arbeitsspeicher-Verlauf"></svg><div class="history-tooltip" hidden></div></div>
+          </div>
+          <div id="st-net-wrap">
+            <div class="nvme-chart-head">
+              <h4 class="nvme-chart-title">Netzwerk</h4>
+              <div class="chart-legend"><span><i class="bar-key down"></i>Empfangen</span><span><i class="bar-key up"></i>Gesendet</span></div>
+            </div>
+            <div class="history-chart nvme-chart" id="st-net"><svg role="img" aria-label="Netzwerk-Verlauf"></svg><div class="history-tooltip" hidden></div></div>
+          </div>
+        </div>
+        <p class="field-hint" id="st-hint"></p>
+      </section>
+    </div>
+  </main>
+
+  <!-- Logs -->
+  <div class="modal-backdrop" id="log-modal" aria-hidden="true">
+    <div class="modal-card sheet-card preview-sheet" role="dialog" aria-modal="true" aria-labelledby="log-title">
+      <div class="sheet-head">
+        <div class="preview-head-text">
+          <h3 id="log-title" data-no-i18n>Logs</h3>
+          <p class="card-subtitle" id="log-sub" data-no-i18n></p>
+        </div>
+        <div class="sheet-head-actions">
+          <button class="mini-icon-btn" id="log-close" title="Schließen (Esc)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+      <form class="log-filters" id="log-form">
+        <select id="log-container" aria-label="Container" hidden></select>
+        <select id="log-lines" aria-label="Zeilen">
+          <option value="100">100 Zeilen</option>
+          <option value="300" selected>300 Zeilen</option>
+          <option value="1000">1000 Zeilen</option>
+        </select>
+        <input type="search" id="log-search" placeholder="Filtern…" autocomplete="off" spellcheck="false" aria-label="Filtern">
+        <label class="toggle-label" id="log-previous-wrap"><input type="checkbox" id="log-previous"> Vorheriger Start</label>
+        <label class="toggle-label"><input type="checkbox" id="log-follow"> Live</label>
+      </form>
+      <div class="preview-body"><pre class="preview-text log-output" id="log-output" data-no-i18n></pre></div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/editor.js"></script>
+  <script src="/static/containers.js"></script>
+  <script src="/static/links.js"></script>
+  <script src="/static/palette.js"></script>
+  <script src="/static/mobilenav.js"></script>
+  <script src="/static/footer.js"></script>
+</body>
+</html>

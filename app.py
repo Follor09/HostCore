@@ -35,6 +35,8 @@ import terminal
 import systools
 import security
 import geoip
+import containers
+import imagecheck
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -1261,6 +1263,7 @@ async def api_settings_wol_delete(device_id: str):
 @app.post("/api/workloads/docker/{name}/{action}")
 async def api_docker_action(name: str, action: str, request: Request):
     result = await asyncio.to_thread(homelab.docker_action, name, action)
+    containers.invalidate()
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["message"])
     logger.info(f"docker {action} {name} by '{request.state.user}'")
@@ -1373,6 +1376,91 @@ async def get_terminal_page():
 @app.get("/system")
 async def get_system_page():
     return _serve_page("system.html")
+
+
+@app.get("/containers")
+async def get_containers_page():
+    return _serve_page("containers.html")
+
+
+# ---------------------------------------------------------------------------
+# Containers page: Kubernetes, Docker, compose stacks, image updates
+# ---------------------------------------------------------------------------
+def _container_call(fn, *args):
+    try:
+        return fn(*args)
+    except containers.ContainerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Zeitüberschreitung.")
+
+
+@app.get("/api/containers/overview")
+async def api_containers_overview():
+    def collect():
+        return {"kube": containers.kube_overview(), "docker": containers.docker_list(), "stacks": containers.stacks(),
+                "jobs": containers.running_jobs(), "images": imagecheck.status(), "scaled": containers.kube_scaled()}
+    return await asyncio.to_thread(collect)
+
+
+@app.get("/api/containers/stats")
+async def api_containers_stats():
+    return await asyncio.to_thread(containers.stats_summary)
+
+
+@app.get("/api/containers/stats/history")
+async def api_containers_stats_history(kind: str, name: str, hours: int = 24):
+    return await asyncio.to_thread(_container_call, containers.stats_history, kind, name, hours)
+
+
+@app.get("/api/containers/kube/logs")
+async def api_kube_logs(namespace: str, name: str, container: str = "", lines: int = 300, previous: bool = False):
+    return await asyncio.to_thread(_container_call, containers.kube_logs, namespace, name, container, lines, previous)
+
+
+class ScaleRequest(BaseModel):
+    replicas: int
+
+
+@app.post("/api/containers/kube/{kind}/{namespace}/{name}/restart")
+async def api_kube_restart(kind: str, namespace: str, name: str, request: Request):
+    request.state.audit_detail = f"{kind} {namespace}/{name}"
+    return {"message": await asyncio.to_thread(_container_call, containers.kube_restart, kind, namespace, name)}
+
+
+@app.post("/api/containers/kube/{kind}/{namespace}/{name}/scale")
+async def api_kube_scale(kind: str, namespace: str, name: str, req: ScaleRequest, request: Request):
+    request.state.audit_detail = f"{kind} {namespace}/{name} → {req.replicas}"
+    return {"message": await asyncio.to_thread(_container_call, containers.kube_scale, kind, namespace, name, req.replicas)}
+
+
+@app.post("/api/containers/kube/pod/{namespace}/{name}/delete")
+async def api_kube_delete_pod(namespace: str, name: str, request: Request):
+    request.state.audit_detail = f"{namespace}/{name}"
+    return {"message": await asyncio.to_thread(_container_call, containers.kube_delete_pod, namespace, name)}
+
+
+@app.post("/api/containers/stacks/{name}/{action}")
+async def api_stack_action(name: str, action: str, request: Request):
+    request.state.audit_detail = f"{name}: {action}"
+    job = await asyncio.to_thread(_container_call, containers.stack_action, name, action, request.state.user)
+    logger.info(f"Stack {name} {action} by '{request.state.user}'")
+    return job
+
+
+@app.get("/api/containers/jobs/{job_id}")
+async def api_container_job(job_id: str):
+    return _container_call(containers.get_job, job_id)
+
+
+@app.get("/api/containers/images")
+async def api_container_images():
+    return imagecheck.status()
+
+
+@app.post("/api/containers/images/check")
+async def api_container_images_check():
+    return imagecheck.start_check()
 
 
 @app.get("/api/system")
