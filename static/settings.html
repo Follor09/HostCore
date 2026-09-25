@@ -47,16 +47,18 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#konto" class="active">Konto</a>
+      <a href="#benutzer" data-perm="users.manage">Benutzer</a>
+      <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
       <a href="#sprache">Sprache</a>
       <a href="#darstellung">Darstellung</a>
-      <a href="#wetter">Wetter</a>
-      <a href="#dienste">Dienste</a>
-      <a href="#wake-on-lan">Wake-on-LAN</a>
-      <a href="#web-dienste">Web-Dienste</a>
-      <a href="#links">Eigene Links</a>
-      <a href="#freigaben">Freigaben</a>
-      <a href="#auto-update">Auto-Update</a>
-      <a href="#verlauf">Verlauf</a>
+      <a href="#wetter" data-perm="settings.manage">Wetter</a>
+      <a href="#dienste" data-perm="settings.manage">Dienste</a>
+      <a href="#wake-on-lan" data-perm="settings.manage">Wake-on-LAN</a>
+      <a href="#web-dienste" data-perm="settings.manage">Web-Dienste</a>
+      <a href="#links" data-perm="settings.manage">Eigene Links</a>
+      <a href="#freigaben" data-perm="files.share">Freigaben</a>
+      <a href="#auto-update" data-perm="settings.manage">Auto-Update</a>
+      <a href="#verlauf" data-perm="settings.manage">Verlauf</a>
       <a href="#system">System</a>
     </nav>
 
@@ -64,17 +66,20 @@
       <!-- Konto -->
       <section class="glass-card settings-section" id="konto">
         <h2>Konto</h2>
-        <p class="section-desc">Zugangsdaten für das Dashboard. Beim Speichern werden alle anderen Geräte abgemeldet.</p>
+        <p class="section-desc">Dein Zugang zum Dashboard. Beim Ändern des Passworts werden deine anderen Geräte abgemeldet.</p>
 
         <form class="settings-form" id="account-form" autocomplete="off">
           <div class="form-grid">
             <label class="login-field">
               <span>Benutzername</span>
-              <input type="text" id="acc-username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required>
+              <input type="text" id="acc-username" autocomplete="username" readonly>
             </label>
-            <span></span>
             <label class="login-field">
-              <span>Neues Passwort <em>(leer lassen = unverändert)</em></span>
+              <span>Gruppe</span>
+              <input type="text" id="acc-group" readonly>
+            </label>
+            <label class="login-field">
+              <span>Neues Passwort</span>
               <input type="password" id="acc-new" autocomplete="new-password">
             </label>
             <label class="login-field">
@@ -92,7 +97,7 @@
           </div>
         </form>
 
-        <div class="settings-row">
+        <div class="settings-row" data-perm="users.manage">
           <div>
             <strong>Ansehen ohne Login</strong>
             <p>Für ein Wanddisplay: Jeder im Netzwerk sieht das Dashboard. Aktionen, Updates und diese Seite brauchen weiterhin ein Login.</p>
@@ -106,13 +111,67 @@
         <div class="settings-row">
           <div>
             <strong>Alle anderen Geräte abmelden</strong>
-            <p>Beendet jede Sitzung außer dieser – z.B. wenn ein Gerät verloren ging.</p>
+            <p>Beendet deine Sitzungen auf allen anderen Geräten – z.B. wenn ein Gerät verloren ging.</p>
           </div>
           <button class="btn-secondary" id="logout-others">Abmelden</button>
         </div>
       </section>
 
       <!-- Sprache / Language -->
+      <!-- Benutzer (Admin) -->
+      <section class="glass-card settings-section" id="benutzer" data-perm="users.manage">
+        <div class="section-head">
+          <h2>Benutzer</h2>
+          <button class="btn-danger" id="logout-all">Alle Benutzer abmelden</button>
+        </div>
+        <p class="section-desc">Wer sich am Dashboard anmelden darf und in welcher Gruppe. Die Gruppe bestimmt die Rechte (siehe Berechtigungen). Deaktivierte Benutzer werden sofort abgemeldet.</p>
+        <div class="table-scroll">
+          <table class="data-table users-table" id="users-table"></table>
+        </div>
+        <h3 class="subhead">Benutzer hinzufügen</h3>
+        <form class="inline-form wol-add" id="user-form" autocomplete="off">
+          <label class="login-field grow">
+            <span>Benutzername</span>
+            <input type="text" id="new-user-name" maxlength="32" autocapitalize="none" spellcheck="false" placeholder="z.B. anna" required>
+          </label>
+          <label class="login-field grow">
+            <span>Passwort <em>(mind. 8 Zeichen)</em></span>
+            <input type="password" id="new-user-password" autocomplete="new-password" required>
+          </label>
+          <label class="login-field">
+            <span>Gruppe</span>
+            <select id="new-user-group"></select>
+          </label>
+          <button type="submit" class="btn-primary">Anlegen</button>
+        </form>
+        <p class="field-hint">Das Passwort teilst du der Person selbst mit – sie kann es danach unter „Konto“ ändern.</p>
+      </section>
+
+      <!-- Berechtigungen (Admin) -->
+      <section class="glass-card settings-section" id="berechtigungen" data-perm="users.manage">
+        <h2>Berechtigungen</h2>
+        <p class="section-desc">Was jede Gruppe darf. Ein Haken wird sofort gespeichert und gilt ohne neue Anmeldung. Administratoren dürfen immer alles.</p>
+        <div class="table-scroll perm-scroll">
+          <table class="data-table perm-matrix" id="perm-matrix"></table>
+        </div>
+        <h3 class="subhead">Neue Gruppe</h3>
+        <form class="inline-form wol-add" id="group-form" autocomplete="off">
+          <label class="login-field grow">
+            <span>Name</span>
+            <input type="text" id="group-name" maxlength="40" placeholder="z.B. Familie" required>
+          </label>
+          <label class="login-field grow">
+            <span>Beschreibung <em>(optional)</em></span>
+            <input type="text" id="group-desc" maxlength="200" placeholder="z.B. Fotos hochladen und ansehen">
+          </label>
+          <label class="login-field">
+            <span>Rechte übernehmen von</span>
+            <select id="group-copy"><option value="">– keine –</option></select>
+          </label>
+          <button type="submit" class="btn-primary">Anlegen</button>
+        </form>
+      </section>
+
       <section class="glass-card settings-section" id="sprache">
         <h2>Sprache</h2>
         <p class="section-desc">Sprache der Oberfläche. Wird in diesem Browser gespeichert.</p>
@@ -143,7 +202,7 @@
       </section>
 
       <!-- Wetter -->
-      <section class="glass-card settings-section" id="wetter">
+      <section class="glass-card settings-section" id="wetter" data-perm="settings.manage">
         <h2>Wetter</h2>
         <p class="section-desc">Ort für das Wetter-Widget. Koordinaten werden über Open-Meteo ermittelt.</p>
         <form class="inline-form" id="weather-form">
@@ -157,14 +216,14 @@
       </section>
 
       <!-- Dienste -->
-      <section class="glass-card settings-section" id="dienste">
+      <section class="glass-card settings-section" id="dienste" data-perm="settings.manage">
         <h2>Dienste</h2>
         <p class="section-desc">Welche Kacheln im Widget „Server-Dienste“ angezeigt werden. Änderungen werden sofort gespeichert.</p>
         <div class="check-grid" id="services-checks"></div>
       </section>
 
       <!-- Wake-on-LAN -->
-      <section class="glass-card settings-section" id="wake-on-lan">
+      <section class="glass-card settings-section" id="wake-on-lan" data-perm="settings.manage">
         <h2>Wake-on-LAN</h2>
         <p class="section-desc">Geräte, die im Dashboard per Klick geweckt werden können. Wake-on-LAN muss im BIOS / in der Netzwerkkarte des Geräts aktiviert sein.</p>
         <div class="wol-settings-list" id="wol-settings-list"></div>
@@ -186,7 +245,7 @@
       </section>
 
       <!-- Web-Dienste -->
-      <section class="glass-card settings-section" id="web-dienste">
+      <section class="glass-card settings-section" id="web-dienste" data-perm="settings.manage">
         <h2>Web-Dienste</h2>
         <p class="section-desc">Eigene Dienste im Heimnetz oder VPN, deren Erreichbarkeit der Pi regelmäßig prüft (z.B. Home Assistant, NAS, Grafana). Jede Antwort unter HTTP 400 zählt als erreichbar – auch eine Login-Seite.</p>
         <div class="wol-settings-list" id="health-settings-list"></div>
@@ -217,7 +276,7 @@
       </section>
 
       <!-- Eigene Links -->
-      <section class="glass-card settings-section" id="links">
+      <section class="glass-card settings-section" id="links" data-perm="settings.manage">
         <h2>Eigene Links</h2>
         <p class="section-desc">Links zu deinen Diensten (Home Assistant, Router, Grafana …). Sie erscheinen oben im Dashboard unter „Links“ und in der Suche (Strg+K) – auf allen Geräten.</p>
         <div class="wol-settings-list" id="links-list"></div>
@@ -235,14 +294,14 @@
       </section>
 
       <!-- Freigaben -->
-      <section class="glass-card settings-section" id="freigaben">
+      <section class="glass-card settings-section" id="freigaben" data-perm="files.share">
         <h2>Freigabe-Links</h2>
         <p class="section-desc">Aktive Download-Links für einzelne Dateien (erstellt in der Datei-Vorschau). Jeder mit dem Link kann die Datei ohne Anmeldung laden, bis der Link abläuft oder du ihn beendest.</p>
         <div class="wol-settings-list" id="shares-list"></div>
       </section>
 
       <!-- Auto-Update -->
-      <section class="glass-card settings-section" id="auto-update">
+      <section class="glass-card settings-section" id="auto-update" data-perm="settings.manage">
         <h2>Auto-Update</h2>
         <p class="section-desc">Der Pi prüft jede Minute GitHub und installiert neue Commits automatisch.</p>
         <dl class="kv-grid" id="updater-info"></dl>
@@ -253,7 +312,7 @@
       </section>
 
       <!-- Verlauf -->
-      <section class="glass-card settings-section" id="verlauf">
+      <section class="glass-card settings-section" id="verlauf" data-perm="settings.manage">
         <h2>Verlauf</h2>
         <p class="section-desc">Messwerte für das Verlaufsdiagramm (CPU, Temperatur, RAM, Netzwerk, Lüfter).</p>
         <dl class="kv-grid" id="history-info"></dl>
@@ -273,7 +332,9 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
   <script src="/static/settings.js"></script>
+  <script src="/static/users.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

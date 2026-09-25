@@ -189,7 +189,10 @@ AUDIT_EVENTS = {
     "Neustart": ("info", "Neustart ausgelöst"),
     "Herunterfahren": ("info", "Herunterfahren ausgelöst"),
     "CPU-Modus geändert": ("info", "CPU-Modus geändert"),
-    "Zugangsdaten geändert": ("warning", "Zugangsdaten geändert"),
+    "Eigenes Passwort geändert": ("info", "Passwort geändert"),
+    "Benutzer angelegt": ("info", "Benutzer angelegt"),
+    "Benutzer gelöscht": ("warning", "Benutzer gelöscht"),
+    "Gruppenrechte geändert": ("info", "Gruppenrechte geändert"),
     "IP entsperrt (fail2ban)": ("info", "IP entsperrt (fail2ban)"),
 }
 THROTTLE_TITLE = {"undervoltage": ("critical", "Unterspannung"), "throttled": ("critical", "Gedrosselt wegen Hitze"),

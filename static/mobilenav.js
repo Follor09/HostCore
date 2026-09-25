@@ -13,19 +13,20 @@
     settings: '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>'
   };
   const ITEMS = [
-    ['/', 'home', 'Dashboard'],
-    ['/system', 'tools', 'System'],
-    [null, 'search', 'Suche'],
-    ['/terminal', 'terminal', 'Terminal'],
-    ['/settings', 'settings', 'Einstellungen']
+    ['/', 'home', 'Dashboard', ''],
+    ['/system', 'tools', 'System', 'system.view'],
+    [null, 'search', 'Suche', ''],
+    ['/terminal', 'terminal', 'Terminal', 'terminal'],
+    ['/settings', 'settings', 'Einstellungen', '']
   ];
 
   const nav = document.createElement('nav');
   nav.className = 'mobile-nav';
   nav.setAttribute('aria-label', 'Hauptnavigation');
-  ITEMS.forEach(([href, icon, label]) => {
+  ITEMS.forEach(([href, icon, label, perm]) => {
     const el = document.createElement(href ? 'a' : 'button');
     el.className = 'mobile-nav-item';
+    if (perm) el.dataset.perm = perm;
     if (href) {
       el.href = href;
       if (location.pathname === href) {

@@ -44,6 +44,7 @@ import nettools
 import healthchecks
 import storage
 import insights
+import access
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -123,14 +124,18 @@ async def require_login(request: Request, call_next):
         return await call_next(request)
 
     is_read = request.method in ("GET", "HEAD")
-    always_private = (path in ("/settings", "/terminal", "/system", "/report")
-                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/", "/api/notes", "/api/actions",
-                                         "/api/events", "/api/report", "/api/disk-forecast", "/api/links"))
-                      or (path.startswith("/api/services/") and path.endswith("/journal")))
-    if user is None and (always_private or not (is_read and auth.public_view())):
+    perm = access.required_permission(request.method, path)
+    if user is None:
+        # Not logged in: only plain reads of the dashboard, and only with "view without login"
+        if not (perm is None and is_read and auth.public_view()):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
+            return RedirectResponse("/login", status_code=303)
+    elif perm not in (None, "login") and not auth.can(user, perm):
+        label = next((p[1] for p in auth.PERMISSIONS if p[0] == perm), perm)
         if path.startswith("/api/"):
-            return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
-        return RedirectResponse("/login", status_code=303)
+            return JSONResponse({"detail": f"Keine Berechtigung: {label}", "permission": perm}, status_code=403)
+        return RedirectResponse(f"/?denied={perm}", status_code=303)
 
     if not is_read and not _same_origin(request):
         return JSONResponse({"detail": "Ungültige Herkunft der Anfrage."}, status_code=403)
@@ -181,13 +186,21 @@ async def api_about():
     return await asyncio.to_thread(_about)
 
 
+def _me(user: Optional[str]) -> dict:
+    info = auth.user_info(user) if user else None
+    group = auth.all_groups().get(info["group"]) if info else None
+    return {"user": user, "group": info["group"] if info else None, "group_name": group["name"] if group else None,
+            "permissions": sorted(auth.permissions(user)) if user else []}
+
+
 @app.get("/api/auth/status")
 async def api_auth_status(request: Request):
-    return {
-        "configured": auth.is_configured(),
-        "user": request.state.user,
-        "public_view": auth.public_view(),
-    }
+    return {"configured": auth.is_configured(), "public_view": auth.public_view(), **_me(request.state.user)}
+
+
+@app.get("/api/me")
+async def api_me(request: Request):
+    return _me(request.state.user)
 
 
 @app.post("/api/auth/login")
@@ -203,8 +216,8 @@ async def api_login(req: LoginRequest, request: Request):
         raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
 
     request.state.audit_user = req.username.strip()[:32]
-    ok = await asyncio.to_thread(auth.verify_login, req.username.strip(), req.password)
-    if not ok:
+    username = await asyncio.to_thread(auth.verify_login, req.username.strip(), req.password)
+    if not username:
         request.state.audit_detail = "Falsches Passwort"
         auth.record_failure(ip)
         logger.warning(f"Failed login for '{req.username[:32]}' from {ip}")
@@ -214,8 +227,7 @@ async def api_login(req: LoginRequest, request: Request):
 
     auth.record_success(ip)
     request.state.audit_detail = "Angemeldet bleiben" if req.remember else ""
-    username = auth.canonical_username()  # typed in any case, stored in one spelling
-    request.state.audit_user = username
+    request.state.audit_user = username   # typed in any case, stored in one spelling
     logger.info(f"Login '{username}' from {ip}")
     response = JSONResponse({"ok": True, "user": username})
     _set_session_cookie(response, request, username, req.remember)
@@ -252,7 +264,7 @@ async def api_logout():
 # ---------------------------------------------------------------------------
 class AccountRequest(BaseModel):
     current_password: str
-    username: str
+    username: str = ""          # ignored: usernames are changed by an administrator
     new_password: str = ""
 
 
@@ -280,7 +292,7 @@ def _settings_payload(user: str) -> dict:
     updater.refresh_git_info()
     states = sm.get_unit_states([sm.UPDATER_TIMER, sm.UPDATER_SERVICE])
     return {
-        "account": {"username": user, "public_view": auth.public_view()},
+        "account": {**_me(user), "username": user, "public_view": auth.public_view()},
         "weather": load_weather_location(),
         "services": {"available": sm.available_services(),
                      "hidden": settings_store.get("hidden_services", [])},
@@ -322,18 +334,16 @@ async def api_settings_account(req: AccountRequest, request: Request):
         raise HTTPException(status_code=403, detail="Aktuelles Passwort ist falsch.")
     auth.record_success(ip)
 
-    username = req.username.strip()
-    if not auth.USERNAME_RE.match(username):
-        raise HTTPException(status_code=400, detail="Benutzername: 1–32 Zeichen aus Buchstaben, Ziffern, . _ -")
-    if req.new_password and len(req.new_password) < auth.MIN_PASSWORD_LENGTH:
-        raise HTTPException(status_code=400, detail=f"Neues Passwort: mindestens {auth.MIN_PASSWORD_LENGTH} Zeichen.")
-
-    # Keeps the current password if no new one is given; either way all other sessions end
-    await asyncio.to_thread(auth.set_password, username, req.new_password or req.current_password)
-    logger.info(f"Account changed by '{request.state.user}' from {ip} (username now '{username}')")
-    request.state.audit_detail = f"Benutzername: {username}"
-    response = JSONResponse({"ok": True, "message": "Gespeichert. Alle anderen Geräte wurden abgemeldet.", "user": username})
-    _set_session_cookie(response, request, username, _session_is_remembered(request))
+    if not req.new_password:
+        raise HTTPException(status_code=400, detail="Bitte ein neues Passwort eingeben.")
+    try:
+        await asyncio.to_thread(auth.update_user, request.state.user, password=req.new_password)
+    except auth.AuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Password changed by '{request.state.user}' from {ip}")
+    request.state.audit_detail = "Eigenes Passwort geändert"
+    response = JSONResponse({"ok": True, "message": "Gespeichert. Deine anderen Geräte wurden abgemeldet.", "user": request.state.user})
+    _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
     return response
 
 
@@ -345,8 +355,18 @@ async def api_settings_public_view(req: PublicViewRequest):
 
 @app.post("/api/settings/logout-others")
 async def api_settings_logout_others(request: Request):
-    auth.rotate_secret()
+    """Ends this user's other sessions (the current one gets a fresh cookie)."""
+    await asyncio.to_thread(auth.update_user, request.state.user, logout=True)
     response = JSONResponse({"ok": True, "message": "Alle anderen Geräte wurden abgemeldet."})
+    _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
+    return response
+
+
+@app.post("/api/settings/logout-all")
+async def api_settings_logout_all(request: Request):
+    """Admins: every session of every user ends (except this one)."""
+    await asyncio.to_thread(auth.rotate_secret)
+    response = JSONResponse({"ok": True, "message": "Alle Benutzer wurden auf allen Geräten abgemeldet."})
     _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
     return response
 
@@ -832,6 +852,101 @@ async def api_settings_links_move(link_id: str, direction: int = -1):
     return {"links": links}
 
 
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    group: str
+
+
+class UserUpdateRequest(BaseModel):
+    group: Optional[str] = None
+    disabled: Optional[bool] = None
+    password: Optional[str] = None
+    logout: bool = False
+
+
+class GroupRequest(BaseModel):
+    name: str
+    description: str = ""
+    permissions: list = []
+
+
+def _auth_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except auth.AuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/permissions")
+async def api_permissions():
+    return {"permissions": [{"id": p, "label": l, "description": d, "category": c} for p, l, d, c in auth.PERMISSIONS]}
+
+
+@app.get("/api/users")
+async def api_users(request: Request):
+    return {"users": auth.list_users(), "groups": auth.list_groups(), "me": request.state.user,
+            "permissions": [{"id": p, "label": l, "description": d, "category": c} for p, l, d, c in auth.PERMISSIONS]}
+
+
+@app.post("/api/users")
+async def api_users_create(req: UserCreateRequest, request: Request):
+    request.state.audit_detail = f"{req.username[:32]} · {req.group[:32]}"
+    user = await asyncio.to_thread(_auth_call, auth.create_user, req.username, req.password, req.group)
+    return {"user": user, "users": auth.list_users(), "groups": auth.list_groups()}
+
+
+@app.post("/api/users/{username}/update")
+async def api_users_update(username: str, req: UserUpdateRequest, request: Request):
+    changes = [k for k in ("group", "disabled", "password") if getattr(req, k) is not None] + (["logout"] if req.logout else [])
+    request.state.audit_detail = f"{username[:32]}: {', '.join(changes)}" + (f" → {req.group}" if req.group else "")
+    if username.casefold() == (request.state.user or "").casefold() and (req.disabled or (req.group and req.group != "admin")):
+        raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst deaktivieren oder deine Admin-Rechte entfernen.")
+    await asyncio.to_thread(_auth_call, auth.update_user, username, group=req.group, disabled=req.disabled,
+                            password=req.password, logout=req.logout)
+    response = JSONResponse({"users": auth.list_users(), "groups": auth.list_groups()})
+    if username.casefold() == (request.state.user or "").casefold() and (req.password or req.logout):
+        _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
+    return response
+
+
+@app.post("/api/users/{username}/delete")
+async def api_users_delete(username: str, request: Request):
+    request.state.audit_detail = username[:32]
+    if username.casefold() == (request.state.user or "").casefold():
+        raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst löschen.")
+    await asyncio.to_thread(_auth_call, auth.delete_user, username)
+    return {"users": auth.list_users(), "groups": auth.list_groups()}
+
+
+@app.post("/api/groups")
+async def api_groups_create(req: GroupRequest, request: Request):
+    request.state.audit_detail = f"{req.name[:40]}: {', '.join(req.permissions)[:200]}"
+    await asyncio.to_thread(_auth_call, auth.save_group, None, req.name, req.description, req.permissions)
+    return {"groups": auth.list_groups()}
+
+
+@app.post("/api/groups/{group_id}/update")
+async def api_groups_update(group_id: str, req: GroupRequest, request: Request):
+    request.state.audit_detail = f"{group_id}: {', '.join(req.permissions)[:200]}"
+    await asyncio.to_thread(_auth_call, auth.save_group, group_id, req.name, req.description, req.permissions)
+    return {"groups": auth.list_groups()}
+
+
+@app.post("/api/groups/{group_id}/reset")
+async def api_groups_reset(group_id: str, request: Request):
+    request.state.audit_detail = group_id
+    await asyncio.to_thread(_auth_call, auth.reset_group, group_id)
+    return {"groups": auth.list_groups()}
+
+
+@app.post("/api/groups/{group_id}/delete")
+async def api_groups_delete(group_id: str, request: Request):
+    request.state.audit_detail = group_id
+    await asyncio.to_thread(_auth_call, auth.delete_group, group_id)
+    return {"groups": auth.list_groups()}
+
+
 @app.get("/api/actions")
 async def api_actions():
     return await asyncio.to_thread(actions.list_actions)
@@ -940,7 +1055,7 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
     origin = websocket.headers.get("origin", "")
     same_origin = origin.split("://", 1)[-1] == websocket.headers.get("host", "")
     await websocket.accept()
-    if not user or not same_origin or not terminal.redeem_ticket(ticket, user):
+    if not user or not auth.can(user, "terminal") or not same_origin or not terminal.redeem_ticket(ticket, user):
         await websocket.close(code=4401)
         return
     client = websocket.client.host if websocket.client else "unknown"

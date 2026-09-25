@@ -6018,3 +6018,163 @@ a.event-title:hover { color: var(--accent-cyan); }
   color: var(--accent-cyan);
   border-color: rgba(var(--accent-rgb), 0.45);
 }
+
+/* Permissions: hide what the user can't use (perms.js); nothing flashes before it knows */
+.perm-denied {
+  display: none !important;
+}
+
+html:not(.perms-ready) [data-perm] {
+  visibility: hidden;
+}
+
+/* Bottom bar: as many columns as visible items */
+.mobile-nav {
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+@media (max-width: 760px) {
+  .mobile-nav { grid-template-columns: none; }
+}
+
+/* User editor + permission matrix */
+.users-table .user-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.user-name-cell {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.password-row td {
+  background: rgba(var(--accent-rgb), 0.04);
+}
+
+.password-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.password-form input {
+  flex: 1;
+  min-width: 200px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  background: rgba(var(--shade-rgb), 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.perm-scroll {
+  max-height: none;
+}
+
+.perm-matrix th,
+.perm-matrix td {
+  white-space: normal;
+}
+
+.perm-matrix .perm-label-col {
+  min-width: 210px;
+}
+
+.perm-matrix .perm-group-col {
+  text-align: center;
+  min-width: 88px;
+  vertical-align: bottom;
+}
+
+.perm-matrix th,
+.perm-matrix td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.perm-group-name {
+  display: block;
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-main);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.perm-group-name:hover:not(:disabled) {
+  color: var(--accent-cyan);
+  text-decoration: underline;
+}
+
+.perm-group-name:disabled {
+  cursor: default;
+}
+
+.perm-members {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.perm-category td {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: rgba(var(--ink-rgb), 0.02);
+}
+
+.perm-matrix td.perm-label {
+  font-family: var(--font-body);
+  color: var(--text-main);
+}
+
+.perm-name {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.perm-desc {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.perm-cell {
+  text-align: center;
+}
+
+.perm-cell input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.perm-cell input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.perm-matrix tfoot td {
+  border-bottom: none;
+}
+
+.perm-matrix tfoot button {
+  padding: 4px 10px;
+  font-size: 0.72rem;
+}

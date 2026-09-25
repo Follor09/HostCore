@@ -46,11 +46,11 @@
       <a href="#ereignisse" class="active">Ereignisse</a>
       <a href="#netzwerk">Netzwerk</a>
       <a href="#datenverbrauch">Datenverbrauch</a>
-      <a href="#dns">DNS &amp; Traceroute</a>
+      <a data-perm="network.tools" href="#dns">DNS &amp; Traceroute</a>
       <a href="#geraete">Geräte im Netzwerk</a>
       <a href="#port-check">Port-Check</a>
-      <a href="#firewall">Firewall</a>
-      <a href="#ssh">SSH-Anmeldungen</a>
+      <a data-perm="security.view" href="#firewall">Firewall</a>
+      <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
       <a href="#sensoren">Sensoren</a>
@@ -60,9 +60,9 @@
       <a href="#luefterkurve">Lüfterkurve</a>
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
-      <a href="#logs">Logs</a>
+      <a data-perm="logs.view" href="#logs">Logs</a>
       <a href="#aufraeumen">Aufräumen</a>
-      <a href="#aktivitaet">Aktivität</a>
+      <a data-perm="security.view" href="#aktivitaet">Aktivität</a>
     </nav>
 
     <div class="settings-sections">
@@ -144,7 +144,7 @@
       </section>
 
       <!-- DNS & Traceroute -->
-      <section class="glass-card settings-section" id="dns">
+      <section data-perm="network.tools" class="glass-card settings-section" id="dns">
         <h2>DNS &amp; Traceroute</h2>
         <p class="section-desc">Namen auflösen (auch MX, TXT …) und den Weg zu einem Host verfolgen.</p>
         <h3 class="subhead">DNS-Abfrage</h3>
@@ -182,7 +182,7 @@
       <section class="glass-card settings-section" id="geraete">
         <div class="section-head">
           <h2>Geräte im Netzwerk</h2>
-          <button class="btn-primary" id="lan-scan">Jetzt scannen</button>
+          <button data-perm="network.tools" class="btn-primary" id="lan-scan">Jetzt scannen</button>
         </div>
         <p class="section-desc">Sucht alle Geräte im Heimnetz (LAN/WLAN des Pi). Gefundene Geräte werden gemerkt – auch wenn sie später offline sind. Namen kommen vom Router, Hersteller aus der MAC-Adresse.</p>
         <p class="field-hint" id="lan-status"></p>
@@ -216,7 +216,7 @@
         </div>
         <p class="field-hint" id="ports-hint"></p>
         <h3 class="subhead">Port testen</h3>
-        <form class="log-filters" id="port-test-form">
+        <form data-perm="network.tools" class="log-filters" id="port-test-form">
           <input type="text" id="port-test-host" placeholder="Host oder IP, z.B. 192.168.178.1" autocomplete="off" spellcheck="false" aria-label="Host" required>
           <input type="text" id="port-test-ports" class="short" placeholder="Ports: 22,80,443" value="22,80,443" autocomplete="off" aria-label="Ports" required>
           <button type="submit" class="btn-primary">Testen</button>
@@ -228,7 +228,7 @@
       </section>
 
       <!-- Firewall -->
-      <section class="glass-card settings-section" id="firewall">
+      <section data-perm="security.view" class="glass-card settings-section" id="firewall">
         <div class="section-head">
           <h2>Firewall</h2>
           <div class="head-tools">
@@ -243,9 +243,9 @@
           <dl class="kv-grid" id="fw-summary"></dl>
           <div class="form-actions fw-toggle-row">
             <span class="form-msg" id="fw-msg" role="status"></span>
-            <button class="btn-primary" id="fw-toggle" hidden></button>
+            <button data-perm="firewall.manage" class="btn-primary" id="fw-toggle" hidden></button>
           </div>
-          <div id="fw-suggestions-wrap" hidden>
+          <div data-perm="firewall.manage" id="fw-suggestions-wrap" hidden>
             <h3 class="subhead">Empfohlene Regeln</h3>
             <div class="iface-list" id="fw-suggestions"></div>
           </div>
@@ -254,7 +254,7 @@
             <table class="data-table" id="fw-rules"></table>
           </div>
           <h3 class="subhead">Regel hinzufügen</h3>
-          <form class="log-filters" id="fw-form">
+          <form data-perm="firewall.manage" class="log-filters" id="fw-form">
             <select id="fw-action" aria-label="Aktion">
               <option value="allow">Erlauben</option>
               <option value="deny">Blockieren</option>
@@ -277,7 +277,7 @@
       </section>
 
       <!-- SSH-Anmeldungen -->
-      <section class="glass-card settings-section" id="ssh">
+      <section data-perm="security.view" class="glass-card settings-section" id="ssh">
         <div class="section-head">
           <h2>SSH-Anmeldungen</h2>
           <div class="head-tools">
@@ -415,7 +415,7 @@
           <span class="health-tag" id="fan-curve-state">–</span>
         </div>
         <p class="section-desc">Ab welcher Temperatur der Lüfter welche Stufe fährt. Wird in config.txt gespeichert (mit Backup) und gilt nach einem Neustart.</p>
-        <div class="mode-grid" id="fan-presets"></div>
+        <div data-perm="system.config" class="mode-grid" id="fan-presets"></div>
         <div class="fan-curve-body">
           <div class="fan-steps" id="fan-steps"></div>
           <div class="fan-chart" id="fan-chart">
@@ -424,8 +424,8 @@
         </div>
         <div class="form-actions">
           <span class="form-msg" id="fan-msg" role="status"></span>
-          <button class="btn-secondary" id="fan-reset">Werkseinstellung</button>
-          <button class="btn-primary" id="fan-save">Speichern</button>
+          <button data-perm="system.config" class="btn-secondary" id="fan-reset">Werkseinstellung</button>
+          <button data-perm="system.config" class="btn-primary" id="fan-save">Speichern</button>
         </div>
         <p class="field-hint" id="fan-hint"></p>
       </section>
@@ -437,7 +437,7 @@
           <span class="health-tag" id="cpu-live">– MHz</span>
         </div>
         <p class="section-desc">Legt fest, wie schnell die CPU hochtaktet. Wird gespeichert und nach einem Neustart automatisch wieder gesetzt.</p>
-        <div class="mode-grid" id="cpu-modes"></div>
+        <div data-perm="system.config" class="mode-grid" id="cpu-modes"></div>
         <p class="field-hint" id="cpu-hint"></p>
       </section>
 
@@ -452,13 +452,13 @@
               <select id="bench-drive" aria-label="Laufwerk"></select>
             </div>
             <div class="bench-values" id="bench-disk-values"></div>
-            <button class="btn-primary" id="bench-disk">Test starten (~15 s)</button>
+            <button data-perm="system.config" class="btn-primary" id="bench-disk">Test starten (~15 s)</button>
             <p class="field-hint">Schreibt eine 512-MB-Testdatei und löscht sie danach wieder.</p>
           </div>
           <div class="bench-card">
             <div class="bench-head"><strong>CPU</strong></div>
             <div class="bench-values" id="bench-cpu-values"></div>
-            <button class="btn-primary" id="bench-cpu">Test starten (~6 s)</button>
+            <button data-perm="system.config" class="btn-primary" id="bench-cpu">Test starten (~6 s)</button>
             <p class="field-hint">SHA-256-Durchsatz auf einem und auf allen Kernen.</p>
           </div>
         </div>
@@ -469,7 +469,7 @@
       </section>
 
       <!-- Log-Suche -->
-      <section class="glass-card settings-section" id="logs">
+      <section data-perm="logs.view" class="glass-card settings-section" id="logs">
         <h2>Log-Suche</h2>
         <p class="section-desc">Durchsucht das System-Journal. Neueste Einträge zuerst, maximal 300 Treffer.</p>
         <form class="log-filters" id="log-form">
@@ -505,11 +505,11 @@
         <div class="iface-list" id="cleanup-items"></div>
         <div class="form-actions">
           <span class="form-msg" id="cleanup-msg" role="status"></span>
-          <button class="btn-danger" id="cleanup-all">Alles aufräumen</button>
+          <button data-perm="system.config" class="btn-danger" id="cleanup-all">Alles aufräumen</button>
         </div>
       </section>
       <!-- Aktivität -->
-      <section class="glass-card settings-section" id="aktivitaet">
+      <section data-perm="security.view" class="glass-card settings-section" id="aktivitaet">
         <h2>Aktivität</h2>
         <p class="section-desc">Wer wann was im Dashboard gemacht hat: Anmeldungen, Updates, Dienste, Firewall, beendete Prozesse, Downloads … (180 Tage).</p>
         <form class="log-filters" id="activity-form">
@@ -531,6 +531,7 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
   <script src="/static/overview.js"></script>
   <script src="/static/system.js"></script>
   <script src="/static/links.js"></script>

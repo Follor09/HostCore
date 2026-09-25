@@ -98,23 +98,34 @@ sudo systemctl start pi-dashboard-update     # Sofort manuell aktualisieren
 systemctl list-timers pi-dashboard-update    # Nächste Prüfung
 ```
 
-### 🔐 Login
+### 🔐 Login, Benutzer & Berechtigungen
 
-Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem Pi** gesetzt (nicht über das Web):
+Das Dashboard ist komplett passwortgeschützt. Den **ersten Administrator** legst du **nur auf dem Pi** an (nicht über das Web):
 
 ```bash
-~/pi-dashboard/set-password.sh                  # Benutzer & Passwort setzen (meldet alle Sitzungen ab)
+~/pi-dashboard/set-password.sh                  # Passwort setzen / Benutzer anlegen (der erste wird Administrator)
+~/pi-dashboard/set-password.sh users            # Benutzer und Gruppen anzeigen
 ~/pi-dashboard/set-password.sh public-view on   # Ansehen ohne Login (z.B. Wanddisplay) – Aktionen bleiben geschützt
 ~/pi-dashboard/set-password.sh public-view off
-~/pi-dashboard/set-password.sh status
 ```
 
-- Passwort als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed).
-- Benutzername ohne Groß-/Kleinschreibung („Niko“ = „niko“), das Passwort dagegen exakt.
-- Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab.
+Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen → Benutzer** und **→ Berechtigungen**:
+
+| Gruppe | Darf |
+|---|---|
+| **Administrator** | alles, auch Benutzer & Rechte (nicht änderbar) |
+| **Bearbeiter** | System-Werkzeuge & Logs ansehen, Dateien hochladen/teilen, Notizen, Schnellaktionen, Dienste steuern, Netzwerk-Werkzeuge, Einstellungen – ohne Terminal, Neustart, Updates, Firewall, Benutzerverwaltung |
+| **Benutzer** | System-Werkzeuge ansehen, Dateien ansehen, Notizen |
+| **Betrachter** | nur das Dashboard |
+
+- **Eigene Gruppen** anlegen (Rechte von einer bestehenden übernehmen) und in einer Matrix ankreuzen – 18 Einzelrechte von „Logs lesen“ bis „Web-Terminal“. Änderungen gelten sofort, ohne neue Anmeldung. Eingebaute Gruppen lassen sich anpassen und auf Standard zurücksetzen.
+- Pro Benutzer: Gruppe wechseln, Passwort setzen, auf allen Geräten abmelden, deaktivieren (sofort abgemeldet), löschen. Es bleibt immer mindestens ein aktiver Administrator; die eigenen Admin-Rechte kann man sich nicht selbst nehmen.
+- Der Server prüft **jede** Anfrage gegen eine zentrale Rechte-Tabelle (`access.py`); neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren. Die Oberfläche blendet nicht erlaubte Knöpfe und Bereiche aus.
+- Passwörter als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed). Eine alte `auth.json` mit einem Benutzer wird automatisch übernommen – dieser wird Administrator.
+- Benutzernamen ohne Groß-/Kleinschreibung („Niko“ = „niko“), Passwörter exakt.
+- Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab. Neues Passwort oder „Abmelden“ beendet nur die Sitzungen dieses Benutzers.
 - Nach 5 Fehlversuchen wird die IP zunehmend lange gesperrt (30 s … 15 min).
-- Aktionen (Updates, Neustart, Befehle …) werden nur von der eigenen Seite akzeptiert (CSRF-Schutz).
-- Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
+- Aktionen werden nur von der eigenen Seite akzeptiert (CSRF-Schutz). Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
 
 ### 📱 Handy & Tablet
 

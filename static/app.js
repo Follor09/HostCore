@@ -656,7 +656,7 @@
               ${p.readonly ? '<span class="drive-fstype">nur lesen</span>' : ''}
             </div>
             <div>
-              ${p.mount ? `<button class="drive-open" data-mount="${escapeHtml(p.mount)}" title="Dateien durchsuchen & Speicher analysieren">Öffnen</button>
+              ${p.mount ? `<button class="drive-open" data-perm="files.read" data-mount="${escapeHtml(p.mount)}" title="Dateien durchsuchen & Speicher analysieren">Öffnen</button>
               <span class="drive-percent-badge ${badge}">${pct}%</span>` : '<span class="drive-fstype">nicht eingehängt</span>'}
             </div>
           </div>
@@ -708,7 +708,7 @@
             <span class="drive-fstype">${escapeHtml(d.fstype)}</span>
           </div>
           <div>
-            <button class="drive-open" data-mount="${escapeHtml(d.mount)}" title="Dateien durchsuchen & Speicher analysieren">Öffnen</button>
+            <button class="drive-open" data-perm="files.read" data-mount="${escapeHtml(d.mount)}" title="Dateien durchsuchen & Speicher analysieren">Öffnen</button>
             <span class="drive-percent-badge ${badgeClass}">${d.percent}%</span>
           </div>
         </div>
@@ -1239,6 +1239,7 @@
     }
     const btn = document.createElement('button');
     btn.className = 'proc-kill';
+    btn.dataset.perm = 'processes.kill';
     btn.textContent = 'Beenden';
     btn.title = `${p.name} (${p.pid}) beenden`;
     btn.addEventListener('click', async () => {
@@ -2216,6 +2217,7 @@
     list.forEach(action => {
       const btn = document.createElement('button');
       btn.className = 'wl-btn';
+      btn.dataset.perm = action === 'logs' ? 'logs.view' : 'services.control';
       btn.title = `${WL_LABELS[action]}: ${c.name}`;
       btn.setAttribute('aria-label', btn.title);
       btn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${WL_ICONS[action]}</svg>`;
@@ -2308,6 +2310,7 @@
       main.append(n, m);
       const btn = document.createElement('button');
       btn.className = 'btn-wake';
+      btn.dataset.perm = 'network.tools';
       btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><path d="M12 2v10"></path></svg>';
       btn.appendChild(document.createTextNode('Wecken'));
       btn.title = `${d.name} per Wake-on-LAN starten`;
@@ -3123,7 +3126,18 @@
     });
   }
 
+  function explainDenied() {
+    const denied = new URLSearchParams(location.search).get('denied');
+    if (!denied) return;
+    history.replaceState(null, '', location.pathname);
+    fetch('/api/permissions').then(r => (r.ok ? r.json() : { permissions: [] })).then(({ permissions }) => {
+      const p = permissions.find(x => x.id === denied);
+      showToast(`Keine Berechtigung: ${p ? p.label : denied}`, 'error');
+    }).catch(() => {});
+  }
+
   function init() {
+    explainDenied();
     initAuth();
     startClock();
     initHeaderControls();

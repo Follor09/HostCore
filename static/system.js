@@ -360,6 +360,7 @@
       const size = item.size == null ? 'unbekannt' : `${item.size_is_total ? 'gesamt ' : ''}${fmtBytes(item.size)}`;
       const row = infoRow(item.label, item.desc, [[item.size ? 'warning' : '', size]]);
       const btn = el('button', 'btn-secondary', 'Aufräumen');
+      btn.dataset.perm = 'system.config';
       btn.disabled = item.size === 0;
       btn.dataset.item = item.id;
       btn.addEventListener('click', () => runCleanup([item.id], btn));
@@ -397,6 +398,7 @@
 
   function lanAction(label, cls, onClick) {
     const b = el('button', cls, label);
+    b.dataset.perm = 'network.tools';
     b.addEventListener('click', onClick);
     return b;
   }
@@ -475,6 +477,7 @@
           lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/wol`, { name: d.alias || shortHost(d.hostname) || d.ip })
             .then(() => toast('Zu Wake-on-LAN hinzugefügt.', 'success'))));
         const forget = el('button', 'btn-danger', 'Vergessen');
+        forget.dataset.perm = 'network.tools';
         confirmClick(forget, 'Vergessen', 'Sicher?', () => lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/forget`));
         actions.append(' ', forget);
       }
@@ -708,6 +711,7 @@
       cell.className = 'row-action';
       if (r.num == null) return;  // saved rule while ufw is off: no number to delete by
       const del = el('button', 'btn-danger', 'Löschen');
+      del.dataset.perm = 'firewall.manage';
       confirmClick(del, 'Löschen', 'Sicher?', () => firewallAction('delete', { num: r.num }));
       cell.appendChild(del);
     });
@@ -769,6 +773,7 @@
         const row = infoRow(ip, `Gesperrt in „${j.name}“`, []);
         row.classList.add('sub-row');
         const btn = el('button', 'btn-secondary', 'Entsperren');
+        btn.dataset.perm = 'firewall.manage';
         btn.addEventListener('click', async () => {
           btn.disabled = true;
           try {
@@ -1053,6 +1058,7 @@
         input.type = 'number';
         Object.assign(input, attrs);
         input.value = value;
+        input.readOnly = !(window.PiAuth && window.PiAuth.can('system.config'));
         input.setAttribute('aria-label', `Stufe ${i + 1}: ${label}`);
         input.addEventListener('input', () => { onInput(parseFloat(input.value)); markFanDirty(); drawFanChart(); });
         wrap.append(input, el('span', '', unit));
@@ -1613,7 +1619,10 @@
     forecast: ['/api/disk-forecast', renderForecast]
   };
 
+  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', logUnits: 'logs.view' };
+
   async function load(key) {
+    if (LOADER_PERMS[key] && window.PiAuth && !window.PiAuth.can(LOADER_PERMS[key])) return;
     const [url, render] = LOADERS[key];
     try {
       cache[key] = await api(url);
@@ -1624,6 +1633,7 @@
   }
 
   async function init() {
+    if (window.PiAuth) await window.PiAuth.ready;
     try {
       const status = await (await fetch('/api/auth/status')).json();
       if (!status.user) { location.href = '/login'; return; }
@@ -1659,7 +1669,7 @@
     $('activity-category').addEventListener('change', () => loadActivity());
     $('activity-form').addEventListener('submit', e => { e.preventDefault(); loadActivity(); });
     $('activity-more').addEventListener('click', () => loadActivity(true));
-    loadActivity();
+    if (!window.PiAuth || window.PiAuth.can('security.view')) loadActivity();
     // Sensors: history once, live values every 5 s while the page is open
     api('/api/sensors/history').then(h => { sensorHistory = h; return refreshSensors(); }).catch(() => refreshSensors());
     setInterval(refreshSensors, 5000);
@@ -1709,7 +1719,7 @@
     document.querySelectorAll('.settings-section').forEach(s => observer.observe(s));
 
     Object.keys(LOADERS).forEach(load);
-    searchLogs();
+    if (!window.PiAuth || window.PiAuth.can('logs.view')) searchLogs();
     // Live clock speed while the page is open
     setInterval(async () => {
       if (document.hidden || !cache.cpu || !cache.cpu.available) return;

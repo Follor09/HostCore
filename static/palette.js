@@ -56,6 +56,25 @@
     };
   }
 
+  // What a command needs (checked against PiAuth); unlisted = everyone
+  const NEEDS = {
+    'page:system': 'system.view', 'page:report': 'system.view', 'page:terminal': 'terminal',
+    'sec:/system#logs': 'logs.view', 'sec:/system#ssh': 'security.view', 'sec:/system#aktivitaet': 'security.view',
+    'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools',
+    'sec:/settings#wetter': 'settings.manage', 'sec:/settings#dienste': 'settings.manage', 'sec:/settings#wake-on-lan': 'settings.manage',
+    'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
+    'sec:/settings#verlauf': 'settings.manage', 'sec:/settings#freigaben': 'files.share',
+    'sec:/settings#benutzer': 'users.manage', 'sec:/settings#berechtigungen': 'users.manage',
+    'dash:files': 'files.read', 'dash:diagnostics': 'system.view', 'dash:weather': 'settings.manage'
+  };
+  const allowed = c => {
+    const auth = window.PiAuth;
+    if (!auth || !auth.loaded) return true;
+    const need = NEEDS[c.id] || (c.id.startsWith('sec:/system#') ? 'system.view' : c.id.startsWith('act:') ? 'actions.run'
+      : c.id.startsWith('wol:') ? 'network.tools' : null);
+    return !need || auth.can(need);
+  };
+
   function buildCommands() {
     const cmds = [];
     const page = (id, label, href, keywords) => cmds.push({ id, label, group: 'Seiten', keywords, href });
@@ -78,7 +97,8 @@
       ['aufraeumen', 'Speicher aufräumen', 'cleanup cache platz'], ['aktivitaet', 'Aktivität', 'audit protokoll wer was log']
     ]);
     section('/settings', 'Einstellungen', [
-      ['konto', 'Konto', 'passwort sitzung account'], ['sprache', 'Sprache', 'language english deutsch'],
+      ['konto', 'Konto', 'passwort sitzung account'], ['benutzer', 'Benutzer', 'users user accounts konten anlegen'],
+      ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],
       ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
       ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
       ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
@@ -119,7 +139,7 @@
         if (name && btn) cmds.push({ id: `wol:${name}`, label: `${t('Wecken')}: ${name}`, raw: true, group: 'Wake-on-LAN', keywords: 'wol aufwecken starten', run: () => btn.click() });
       });
     }
-    return cmds;
+    return cmds.filter(allowed);
   }
 
   // ---------------------------------------------------------------------------

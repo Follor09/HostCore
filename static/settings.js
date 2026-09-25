@@ -102,6 +102,7 @@
     $('user-name').textContent = account.username;
     $('user-chip').hidden = false;
     $('acc-username').value = account.username;
+    $('acc-group').value = account.group_name ? ((window.I18N && window.I18N.t) ? window.I18N.t(account.group_name) : account.group_name) : '';
     $('public-view').checked = account.public_view;
 
     $('weather-city-setting').value = weather.city;
@@ -378,6 +379,7 @@
       e.preventDefault();
       const msg = $('account-msg');
       const newPw = $('acc-new').value;
+      if (!newPw) return setMsg(msg, 'Bitte ein neues Passwort eingeben.', 'error');
       if (newPw !== $('acc-new2').value) return setMsg(msg, 'Die neuen Passwörter stimmen nicht überein.', 'error');
       if (!$('acc-current').value) return setMsg(msg, 'Bitte das aktuelle Passwort eingeben.', 'error');
 
@@ -386,7 +388,7 @@
       try {
         const res = await api('/api/settings/account', {
           current_password: $('acc-current').value,
-          username: $('acc-username').value.trim(),
+          username: '',
           new_password: newPw
         });
         setMsg(msg, res.message, 'success');
