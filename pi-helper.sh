@@ -10,6 +10,8 @@
 #   pi-helper.sh ufw-rule <allow|deny|limit> <port|a:b> <tcp|udp|any> <any|ip|cidr> [comment]
 #   pi-helper.sh ufw-delete <rule-number>
 #   pi-helper.sh ufw-preset <k3s|netbird|web>
+#   pi-helper.sh fan-curve set <t0> <t1> <t2> <t3> <s0> <s1> <s2> <s3>   (m°C, PWM 0-255)
+#   pi-helper.sh fan-curve reset
 #   pi-helper.sh f2b-banned
 #   pi-helper.sh f2b-unban <ip>
 
@@ -94,6 +96,58 @@ case "$CMD" in
                 ;;
             *) die "Unbekannte Vorlage." ;;
         esac
+        ;;
+    fan-curve)
+        CONFIG=/boot/firmware/config.txt
+        [ -f "$CONFIG" ] || CONFIG=/boot/config.txt
+        [ -f "$CONFIG" ] && [ ! -L "$CONFIG" ] || die "config.txt nicht gefunden."
+        MODE="${1:-}"
+        [ $# -gt 0 ] && shift
+        if [ "$MODE" = set ]; then
+            [ $# -eq 8 ] || die "Falsche Anzahl Werte."
+            PREV_T=0 PREV_S=0
+            for i in 1 2 3 4; do
+                T="${!i}"
+                [[ "$T" =~ ^[0-9]{5}$ ]] && [ "$T" -ge 30000 ] && [ "$T" -le 90000 ] && [ "$T" -gt "$PREV_T" ] \
+                    || die "Temperaturen müssen 30–90 °C sein und ansteigen."
+                PREV_T="$T"
+            done
+            for i in 5 6 7 8; do
+                S="${!i}"
+                [[ "$S" =~ ^[0-9]{1,3}$ ]] && [ "$S" -le 255 ] && [ "$S" -ge "$PREV_S" ] \
+                    || die "Drehzahlen müssen 0–255 sein und dürfen nicht sinken."
+                PREV_S="$S"
+            done
+        elif [ "$MODE" != reset ]; then
+            die "Unbekannter Modus."
+        fi
+        # Backup (keep the last 5), then rewrite without any fan lines and append ours
+        cp -p "$CONFIG" "$CONFIG.picore-$(date +%Y%m%d-%H%M%S)"
+        ls -1t "$CONFIG".picore-* 2>/dev/null | tail -n +6 | xargs -r rm -f
+        TMP="$(mktemp "$(dirname "$CONFIG")/.config.txt.XXXXXX")"
+        awk '
+            /^# PiCore fan curve start/ { skip = 1; next }
+            /^# PiCore fan curve end/   { skip = 0; next }
+            skip { next }
+            /^[[:space:]]*dtparam=fan_temp[0-3](_hyst|_speed)?=/ { next }
+            { print }
+        ' "$CONFIG" > "$TMP"
+        if [ "$MODE" = set ]; then
+            {
+                echo "# PiCore fan curve start (managed by the dashboard)"
+                echo "[all]"
+                for i in 0 1 2 3; do
+                    T_ARG=$((i + 1)); S_ARG=$((i + 5))
+                    echo "dtparam=fan_temp${i}=${!T_ARG}"
+                    echo "dtparam=fan_temp${i}_hyst=5000"
+                    echo "dtparam=fan_temp${i}_speed=${!S_ARG}"
+                done
+                echo "# PiCore fan curve end"
+            } >> "$TMP"
+        fi
+        mv "$TMP" "$CONFIG"
+        sync
+        echo "ok"
         ;;
     f2b-banned)
         need fail2ban-client

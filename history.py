@@ -33,7 +33,7 @@ RANGES = {
     "7d": (7 * 24 * 3600, 30 * 60),
 }
 
-METRICS = ["cpu", "temp", "ram", "net_down", "net_up", "fan", "power", "nvme_temp"]
+METRICS = ["cpu", "temp", "ram", "net_down", "net_up", "fan", "power", "nvme_temp", "disk_read", "disk_write"]
 
 NVME_SNAPSHOT_INTERVAL = 3600
 NVME_RETENTION_DAYS = 3 * 365
@@ -69,6 +69,7 @@ class _Sampler:
     def __init__(self):
         self.cpu_times = psutil.cpu_times()
         self.net = psutil.net_io_counters()
+        self.disk = system_info.disk_io_counters()
         self.t = time.time()
 
     def sample(self) -> Dict[str, Any]:
@@ -84,7 +85,13 @@ class _Sampler:
         recv = net.bytes_recv - self.net.bytes_recv
         sent = net.bytes_sent - self.net.bytes_sent
 
-        self.cpu_times, self.net, self.t = cpu_times, net, now
+        # Disk throughput summed over the physical disks present in both readings
+        disk = system_info.disk_io_counters()
+        common = disk.keys() & self.disk.keys()
+        d_read = sum(disk[n].read_bytes - self.disk[n].read_bytes for n in common)
+        d_write = sum(disk[n].write_bytes - self.disk[n].write_bytes for n in common)
+
+        self.cpu_times, self.net, self.disk, self.t = cpu_times, net, disk, now
 
         temp = system_info.get_cpu_temp()
         fan = system_info.get_fan_status()
@@ -100,6 +107,8 @@ class _Sampler:
             "fan": fan.get("level") if fan.get("available") else None,
             "power": power.get("board_watt") if power.get("available") else None,
             "nvme_temp": homelab._nvme_temp(),
+            "disk_read": round(d_read / dt / 1024, 1) if common and d_read >= 0 else None,
+            "disk_write": round(d_write / dt / 1024, 1) if common and d_write >= 0 else None,
         }
 
 
@@ -141,16 +150,23 @@ def nvme_snapshot() -> None:
 
 
 async def background_sampler() -> None:
+    import monitor  # imports this module too
     logger.info(f"History sampler started (every {SAMPLE_INTERVAL}s, db: {DB_PATH})")
     sampler = _Sampler()
+    watcher = monitor.Monitor()
     last_nvme = 0.0
     while True:
         await asyncio.sleep(SAMPLE_INTERVAL)
+        row = {}
         try:
             row = sampler.sample()
             await asyncio.to_thread(_store, row)
         except Exception as e:
             logger.warning(f"History sample failed: {e}")
+        try:
+            await asyncio.to_thread(watcher.sample, row.get("temp"))
+        except Exception as e:
+            logger.warning(f"Monitor sample failed: {e}")
         if time.time() - last_nvme >= NVME_SNAPSHOT_INTERVAL:
             last_nvme = time.time()
             try:
@@ -159,8 +175,9 @@ async def background_sampler() -> None:
                 logger.warning(f"NVMe snapshot failed: {e}")
 
 
-def get_history(range_key: str) -> Dict[str, Any]:
-    """Bucketed averages (and CPU/temp maxima) for the requested range."""
+def get_history(range_key: str, iface: str = "") -> Dict[str, Any]:
+    """Bucketed averages (and CPU/temp maxima) for the requested range.
+    With `iface`, the network values are that interface's instead of the total."""
     window, bucket = RANGES.get(range_key, RANGES["24h"])
     since = int(time.time()) - window
 
@@ -172,7 +189,7 @@ def get_history(range_key: str) -> Dict[str, Any]:
             SELECT (ts / {bucket}) * {bucket} AS b,
                    AVG(cpu), MAX(cpu), AVG(temp), MAX(temp), AVG(ram),
                    AVG(net_down), AVG(net_up), AVG(fan), MAX(fan), AVG(power), MAX(power),
-                   AVG(nvme_temp), MAX(nvme_temp)
+                   AVG(nvme_temp), MAX(nvme_temp), AVG(disk_read), AVG(disk_write)
             FROM samples WHERE ts >= ?
             GROUP BY b ORDER BY b
         """, (since,)).fetchall()
@@ -186,10 +203,16 @@ def get_history(range_key: str) -> Dict[str, Any]:
             "ram": r(ram), "net_down": r(down), "net_up": r(up), "fan": r(fan, 2), "fan_max": fan_max,
             "power": r(power, 2), "power_max": r(power_max, 2),
             "nvme_temp": r(nvme_temp), "nvme_temp_max": r(nvme_temp_max),
+            "disk_read": r(d_read), "disk_write": r(d_write),
         }
-        for b, cpu, cpu_max, temp, temp_max, ram, down, up, fan, fan_max, power, power_max, nvme_temp, nvme_temp_max in rows
+        for b, cpu, cpu_max, temp, temp_max, ram, down, up, fan, fan_max, power, power_max, nvme_temp, nvme_temp_max, d_read, d_write in rows
     ]
-    return {"range": range_key, "bucket_seconds": bucket, "points": points}
+    if iface:
+        import monitor
+        per_iface = monitor.iface_history(iface, since, bucket)
+        for p in points:
+            p.update(per_iface.get(p["ts"], {"net_down": None, "net_up": None}))
+    return {"range": range_key, "bucket_seconds": bucket, "points": points, "iface": iface}
 
 
 def get_stats() -> Dict[str, Any]:
@@ -204,6 +227,9 @@ def get_stats() -> Dict[str, Any]:
 def clear() -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM samples")
+        # Traffic per interface belongs to the metrics; throttling log and uptime are kept
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'iface_samples'").fetchone():
+            conn.execute("DELETE FROM iface_samples")
     conn = sqlite3.connect(DB_PATH)
     conn.execute("VACUUM")  # actually give the space back
     conn.close()

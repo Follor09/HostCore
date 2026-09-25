@@ -550,11 +550,36 @@
     $('service-modal-actions').dataset.for = '';
     updateServiceSheet(srv);
     $('service-modal-log').textContent = 'Lade…';
+    loadServiceUptime(srv.id);
     const modal = $('service-modal');
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     $('service-modal-close').focus();
     loadServiceJournal();
+  }
+
+  async function loadServiceUptime(id) {
+    const box = $('service-modal-uptime');
+    box.hidden = true;
+    try {
+      const res = await fetch('/api/monitor/uptime?days=7');
+      if (!res.ok) return;
+      const svc = (await res.json()).services.find(s => s.id === id);
+      if (!svc || svc.uptime == null || !serviceSheet.srv || serviceSheet.srv.id !== id) return;
+      box.innerHTML = '';
+      const level = svc.uptime >= 99.5 ? 'good' : svc.uptime >= 95 ? 'warning' : 'critical';
+      const tag = document.createElement('span');
+      tag.className = `health-tag ${level}`;
+      tag.textContent = `${svc.uptime.toLocaleString(LOCALE, { maximumFractionDigits: 2 })}%`;
+      const text = document.createElement('span');
+      text.textContent = svc.outages.length ? `Verfügbarkeit (7 Tage) · ${svc.outages.length}× nicht aktiv` : 'Verfügbarkeit (7 Tage)';
+      const link = document.createElement('a');
+      link.className = 'text-btn';
+      link.href = '/system#verfuegbarkeit';
+      link.textContent = 'Verlauf';
+      box.append(text, tag, link);
+      box.hidden = false;
+    } catch (e) { /* optional */ }
   }
 
   function closeServiceSheet() {
@@ -1250,6 +1275,30 @@
     if (sys.swap) {
       if (els.swapVal) els.swapVal.textContent = `${sys.swap.percent}% (${sys.swap.used_mb} MB)`;
       if (els.swapProgressFill) els.swapProgressFill.style.width = `${sys.swap.percent}%`;
+    }
+
+    // Disk activity per physical drive
+    const io = $('disk-io');
+    if (io && Array.isArray(sys.disk_io)) {
+      io.hidden = !sys.disk_io.length;
+      io.innerHTML = '';
+      sys.disk_io.forEach(d => {
+        const row = document.createElement('div');
+        row.className = 'disk-io-row';
+        const name = document.createElement('span');
+        name.className = 'disk-io-name';
+        name.textContent = d.name;
+        const r = document.createElement('span');
+        r.className = 'disk-io-read';
+        r.textContent = `↓ ${fmtRate(d.read_kbs)}`;
+        r.title = 'Lesen';
+        const w = document.createElement('span');
+        w.className = 'disk-io-write';
+        w.textContent = `↑ ${fmtRate(d.write_kbs)}`;
+        w.title = 'Schreiben';
+        row.append(name, r, w);
+        io.appendChild(row);
+      });
     }
 
     // Disk
@@ -2142,10 +2191,14 @@
     ] },
     fan:  { title: 'Lüfterstufe', unit: 'level', max: 4, series: [{ key: 'fan', label: 'Lüfter', color: 'var(--accent-emerald)', area: true }], peak: 'fan_max' },
     power: { title: 'Board-Leistung', unit: 'W', series: [{ key: 'power', label: 'Leistung', color: 'var(--accent-amber)', area: true }], peak: 'power_max' },
+    disk: { title: 'Laufwerk-Aktivität', unit: 'rate', series: [
+      { key: 'disk_read', label: 'Lesen', color: 'var(--chart-down)' },
+      { key: 'disk_write', label: 'Schreiben', color: 'var(--chart-up)', dashed: true }
+    ] },
     nvme: { title: 'NVMe-Temperatur', unit: '°C', series: [{ key: 'nvme_temp', label: 'NVMe', color: 'var(--accent-violet)', area: true }], peak: 'nvme_temp_max' }
   };
 
-  const historyState = { range: '24h', metric: 'cpu', data: null, layout: null };
+  const historyState = { range: '24h', metric: 'cpu', iface: '', data: null, layout: null };
   const hEls = {};
 
   function fmtRate(kb) {
@@ -2433,7 +2486,10 @@
 
   function renderHistory() {
     const cfg = HISTORY_METRICS[historyState.metric];
-    hEls.subtitle.textContent = `${cfg.title} · ${historyState.range === '7d' ? 'letzte 7 Tage' : 'letzte 24 Stunden'}`;
+    const ifaceSelect = document.getElementById('history-iface');
+    if (ifaceSelect) ifaceSelect.hidden = historyState.metric !== 'net' || ifaceSelect.options.length < 2;
+    const ifaceNote = historyState.metric === 'net' && historyState.iface ? ` (${historyState.iface})` : '';
+    hEls.subtitle.textContent = `${cfg.title}${ifaceNote} · ${historyState.range === '7d' ? 'letzte 7 Tage' : 'letzte 24 Stunden'}`;
     hEls.svg.setAttribute('aria-label', `Verlaufsdiagramm ${cfg.title}`);
     renderHistoryChart();
     renderHistoryTable();
@@ -2442,7 +2498,8 @@
   async function loadHistory() {
     hEls.chart.classList.add('loading');  // keep the previous render while fetching
     try {
-      const res = await fetch(`/api/history?range=${historyState.range}`);
+      const iface = historyState.metric === 'net' ? historyState.iface : '';
+      const res = await fetch(`/api/history?range=${historyState.range}&iface=${encodeURIComponent(iface)}`);
       if (res.ok) historyState.data = await res.json();
     } catch (e) {
       console.warn('History fetch failed:', e);
@@ -2488,7 +2545,20 @@
       sync();
     };
     bindSegmented('history-range', 'range', loadHistory);
-    bindSegmented('history-metric', 'metric', renderHistory);
+    // Network data depends on the chosen interface, so switching to/from it reloads
+    bindSegmented('history-metric', 'metric', () => (historyState.iface ? loadHistory() : renderHistory()));
+
+    const ifaceSelect = document.getElementById('history-iface');
+    fetch('/api/history/interfaces').then(r => (r.ok ? r.json() : { interfaces: [] })).then(({ interfaces }) => {
+      interfaces.forEach(name => {
+        const o = document.createElement('option');
+        o.value = name;
+        o.textContent = name;
+        ifaceSelect.appendChild(o);
+      });
+      renderHistory();
+    }).catch(() => {});
+    ifaceSelect.addEventListener('change', () => { historyState.iface = ifaceSelect.value; loadHistory(); });
 
     hEls.svg.addEventListener('pointermove', onHistoryHover);
     hEls.svg.addEventListener('pointerleave', hideHistoryHover);
@@ -2773,7 +2843,8 @@
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async (...args) => {
     const res = await nativeFetch(...args);
-    if (res.status === 401 && !String(args[0]).startsWith('/api/auth/')) location.href = '/login';
+    // The notes card is private even in public view: it shows its own hint instead
+    if (res.status === 401 && !/^\/api\/(auth\/|notes)/.test(String(args[0]))) location.href = '/login';
     return res;
   };
 

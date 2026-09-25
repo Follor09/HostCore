@@ -123,25 +123,7 @@
       });
     if (!list.children.length) list.appendChild(emptyRow('Keine Schnittstellen gefunden.'));
 
-    const table = $('net-ports');
-    table.innerHTML = '';
-    const head = table.createTHead().insertRow();
-    ['Port', 'Protokoll', 'Adresse', 'Dienst', 'Prozess', 'Erreichbar'].forEach(h => head.appendChild(el('th', '', h)));
-    const body = table.createTBody();
-    n.ports.forEach(p => {
-      const r = body.insertRow();
-      [p.port, p.proto, p.address, p.service || '–', p.process || '–'].forEach(v => { r.insertCell().textContent = v; });
-      const cell = r.insertCell();
-      const local = p.address.startsWith('127.') || p.address === '::1';
-      cell.appendChild(el('span', `health-tag ${local ? '' : 'warning'}`, local ? 'Nur lokal' : 'Netzwerk'));
-    });
-    if (!n.ports.length) {
-      const r = body.insertRow();
-      const c = r.insertCell();
-      c.colSpan = 6;
-      c.textContent = 'Keine Daten.';
-    }
-    $('net-ports-hint').textContent = n.hint || '';
+
   }
 
   // ---------------------------------------------------------------------------
@@ -406,6 +388,194 @@
     msg.textContent = errors.length ? errors.join(' · ') : `${fmtBytes(freed)} freigegeben.`;
     msg.className = `form-msg ${errors.length ? 'error' : 'success'}`;
     await load('cleanup');
+  }
+
+  // ---------------------------------------------------------------------------
+  // LAN devices
+  // ---------------------------------------------------------------------------
+  const shortHost = h => (h || '').replace(/\.(fritz\.box|lan|local|home|localdomain|home\.arpa|speedport\.ip|box)$/i, '');
+
+  function lanAction(label, cls, onClick) {
+    const b = el('button', cls, label);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  async function lanPost(url, body) {
+    try {
+      cache.lan = await api(url, body || {});
+      renderLan(cache.lan);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  function startRename(cell, d) {
+    cell.innerHTML = '';
+    const input = el('input', 'inline-input');
+    input.type = 'text';
+    input.maxLength = 40;
+    input.value = d.alias || shortHost(d.hostname);
+    input.setAttribute('aria-label', 'Name');
+    const save = () => lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/rename`, { alias: input.value });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key === 'Escape') renderLan(cache.lan);
+    });
+    input.addEventListener('blur', save);
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+  }
+
+  function renderLan(r) {
+    const status = $('lan-status');
+    const last = r.last_scan;
+    status.textContent = r.running ? 'Scan läuft…'
+      : last ? `Letzter Scan: ${fmtTime(last.ts)} · ${last.online} online · ${last.duration} s · ${(last.subnets || []).join(', ')}`
+      : `Noch nicht gescannt. Netz: ${(r.subnets || []).join(', ') || '–'}`;
+    $('lan-scan').disabled = r.running;
+
+    const q = $('lan-filter').value.trim().toLowerCase();
+    const show = $('lan-show').value;
+    const list = r.devices.filter(d => (show === 'all' || (show === 'online' ? d.online : d.new))
+      && (!q || [d.alias, d.hostname, d.ip, d.mac, d.vendor].some(v => (v || '').toLowerCase().includes(q))));
+
+    const table = $('lan-devices');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Status', 'Gerät', 'IP / MAC', 'Zuletzt gesehen', ''].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    list.forEach(d => {
+      const row = body.insertRow();
+      const st = row.insertCell();
+      st.appendChild(el('span', `health-tag ${d.online ? 'good' : ''}`, d.online ? 'Online' : 'Offline'));
+      if (d.new) st.append(' ', el('span', 'health-tag warning', 'Neu'));
+
+      const name = row.insertCell();
+      name.className = 'wrap';
+      const title = el('span', 'lan-name', d.alias || shortHost(d.hostname) || '–');
+      title.setAttribute('data-no-i18n', '');
+      name.appendChild(title);
+      if (d.self) name.append(' ', el('span', 'health-tag', 'Dieser Pi'));
+      const sub = el('span', 'lan-sub', [d.alias && d.hostname ? d.hostname : '', d.vendor].filter(Boolean).join(' · '));
+      name.appendChild(sub);
+
+      const addr = row.insertCell();
+      addr.className = 'mono';
+      addr.append(el('span', 'lan-ip', d.ip || '–'), el('span', 'lan-sub', d.mac));
+      row.insertCell().textContent = d.last_seen ? fmtTime(d.last_seen) : '–';
+
+      const actions = row.insertCell();
+      actions.className = 'row-action';
+      actions.append(lanAction('Umbenennen', 'btn-secondary', () => startRename(name, d)));
+      if (!d.self) {
+        if (d.in_wol) actions.append(' ', el('span', 'health-tag good', 'Wake-on-LAN'));
+        else actions.append(' ', lanAction('Zu Wake-on-LAN', 'btn-secondary', () =>
+          lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/wol`, { name: d.alias || shortHost(d.hostname) || d.ip })
+            .then(() => toast('Zu Wake-on-LAN hinzugefügt.', 'success'))));
+        const forget = el('button', 'btn-danger', 'Vergessen');
+        confirmClick(forget, 'Vergessen', 'Sicher?', () => lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/forget`));
+        actions.append(' ', forget);
+      }
+    });
+    if (!list.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 5;
+      c.textContent = r.devices.length ? 'Keine Geräte für diesen Filter.' : 'Noch keine Geräte – „Jetzt scannen“ drücken.';
+    }
+  }
+
+  async function runLanScan() {
+    const btn = $('lan-scan');
+    btn.disabled = true;
+    btn.textContent = 'Scanne…';
+    $('lan-status').textContent = 'Scan läuft – dauert je nach Netzgröße 5–20 Sekunden…';
+    try {
+      cache.lan = await api('/api/tools/lan/scan', {});
+      renderLan(cache.lan);
+      const n = cache.lan.devices.filter(d => d.new).length;
+      toast(n ? `Scan fertig – ${n} neue Geräte.` : 'Scan fertig.', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+      $('lan-status').textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Jetzt scannen';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Port check
+  // ---------------------------------------------------------------------------
+  const REACH = { open: ['warning', 'Erreichbar'], blocked: ['good', 'Blockiert'], local: ['', 'Nur lokal'] };
+
+  function renderPorts(r) {
+    const fw = $('ports-fw');
+    fw.className = `health-tag ${r.firewall === 'active' ? 'good' : 'warning'}`;
+    fw.textContent = r.firewall === 'active' ? 'Firewall aktiv' : r.firewall === 'inactive' ? 'Firewall aus' : 'Keine Firewall';
+    const table = $('ports-table');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Port', 'Protokoll', 'Dienst', 'Adresse', 'LAN', 'VPN'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    r.ports.forEach(p => {
+      const row = body.insertRow();
+      [p.port, p.proto, p.service || p.process || '–', p.address].forEach(v => { row.insertCell().textContent = v; });
+      ['lan', 'vpn'].forEach(k => {
+        const [level, text] = REACH[p[k]];
+        const cell = row.insertCell();
+        cell.appendChild(el('span', `health-tag ${level}`, text));
+        if (p.docker && k === 'lan') cell.append(' ', el('span', 'health-tag', 'Docker'));
+      });
+    });
+    if (!r.ports.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.textContent = 'Keine Daten.';
+    }
+    const hints = [];
+    if (r.firewall !== 'active') hints.push('Ohne aktive Firewall ist jeder Port erreichbar, der nicht nur lokal lauscht.');
+    if (r.ports.some(p => p.docker)) hints.push('Docker-Ports umgehen die Firewall.');
+    if (r.hint) hints.push(r.hint);
+    $('ports-hint').textContent = hints.join(' ');
+  }
+
+  const PORT_STATE = { open: ['good', 'Offen'], closed: ['', 'Geschlossen'], filtered: ['warning', 'Keine Antwort'], error: ['critical', 'Fehler'] };
+
+  async function runPortTest(e) {
+    e.preventDefault();
+    const btn = e.submitter || $('port-test-form').querySelector('button');
+    btn.disabled = true;
+    try {
+      const r = await api('/api/tools/port-test', { host: $('port-test-host').value, ports: $('port-test-ports').value });
+      const table = $('port-test-results');
+      table.innerHTML = '';
+      const head = table.createTHead().insertRow();
+      ['Port', 'Status', 'Dienst', 'Antwortzeit', 'Kennung'].forEach(h => head.appendChild(el('th', '', h)));
+      const body = table.createTBody();
+      r.results.forEach(p => {
+        const row = body.insertRow();
+        row.insertCell().textContent = p.port;
+        const [level, text] = PORT_STATE[p.state];
+        const st = row.insertCell();
+        st.appendChild(el('span', `health-tag ${level}`, text));
+        if (p.error) st.title = p.error;
+        row.insertCell().textContent = p.service || '–';
+        row.insertCell().textContent = p.ms != null ? `${p.ms} ms` : '–';
+        const banner = row.insertCell();
+        banner.className = 'wrap mono';
+        banner.textContent = p.banner || '–';
+        banner.setAttribute('data-no-i18n', '');
+      });
+      $('port-test-wrap').hidden = false;
+      const open = r.results.filter(p => p.state === 'open').length;
+      toast(`${r.host}${r.ip !== r.host ? ` (${r.ip})` : ''}: ${open} von ${r.results.length} offen`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -707,6 +877,316 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Service availability (uptime)
+  // ---------------------------------------------------------------------------
+  const STATUS_LABEL = { active: 'Aktiv', inactive: 'Inaktiv', error: 'Fehler' };
+  let uptimeDays = 7;
+
+  function fmtDuration(sec) {
+    if (sec < 60) return '< 1 Min.';
+    const m = Math.round(sec / 60);
+    if (m < 60) return `${m} Min.`;
+    const h = Math.floor(m / 60), rm = m % 60;
+    if (h < 24) return rm ? `${h} Std. ${rm} Min.` : `${h} Std.`;
+    const d = Math.floor(h / 24), rh = h % 24;
+    return rh ? `${d} Tage ${rh} Std.` : `${d} Tage`;
+  }
+
+  function renderUptime(u) {
+    const list = $('uptime-list');
+    list.innerHTML = '';
+    const span = u.now - u.since;
+    u.services.forEach(svc => {
+      const row = el('div', 'uptime-row');
+      const head = el('div', 'uptime-head');
+      head.appendChild(el('span', 'workload-name', svc.name));
+      const pct = svc.uptime;
+      // Never active in the whole range: not installed / switched off on purpose, not an outage
+      const neverUp = pct === 0 && svc.periods.every(p => p.status === 'inactive');
+      const level = pct == null || neverUp ? '' : pct >= 99.5 ? 'good' : pct >= 95 ? 'warning' : 'critical';
+      head.appendChild(el('span', `health-tag ${level}`, pct == null ? 'Keine Daten' : neverUp ? 'Nicht in Betrieb'
+        : `${pct.toLocaleString(LOCALE, { maximumFractionDigits: 2 })}%`));
+      row.appendChild(head);
+
+      // Timeline: one segment per period, gaps show the "no data" background
+      const bar = el('div', 'uptime-bar');
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', `${svc.name}: ${pct == null ? 'Keine Daten' : pct + '%'}`);
+      svc.periods.forEach(p => {
+        const seg = el('span', `uptime-seg ${p.status}`);
+        seg.style.left = `${Math.max(0, (p.start - u.since) / span * 100)}%`;
+        seg.style.width = `${Math.max(0.3, (p.end - p.start) / span * 100)}%`;
+        seg.title = `${STATUS_LABEL[p.status] || p.status}: ${fmtTime(p.start)} – ${fmtTime(p.end)} (${fmtDuration(p.end - p.start)})`;
+        bar.appendChild(seg);
+      });
+      row.appendChild(bar);
+
+      const axis = el('div', 'uptime-axis');
+      axis.append(el('span', '', fmtTime(u.since)), el('span', '', 'Jetzt'));
+      row.appendChild(axis);
+
+      if (svc.outages.length && !neverUp) {
+        const last = svc.outages[0];
+        const det = el('details', 'uptime-outages');
+        det.appendChild(el('summary', '',
+          `${svc.outages.length}× nicht aktiv · zuletzt ${fmtTime(last.start)} (${fmtDuration(last.duration)})`));
+        svc.outages.slice(0, 10).forEach(o => {
+          det.appendChild(el('div', 'uptime-outage',
+            `${STATUS_LABEL[o.status] || o.status}: ${fmtTime(o.start)} – ${fmtTime(o.end)} · ${fmtDuration(o.duration)}`));
+        });
+        row.appendChild(det);
+      } else if (svc.measured) {
+        row.appendChild(el('p', 'field-hint', 'Keine Ausfälle in diesem Zeitraum.'));
+      }
+      list.appendChild(row);
+    });
+    if (!u.services.length) list.appendChild(emptyRow('Keine Dienste.'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Throttling log
+  // ---------------------------------------------------------------------------
+  const THROTTLE_KIND = {
+    undervoltage: ['Unterspannung', 'critical', 'Netzteil liefert zu wenig – offizielles 27-W-Netzteil verwenden.'],
+    throttled: ['Gedrosselt (Hitze)', 'critical', 'CPU wurde wegen Temperatur heruntergetaktet.'],
+    freq_capped: ['Takt begrenzt', 'warning', 'Maximaltakt war begrenzt (Hitze oder Spannung).'],
+    soft_temp: ['Temperaturgrenze', 'warning', 'Weiche Temperaturgrenze erreicht (ab ca. 80 °C).']
+  };
+
+  function renderThrottle(t) {
+    const now = $('throttle-now');
+    const cur = t.current || {};
+    const active = cur.undervoltage || cur.throttled || cur.freq_capped || cur.soft_temp_limit;
+    now.className = `health-tag ${!t.supported ? '' : active ? 'critical' : 'good'}`;
+    now.textContent = !t.supported ? 'Nur auf Raspberry Pi' : active ? 'Gerade gedrosselt' : 'Keine Drosselung';
+
+    benchValues($('throttle-stats'), Object.entries(THROTTLE_KIND).map(([k, [label]]) => [label, String(t.counts[k] || 0)]));
+    $('throttle-stats').querySelectorAll('.value').forEach(v => { if (v.textContent !== '0') v.classList.add('warn'); });
+
+    const table = $('throttle-events');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Beginn', 'Art', 'Dauer', 'CPU-Temp.'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    t.events.forEach(ev => {
+      const [label, level, desc] = THROTTLE_KIND[ev.kind] || [ev.kind, '', ''];
+      const r = body.insertRow();
+      r.insertCell().textContent = ev.since_boot ? `seit Neustart ${fmtTime(ev.start)}` : fmtTime(ev.start);
+      const kind = r.insertCell();
+      const tag = el('span', `health-tag ${level}`, label);
+      tag.title = desc;
+      kind.appendChild(tag);
+      r.insertCell().textContent = ev.open ? 'läuft noch' : ev.since_boot ? 'unbekannt' : ev.short ? '< 1 Min.' : fmtDuration(ev.duration);
+      r.insertCell().textContent = ev.temp != null ? `${ev.temp.toFixed(1)} °C` : '–';
+    });
+    if (!t.events.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 4;
+      c.textContent = t.supported ? 'Keine Drosselung in den letzten 30 Tagen. 👍' : 'Nur auf dem Raspberry Pi verfügbar.';
+    }
+    $('throttle-hint').textContent = t.counts.undervoltage
+      ? 'Unterspannung gefunden: Das Netzteil ist zu schwach oder das Kabel zu dünn. Der Pi 5 braucht 5 V / 5 A (27 W) für volle USB-Leistung.'
+      : t.counts.throttled ? 'Hitze-Drosselung gefunden: Lüfter prüfen oder die Lüfterkurve kühler einstellen.' : '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fan curve
+  // ---------------------------------------------------------------------------
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs) => { const e = document.createElementNS(svgNs, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); return e; };
+  let fanDraft = null;  // {temps: [4], speeds: [4 %]}
+
+  const pct = pwm => Math.round(pwm / 255 * 100);
+
+  function drawFanChart() {
+    const box = $('fan-chart'), svg = box.querySelector('svg');
+    svg.innerHTML = '';
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W || !fanDraft) return;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const pad = { l: 40, r: 12, t: 12, b: 24 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const x = t => pad.l + (Math.min(90, Math.max(30, t)) - 30) / 60 * iw;
+    const y = p => pad.t + ih - p / 100 * ih;
+    [0, 25, 50, 75, 100].forEach(p => {
+      svg.appendChild(svgEl('line', { x1: pad.l, x2: pad.l + iw, y1: y(p), y2: y(p), class: 'grid-line' }));
+      const l = svgEl('text', { x: pad.l - 6, y: y(p) + 3, 'text-anchor': 'end', class: 'axis-label' });
+      l.textContent = `${p}%`;
+      svg.appendChild(l);
+    });
+    [30, 40, 50, 60, 70, 80, 90].forEach(t => {
+      const l = svgEl('text', { x: x(t), y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });
+      l.textContent = `${t}°`;
+      svg.appendChild(l);
+    });
+    // Step line: off below step 1, then each step's speed until the next temperature
+    const { temps, speeds } = fanDraft;
+    let d = `M${x(30)},${y(0)}`;
+    temps.forEach((t, i) => { d += `H${x(t)}V${y(speeds[i])}`; });
+    d += `H${x(90)}`;
+    svg.appendChild(svgEl('path', { d: `${d}V${y(0)}H${x(30)}Z`, fill: 'var(--accent-cyan)', 'fill-opacity': 0.08 }));
+    svg.appendChild(svgEl('path', { d, fill: 'none', stroke: 'var(--accent-cyan)', 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    temps.forEach((t, i) => {
+      svg.appendChild(svgEl('circle', { cx: x(t), cy: y(speeds[i]), r: 4, fill: 'var(--accent-cyan)', class: 'hover-dot' }));
+      const l = svgEl('text', { x: x(t) + 6, y: y(speeds[i]) - 6, class: 'series-label' });
+      l.textContent = `${i + 1}`;
+      svg.appendChild(l);
+    });
+    const now = cache.fan && cache.fan.temp;
+    if (now != null) {
+      svg.appendChild(svgEl('line', { x1: x(now), x2: x(now), y1: pad.t, y2: pad.t + ih, class: 'crosshair' }));
+      const l = svgEl('text', { x: x(now), y: pad.t + 10, 'text-anchor': x(now) > W - 90 ? 'end' : 'start', class: 'series-label', dx: x(now) > W - 90 ? -6 : 6 });
+      l.textContent = `Jetzt ${now.toFixed(1)} °C`;
+      svg.appendChild(l);
+    }
+  }
+
+  function renderFanSteps() {
+    const box = $('fan-steps');
+    box.innerHTML = '';
+    fanDraft.temps.forEach((t, i) => {
+      const row = el('div', 'fan-step');
+      row.appendChild(el('span', 'fan-step-name', `Stufe ${i + 1}`));
+      const mk = (value, unit, label, onInput, attrs) => {
+        const wrap = el('label', 'fan-input');
+        const input = el('input');
+        input.type = 'number';
+        Object.assign(input, attrs);
+        input.value = value;
+        input.setAttribute('aria-label', `Stufe ${i + 1}: ${label}`);
+        input.addEventListener('input', () => { onInput(parseFloat(input.value)); markFanDirty(); drawFanChart(); });
+        wrap.append(input, el('span', '', unit));
+        return wrap;
+      };
+      row.append(
+        mk(t, '°C', 'Temperatur', v => { fanDraft.temps[i] = v; }, { min: 30, max: 90, step: 0.5 }),
+        mk(fanDraft.speeds[i], '%', 'Drehzahl', v => { fanDraft.speeds[i] = v; }, { min: 0, max: 100, step: 1 })
+      );
+      box.appendChild(row);
+    });
+  }
+
+  function markFanDirty() {
+    const f = cache.fan;
+    const same = f && fanDraft.temps.every((t, i) => t === f.curve.temps[i]) && fanDraft.speeds.every((s, i) => s === pct(f.curve.speeds[i]));
+    $('fan-save').disabled = same;
+    $('fan-msg').className = 'form-msg';
+    $('fan-msg').textContent = same ? '' : 'Nicht gespeichert';
+    document.querySelectorAll('#fan-presets .mode-card').forEach(b => {
+      const p = f.presets.find(x => x.id === b.dataset.id);
+      const on = p && p.temps.every((t, i) => t === fanDraft.temps[i]) && p.speeds.every((s, i) => pct(s) === fanDraft.speeds[i]);
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  function renderFanCurve(f) {
+    const state = $('fan-curve-state');
+    if (!f.available) {
+      state.className = 'health-tag';
+      state.textContent = 'Nicht verfügbar';
+      $('fan-hint').textContent = 'Nur auf einem Raspberry Pi 5 mit aktivem Lüfter.';
+      ['fan-save', 'fan-reset'].forEach(id => { $(id).disabled = true; });
+    } else {
+      state.className = `health-tag ${f.reboot_pending ? 'warning' : 'good'}`;
+      state.textContent = f.reboot_pending ? 'Neustart nötig' : f.custom ? 'Eigene Kurve aktiv' : 'Werkseinstellung aktiv';
+      $('fan-hint').textContent = f.reboot_pending
+        ? `Gespeichert, aber noch nicht aktiv (aktuell: ${f.active_thresholds.map(t => `${t} °C`).join(' / ')}). Nach dem nächsten Neustart des Pi gilt die neue Kurve.`
+        : `Datei: ${f.config_path}`;
+      $('fan-reset').disabled = !f.custom;
+    }
+    fanDraft = { temps: [...f.curve.temps], speeds: f.curve.speeds.map(pct) };
+
+    const presets = $('fan-presets');
+    presets.innerHTML = '';
+    f.presets.forEach(p => {
+      const b = el('button', 'mode-card');
+      b.dataset.id = p.id;
+      b.append(el('strong', '', p.label), el('span', '', p.desc));
+      b.addEventListener('click', () => {
+        fanDraft = { temps: [...p.temps], speeds: p.speeds.map(pct) };
+        renderFanSteps();
+        markFanDirty();
+        drawFanChart();
+      });
+      presets.appendChild(b);
+    });
+    renderFanSteps();
+    markFanDirty();
+    drawFanChart();
+  }
+
+  async function saveFanCurve() {
+    const msg = $('fan-msg');
+    $('fan-save').disabled = true;
+    msg.textContent = 'Speichere…';
+    try {
+      cache.fan = await api('/api/tools/fan-curve', { temps: fanDraft.temps, speeds: fanDraft.speeds });
+      renderFanCurve(cache.fan);
+      msg.className = 'form-msg success';
+      msg.textContent = 'Gespeichert – gilt nach dem nächsten Neustart.';
+    } catch (err) {
+      msg.className = 'form-msg error';
+      msg.textContent = err.message;
+      $('fan-save').disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Activity log
+  // ---------------------------------------------------------------------------
+  const activity = { entries: [], categories: {} };
+
+  async function loadActivity(more = false) {
+    const params = new URLSearchParams({ q: $('activity-query').value.trim(), category: $('activity-category').value, limit: '200' });
+    if (more && activity.entries.length) params.set('before', activity.entries[activity.entries.length - 1].id);
+    try {
+      const r = await api(`/api/tools/activity?${params}`);
+      activity.entries = more ? [...activity.entries, ...r.entries] : r.entries;
+      if (!Object.keys(activity.categories).length) {
+        activity.categories = r.categories;
+        Object.entries(r.categories).forEach(([id, label]) => {
+          const o = el('option', '', label);
+          o.value = id;
+          $('activity-category').appendChild(o);
+        });
+      }
+      renderActivity(r);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  function renderActivity(r) {
+    const table = $('activity-table');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Zeit', 'Benutzer', 'Aktion', 'Details', 'IP-Adresse', 'Ergebnis'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    activity.entries.forEach(e => {
+      const row = body.insertRow();
+      row.insertCell().textContent = new Date(e.ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const user = row.insertCell();
+      user.textContent = e.user || '–';
+      user.setAttribute('data-no-i18n', '');
+      row.insertCell().textContent = e.action;
+      const detail = row.insertCell();
+      detail.className = 'wrap mono';
+      detail.textContent = e.detail || '–';
+      detail.setAttribute('data-no-i18n', '');
+      row.insertCell().textContent = e.ip || '–';
+      row.insertCell().appendChild(el('span', `health-tag ${e.ok ? 'good' : 'critical'}`, e.ok ? 'OK' : `Fehler ${e.status}`));
+    });
+    if (!activity.entries.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 6;
+      c.textContent = 'Keine Einträge.';
+    }
+    $('activity-more').hidden = !r.more;
+    $('activity-count').textContent = `${activity.entries.length} von ${r.total} Einträgen`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
   const LOADERS = {
@@ -717,7 +1197,12 @@
     logUnits: ['/api/tools/log-units', renderLogUnits],
     cleanup: ['/api/tools/cleanup', renderCleanup],
     firewall: ['/api/tools/firewall', renderFirewall],
-    ssh: ['/api/tools/ssh', renderSsh]
+    ssh: ['/api/tools/ssh', renderSsh],
+    uptime: ['/api/monitor/uptime?days=7', renderUptime],
+    throttle: ['/api/monitor/throttle?days=30', renderThrottle],
+    lan: ['/api/tools/lan', renderLan],
+    ports: ['/api/tools/ports', renderPorts],
+    fan: ['/api/tools/fan-curve', renderFanCurve]
   };
 
   async function load(key) {
@@ -746,6 +1231,33 @@
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
     $('log-form').addEventListener('submit', searchLogs);
     $('fw-form').addEventListener('submit', addFirewallRule);
+    $('lan-scan').addEventListener('click', runLanScan);
+    ['input', 'change'].forEach(ev => {
+      $('lan-filter').addEventListener(ev, () => cache.lan && renderLan(cache.lan));
+      $('lan-show').addEventListener(ev, () => cache.lan && renderLan(cache.lan));
+    });
+    $('port-test-form').addEventListener('submit', runPortTest);
+    $('fan-save').addEventListener('click', saveFanCurve);
+    confirmClick($('fan-reset'), 'Werkseinstellung', 'Wirklich zurücksetzen?', async () => {
+      try {
+        cache.fan = await api('/api/tools/fan-curve/reset', {});
+        renderFanCurve(cache.fan);
+        toast('Lüfterkurve zurückgesetzt – gilt nach dem nächsten Neustart.', 'success');
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    new ResizeObserver(() => drawFanChart()).observe($('fan-chart'));
+    let activityTimer = null;
+    $('activity-query').addEventListener('input', () => { clearTimeout(activityTimer); activityTimer = setTimeout(() => loadActivity(), 300); });
+    $('activity-category').addEventListener('change', () => loadActivity());
+    $('activity-form').addEventListener('submit', e => { e.preventDefault(); loadActivity(); });
+    $('activity-more').addEventListener('click', () => loadActivity(true));
+    loadActivity();
+    document.querySelectorAll('#uptime-range button').forEach(b => b.addEventListener('click', () => {
+      uptimeDays = +b.dataset.days;
+      document.querySelectorAll('#uptime-range button').forEach(x => x.classList.toggle('active', x === b));
+      LOADERS.uptime[0] = `/api/monitor/uptime?days=${uptimeDays}`;
+      load('uptime');
+    }));
     $('ssh-filter').addEventListener('change', () => cache.ssh && renderSshEvents(cache.ssh));
     ['log-unit', 'log-priority', 'log-since'].forEach(id => $(id).addEventListener('change', () => searchLogs()));
     // "Alles aufräumen" needs a second click

@@ -184,6 +184,45 @@ def get_throttled_status() -> dict:
     }
 
 
+
+def read_throttled_raw():
+    """Raw `vcgencmd get_throttled` value as int, or None when not available."""
+    if not is_raspberry_pi():
+        return None
+    try:
+        out = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=2).stdout
+        return int(out.split("=")[1].strip(), 16) if "throttled=" in out else None
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+
+
+# Whole disks only (no partitions, loop or RAM devices): nvme0n1, sda, mmcblk0, vda (disk0 on macOS)
+PHYSICAL_DISK = re.compile(r"^(nvme\d+n\d+|sd[a-z]+|mmcblk\d+|vd[a-z]+|disk\d+)$")
+_last_disk = {"t": 0.0, "io": None}
+
+
+def disk_io_counters():
+    try:
+        return {n: c for n, c in (psutil.disk_io_counters(perdisk=True) or {}).items() if PHYSICAL_DISK.match(n)}
+    except Exception:
+        return {}
+
+
+def get_disk_io_rates() -> list:
+    """Read/write rate per physical disk in KB/s since the last call (live view)."""
+    now, cur = time.time(), disk_io_counters()
+    prev, dt = _last_disk["io"], now - _last_disk["t"]
+    _last_disk.update(t=now, io=cur)
+    rates = []
+    for name, c in sorted(cur.items()):
+        p = prev.get(name) if prev else None
+        read = write = 0.0
+        if p and dt > 0:
+            read = max(0.0, (c.read_bytes - p.read_bytes) / dt / 1024)
+            write = max(0.0, (c.write_bytes - p.write_bytes) / dt / 1024)
+        rates.append({"name": name, "read_kbs": round(read, 1), "write_kbs": round(write, 1)})
+    return rates
+
 def get_network_rates() -> dict:
     """Calculate upload and download transfer rate in KB/s and MB/s."""
     global _last_net_time, _last_net_io
@@ -561,6 +600,7 @@ def get_system_snapshot() -> dict:
         },
         "temperature": temp_info,
         "throttled": throttled,
+        "disk_io": get_disk_io_rates(),
         "fan": get_fan_status(),
         "power": get_power_status(),
         "memory": {

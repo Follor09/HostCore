@@ -1,0 +1,121 @@
+"""
+Activity log: who did what in the dashboard, and when.
+
+A middleware in app.py records every changing request (POST) plus file downloads and
+terminal sessions automatically. The action label comes from the path (ACTIONS below);
+endpoints can add details via `request.state.audit_detail`. Stored in history.db,
+kept for 180 days (at most 20 000 entries).
+"""
+
+import re
+import sqlite3
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+import history
+
+RETENTION_DAYS = 180
+MAX_ROWS = 20000
+
+# (method, path regex) -> (category, label). The first match wins.
+ACTIONS: List[Tuple[str, str, str, str]] = [
+    ("POST", r"^/api/auth/login$", "login", "Anmeldung"),
+    ("POST", r"^/api/auth/logout$", "login", "Abmeldung"),
+    ("POST", r"^/api/settings/account$", "settings", "Zugangsdaten geändert"),
+    ("POST", r"^/api/settings/public-view$", "settings", "Ansehen ohne Login geändert"),
+    ("POST", r"^/api/settings/logout-others$", "settings", "Andere Geräte abgemeldet"),
+    ("POST", r"^/api/settings/services$", "settings", "Dienst-Kacheln geändert"),
+    ("POST", r"^/api/settings/history/clear$", "settings", "Verlauf gelöscht"),
+    ("POST", r"^/api/settings/wol/[^/]+/delete$", "settings", "Wake-on-LAN-Gerät entfernt"),
+    ("POST", r"^/api/settings/wol$", "settings", "Wake-on-LAN-Gerät hinzugefügt"),
+    ("POST", r"^/api/weather/location$", "settings", "Wetter-Ort geändert"),
+    ("POST", r"^/api/updates/apt$", "system", "System-Update gestartet"),
+    ("POST", r"^/api/updates/check$", "system", "Dashboard-Update gesucht"),
+    ("POST", r"^/api/updates/apply$", "system", "Dashboard-Update installiert"),
+    ("POST", r"^/api/webhook/github$", "system", "GitHub-Webhook"),
+    ("POST", r"^/api/action/reboot$", "system", "Neustart"),
+    ("POST", r"^/api/action/shutdown$", "system", "Herunterfahren"),
+    ("POST", r"^/api/action/command$", "system", "Diagnose-Befehl"),
+    ("POST", r"^/api/services/[^/]+/[^/]+$", "system", "Dienst gesteuert"),
+    ("POST", r"^/api/processes/\d+/signal$", "system", "Prozess beendet"),
+    ("POST", r"^/api/workloads/docker/", "system", "Docker-Container gesteuert"),
+    ("POST", r"^/api/wol/[^/]+/wake$", "network", "Gerät per Wake-on-LAN geweckt"),
+    ("POST", r"^/api/wol$", "network", "Gerät per Wake-on-LAN geweckt"),
+    ("POST", r"^/api/tools/cpu-mode$", "system", "CPU-Modus geändert"),
+    ("POST", r"^/api/tools/benchmark$", "system", "Leistungstest"),
+    ("POST", r"^/api/tools/cleanup$", "system", "Speicher aufgeräumt"),
+    ("POST", r"^/api/tools/fan-curve/reset$", "system", "Lüfterkurve zurückgesetzt"),
+    ("POST", r"^/api/tools/fan-curve$", "system", "Lüfterkurve geändert"),
+    ("POST", r"^/api/tools/firewall$", "security", "Firewall geändert"),
+    ("POST", r"^/api/tools/fail2ban/unban$", "security", "IP entsperrt (fail2ban)"),
+    ("POST", r"^/api/tools/lan/scan$", "network", "Netzwerk gescannt"),
+    ("POST", r"^/api/tools/lan/[^/]+/rename$", "network", "Gerät umbenannt"),
+    ("POST", r"^/api/tools/lan/[^/]+/forget$", "network", "Gerät vergessen"),
+    ("POST", r"^/api/tools/lan/[^/]+/wol$", "network", "Gerät zu Wake-on-LAN hinzugefügt"),
+    ("POST", r"^/api/tools/port-test$", "network", "Port-Test"),
+    ("POST", r"^/api/terminal/ticket$", "security", "Terminal freigeschaltet"),
+    ("GET", r"^/api/files/download$", "files", "Datei heruntergeladen"),
+    ("WS", r"^/ws/terminal$", "security", "Terminal-Sitzung"),
+]
+# Frequent, harmless requests that would flood the log
+IGNORE = [r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$"]
+
+CATEGORIES = {"login": "Anmeldung", "settings": "Einstellungen", "system": "System",
+              "security": "Sicherheit", "network": "Netzwerk", "files": "Dateien"}
+
+
+def _conn() -> sqlite3.Connection:
+    conn = history._connect()
+    conn.execute("""CREATE TABLE IF NOT EXISTS audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, user TEXT, ip TEXT,
+        category TEXT, action TEXT, path TEXT, detail TEXT, status INTEGER)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS audit_ts ON audit (ts)")
+    return conn
+
+
+def classify(method: str, path: str) -> Optional[Tuple[str, str]]:
+    if any(re.match(p, path) for p in IGNORE):
+        return None
+    for m, rx, cat, label in ACTIONS:
+        if m == method and re.match(rx, path):
+            return cat, label
+    if method == "POST" and path.startswith("/api/"):
+        return "system", f"Aktion {path}"  # unknown, but still worth recording
+    return None
+
+
+def record(user: str, ip: str, method: str, path: str, status: int, detail: str = "") -> None:
+    kind = classify(method, path)
+    if not kind:
+        return
+    now = int(time.time())
+    with _conn() as conn:
+        conn.execute("INSERT INTO audit (ts, user, ip, category, action, path, detail, status) VALUES (?,?,?,?,?,?,?,?)",
+                      (now, user or "", ip or "", kind[0], kind[1], path, (detail or "")[:300], status))
+        if now % 50 == 0:  # occasional cleanup
+            conn.execute("DELETE FROM audit WHERE ts < ?", (now - RETENTION_DAYS * 86400,))
+            conn.execute("DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ?", (MAX_ROWS,))
+
+
+def entries(query: str = "", category: str = "", limit: int = 200, before: int = 0) -> Dict[str, Any]:
+    sql = "SELECT id, ts, user, ip, category, action, detail, status FROM audit WHERE 1=1"
+    args: List[Any] = []
+    if category in CATEGORIES:
+        sql += " AND category = ?"
+        args.append(category)
+    if before:
+        sql += " AND id < ?"
+        args.append(before)
+    q = query.strip()[:100]
+    if q:
+        sql += " AND (action LIKE ? OR detail LIKE ? OR user LIKE ? OR ip LIKE ?)"
+        args += [f"%{q}%"] * 4
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(max(1, min(limit, 500)))
+    with _conn() as conn:
+        rows = conn.execute(sql, args).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM audit").fetchone()[0]
+    items = [{"id": i, "ts": ts, "user": u, "ip": ip, "category": c, "action": a, "detail": d,
+              "ok": 200 <= (s or 0) < 400, "status": s} for i, ts, u, ip, c, a, d, s in rows]
+    return {"entries": items, "total": total, "categories": CATEGORIES,
+            "more": len(items) == max(1, min(limit, 500))}

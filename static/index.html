@@ -275,7 +275,10 @@
         <div class="throttle-status-box" id="throttle-box">
           <div class="throttle-header">
             <span class="sub-label">Raspberry Pi Throttling-Status</span>
-            <span class="throttle-tag normal" id="throttle-tag">Normal</span>
+            <div class="nvme-head-tools">
+              <a class="text-btn" href="/system#drosselung" title="Wann der Pi gedrosselt hat">Ereignisse</a>
+              <span class="throttle-tag normal" id="throttle-tag">Normal</span>
+            </div>
           </div>
           <p class="throttle-desc" id="throttle-description">Keine thermische Drosselung oder Unterspannung erkannt.</p>
         </div>
@@ -359,6 +362,8 @@
           </div>
           <p class="nvme-hint" id="nvme-hint" hidden></p>
         </div>
+
+        <div class="disk-io" id="disk-io" hidden></div>
 
         <div class="disk-meta-stats" id="disk-meta-stats">
           <div class="meta-stat-item">
@@ -547,6 +552,30 @@
         <div class="wol-list" id="wol-list"></div>
         <a class="wol-manage" href="/settings#wake-on-lan">Geräte verwalten →</a>
       </div>
+
+      <!-- Notizen -->
+      <div class="glass-card metric-card notes-card" data-widget="notes" id="notes-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-violet">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
+            </div>
+            <div>
+              <h3>Notizen</h3>
+              <p class="card-subtitle notes-status" id="notes-status"></p>
+            </div>
+          </div>
+          <button class="btn-secondary notes-edit" id="notes-edit" aria-pressed="false">Bearbeiten</button>
+        </div>
+        <div class="notes-conflict" id="notes-conflict" role="alert" hidden>
+          <span>Die Notizen wurden inzwischen auf einem anderen Gerät geändert.</span>
+          <button class="btn-secondary" id="notes-take-theirs">Andere Version laden</button>
+          <button class="btn-primary" id="notes-keep-mine">Meine behalten</button>
+        </div>
+        <div class="notes-view" id="notes-view" data-no-i18n></div>
+        <textarea class="notes-text" id="notes-text" spellcheck="true" aria-label="Notizen" hidden></textarea>
+        <p class="notes-help" id="notes-help" hidden>Speichert automatisch · <code># Überschrift</code> · <code>- Punkt</code> · <code>- [ ] Aufgabe</code> · Links werden anklickbar</p>
+      </div>
     </section>
 
     <!-- Metrics History (24h / 7 Tage) -->
@@ -566,6 +595,9 @@
             <button class="active" data-range="24h">24h</button>
             <button data-range="7d">7 Tage</button>
           </div>
+          <select id="history-iface" class="inline-select" aria-label="Schnittstelle" hidden>
+            <option value="">Alle Schnittstellen</option>
+          </select>
           <div class="segmented" id="history-metric" role="tablist" aria-label="Messwert">
             <button class="active" data-metric="cpu">CPU</button>
             <button data-metric="temp">Temperatur</button>
@@ -573,6 +605,7 @@
             <button data-metric="net">Netzwerk</button>
             <button data-metric="fan">Lüfter</button>
             <button data-metric="power">Leistung</button>
+            <button data-metric="disk">Laufwerk</button>
             <button data-metric="nvme" data-nvme hidden>NVMe</button>
           </div>
         </div>
@@ -925,6 +958,7 @@
         </div>
       </div>
       <p class="service-warning" id="service-modal-warning" hidden></p>
+      <p class="service-uptime" id="service-modal-uptime" hidden></p>
       <div class="service-actions" id="service-modal-actions"></div>
       <div class="apt-log-head">
         <span class="sub-label">Journal (letzte 150 Zeilen)</span>
@@ -998,6 +1032,7 @@
   <script src="/static/i18n.js"></script>
 
   <script src="/static/app.js"></script>
+  <script src="/static/notes.js"></script>
   <script src="/static/customize.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

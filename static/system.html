@@ -43,13 +43,19 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#netzwerk" class="active">Netzwerk</a>
+      <a href="#geraete">Geräte im Netzwerk</a>
+      <a href="#port-check">Port-Check</a>
       <a href="#firewall">Firewall</a>
       <a href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
+      <a href="#verfuegbarkeit">Verfügbarkeit</a>
+      <a href="#drosselung">Drosselung</a>
+      <a href="#luefterkurve">Lüfterkurve</a>
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
       <a href="#logs">Logs</a>
       <a href="#aufraeumen">Aufräumen</a>
+      <a href="#aktivitaet">Aktivität</a>
     </nav>
 
     <div class="settings-sections">
@@ -68,11 +74,56 @@
           <input type="checkbox" id="net-show-virtual">
           Container- &amp; Loopback-Schnittstellen anzeigen
         </label>
-        <h3 class="subhead">Offene Ports</h3>
-        <div class="table-scroll">
-          <table class="data-table" id="net-ports"></table>
+        <p class="field-hint">Offene Ports und ihre Erreichbarkeit: <a class="text-btn" href="#port-check">Port-Check</a></p>
+      </section>
+
+      <!-- Geräte im Netzwerk -->
+      <section class="glass-card settings-section" id="geraete">
+        <div class="section-head">
+          <h2>Geräte im Netzwerk</h2>
+          <button class="btn-primary" id="lan-scan">Jetzt scannen</button>
         </div>
-        <p class="field-hint" id="net-ports-hint"></p>
+        <p class="section-desc">Sucht alle Geräte im Heimnetz (LAN/WLAN des Pi). Gefundene Geräte werden gemerkt – auch wenn sie später offline sind. Namen kommen vom Router, Hersteller aus der MAC-Adresse.</p>
+        <p class="field-hint" id="lan-status"></p>
+        <div class="log-filters lan-filter">
+          <input type="search" id="lan-filter" placeholder="Filtern: Name, IP, MAC, Hersteller…" autocomplete="off" spellcheck="false" aria-label="Geräte filtern">
+          <select id="lan-show" aria-label="Anzeigen">
+            <option value="all">Alle Geräte</option>
+            <option value="online">Nur online</option>
+            <option value="new">Nur neue</option>
+          </select>
+        </div>
+        <div class="table-scroll tall">
+          <table class="data-table" id="lan-devices"></table>
+        </div>
+      </section>
+
+      <!-- Port-Check -->
+      <section class="glass-card settings-section" id="port-check">
+        <div class="section-head">
+          <h2>Port-Check</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="ports-fw">–</span>
+            <button class="mini-icon-btn" data-reload="ports" title="Neu laden">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+        </div>
+        <p class="section-desc">Welche Ports der Pi öffnet und ob sie aus dem Heimnetz (LAN) oder über das VPN erreichbar sind – aus Bindung und Firewall-Regeln berechnet.</p>
+        <div class="table-scroll">
+          <table class="data-table" id="ports-table"></table>
+        </div>
+        <p class="field-hint" id="ports-hint"></p>
+        <h3 class="subhead">Port testen</h3>
+        <form class="log-filters" id="port-test-form">
+          <input type="text" id="port-test-host" placeholder="Host oder IP, z.B. 192.168.178.1" autocomplete="off" spellcheck="false" aria-label="Host" required>
+          <input type="text" id="port-test-ports" class="short" placeholder="Ports: 22,80,443" value="22,80,443" autocomplete="off" aria-label="Ports" required>
+          <button type="submit" class="btn-primary">Testen</button>
+        </form>
+        <p class="field-hint">Prüft vom Pi aus per TCP, ob ein Dienst antwortet (max. 100 Ports, Bereiche wie 8000-8010).</p>
+        <div class="table-scroll" id="port-test-wrap" hidden>
+          <table class="data-table" id="port-test-results"></table>
+        </div>
       </section>
 
       <!-- Firewall -->
@@ -173,6 +224,70 @@
         <div class="iface-list" id="hw-usb"></div>
       </section>
 
+      <!-- Verfügbarkeit -->
+      <section class="glass-card settings-section" id="verfuegbarkeit">
+        <div class="section-head">
+          <h2>Verfügbarkeit</h2>
+          <div class="head-tools">
+            <div class="segmented" id="uptime-range" role="tablist" aria-label="Zeitraum">
+              <button data-days="1">24 Std.</button>
+              <button class="active" data-days="7">7 Tage</button>
+              <button data-days="30">30 Tage</button>
+            </div>
+          </div>
+        </div>
+        <p class="section-desc">Wie lange jeder Dienst aktiv war – gemessen jede Minute, solange das Dashboard läuft.</p>
+        <div class="chart-legend uptime-legend">
+          <span><i class="uptime-key active"></i>Aktiv</span>
+          <span><i class="uptime-key inactive"></i>Inaktiv</span>
+          <span><i class="uptime-key error"></i>Fehler</span>
+          <span><i class="uptime-key unknown"></i>Keine Daten</span>
+        </div>
+        <div class="uptime-list" id="uptime-list"></div>
+      </section>
+
+      <!-- Drosselung -->
+      <section class="glass-card settings-section" id="drosselung">
+        <div class="section-head">
+          <h2>Drosselung</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="throttle-now">–</span>
+            <button class="mini-icon-btn" data-reload="throttle" title="Neu laden">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+          </div>
+        </div>
+        <p class="section-desc">Wann der Pi wegen Unterspannung (Netzteil) oder Hitze gebremst hat. Kurze Ereignisse zwischen zwei Messungen werden ebenfalls erkannt.</p>
+        <div class="bench-values ssh-stats" id="throttle-stats"></div>
+        <h3 class="subhead">Ereignisse (30 Tage)</h3>
+        <div class="table-scroll tall">
+          <table class="data-table" id="throttle-events"></table>
+        </div>
+        <p class="field-hint" id="throttle-hint"></p>
+      </section>
+
+      <!-- Lüfterkurve -->
+      <section class="glass-card settings-section" id="luefterkurve">
+        <div class="section-head">
+          <h2>Lüfterkurve</h2>
+          <span class="health-tag" id="fan-curve-state">–</span>
+        </div>
+        <p class="section-desc">Ab welcher Temperatur der Lüfter welche Stufe fährt. Wird in config.txt gespeichert (mit Backup) und gilt nach einem Neustart.</p>
+        <div class="mode-grid" id="fan-presets"></div>
+        <div class="fan-curve-body">
+          <div class="fan-steps" id="fan-steps"></div>
+          <div class="fan-chart" id="fan-chart">
+            <svg role="img" aria-label="Lüfterkurve: Drehzahl über Temperatur"></svg>
+          </div>
+        </div>
+        <div class="form-actions">
+          <span class="form-msg" id="fan-msg" role="status"></span>
+          <button class="btn-secondary" id="fan-reset">Werkseinstellung</button>
+          <button class="btn-primary" id="fan-save">Speichern</button>
+        </div>
+        <p class="field-hint" id="fan-hint"></p>
+      </section>
+
       <!-- CPU-Modus -->
       <section class="glass-card settings-section" id="cpu-modus">
         <div class="section-head">
@@ -249,6 +364,24 @@
         <div class="form-actions">
           <span class="form-msg" id="cleanup-msg" role="status"></span>
           <button class="btn-danger" id="cleanup-all">Alles aufräumen</button>
+        </div>
+      </section>
+      <!-- Aktivität -->
+      <section class="glass-card settings-section" id="aktivitaet">
+        <h2>Aktivität</h2>
+        <p class="section-desc">Wer wann was im Dashboard gemacht hat: Anmeldungen, Updates, Dienste, Firewall, beendete Prozesse, Downloads … (180 Tage).</p>
+        <form class="log-filters" id="activity-form">
+          <select id="activity-category" aria-label="Bereich">
+            <option value="">Alle Bereiche</option>
+          </select>
+          <input type="search" id="activity-query" placeholder="Suchen: Aktion, Detail, Benutzer, IP…" autocomplete="off" spellcheck="false" aria-label="Suchbegriff">
+        </form>
+        <div class="table-scroll tall">
+          <table class="data-table" id="activity-table"></table>
+        </div>
+        <div class="form-actions">
+          <span class="form-msg" id="activity-count"></span>
+          <button class="btn-secondary" id="activity-more" hidden>Ältere laden</button>
         </div>
       </section>
     </div>

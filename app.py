@@ -31,6 +31,10 @@ import files
 import terminal
 import systools
 import security
+import monitor
+import netscan
+import fancurve
+import audit
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -74,6 +78,24 @@ def _same_origin(request: Request) -> bool:
 
 
 @app.middleware("http")
+async def audit_log(request: Request, call_next):
+    """Record changing requests in the activity log (runs inside require_login, so the user is known)."""
+    response = await call_next(request)
+    path = request.url.path
+    if request.method == "POST" or path == "/api/files/download":
+        user = getattr(request.state, "audit_user", None) or getattr(request.state, "user", None) or ""
+        detail = getattr(request.state, "audit_detail", "")
+        if path == "/api/files/download":
+            detail = request.query_params.get("path", "")
+        ip = request.client.host if request.client else ""
+        try:
+            await asyncio.to_thread(audit.record, user, ip, request.method, path, response.status_code, detail)
+        except Exception as e:
+            logger.warning(f"Activity log failed: {e}")
+    return response
+
+
+@app.middleware("http")
 async def require_login(request: Request, call_next):
     path = request.url.path
     user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
@@ -87,7 +109,7 @@ async def require_login(request: Request, call_next):
 
     is_read = request.method in ("GET", "HEAD")
     always_private = (path in ("/settings", "/terminal", "/system")
-                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/"))
+                      or path.startswith(("/api/settings", "/api/workloads/", "/api/files/", "/api/terminal", "/api/tools/", "/api/notes"))
                       or (path.startswith("/api/services/") and path.endswith("/journal")))
     if user is None and (always_private or not (is_read and auth.public_view())):
         if path.startswith("/api/"):
@@ -134,8 +156,10 @@ async def api_login(req: LoginRequest, request: Request):
     if wait:
         raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
 
+    request.state.audit_user = req.username.strip()[:32]
     ok = await asyncio.to_thread(auth.verify_login, req.username.strip(), req.password)
     if not ok:
+        request.state.audit_detail = "Falsches Passwort"
         auth.record_failure(ip)
         logger.warning(f"Failed login for '{req.username[:32]}' from {ip}")
         wait = auth.lockout_remaining(ip)
@@ -143,6 +167,7 @@ async def api_login(req: LoginRequest, request: Request):
                             detail="Benutzername oder Passwort falsch." if not wait else f"Zu viele Fehlversuche. Bitte {wait} s warten.")
 
     auth.record_success(ip)
+    request.state.audit_detail = "Angemeldet bleiben" if req.remember else ""
     logger.info(f"Login '{req.username}' from {ip}")
     response = JSONResponse({"ok": True, "user": req.username.strip()})
     _set_session_cookie(response, request, req.username.strip(), req.remember)
@@ -258,6 +283,7 @@ async def api_settings_account(req: AccountRequest, request: Request):
     # Keeps the current password if no new one is given; either way all other sessions end
     await asyncio.to_thread(auth.set_password, username, req.new_password or req.current_password)
     logger.info(f"Account changed by '{request.state.user}' from {ip} (username now '{username}')")
+    request.state.audit_detail = f"Benutzername: {username}"
     response = JSONResponse({"ok": True, "message": "Gespeichert. Alle anderen Geräte wurden abgemeldet.", "user": username})
     _set_session_cookie(response, request, username, _session_is_remembered(request))
     return response
@@ -310,6 +336,7 @@ async def api_process_signal(pid: int, req: SignalRequest, request: Request):
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["message"])
     logger.info(f"{'SIGKILL' if req.force else 'SIGTERM'} pid {pid} by '{request.state.user}': {result['message']}")
+    request.state.audit_detail = f"PID {pid} · {'SIGKILL' if req.force else 'SIGTERM'} · {result['message']}"
     return result
 
 
@@ -384,6 +411,7 @@ async def api_tools_run_benchmark(req: BenchmarkRequest, request: Request):
     except (ValueError, PermissionError, files.FileAccessError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"Benchmark {req.kind} {req.mount} by '{request.state.user}': {entry}")
+    request.state.audit_detail = f"{req.kind} {req.mount}"
     return entry
 
 
@@ -416,6 +444,7 @@ async def api_tools_cleanup(req: CleanupRequest, request: Request):
     except (ValueError, PermissionError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"Cleanup {req.item} by '{request.state.user}': freed {result['freed']} bytes")
+    request.state.audit_detail = f"{req.item} · {round(result['freed'] / 1e6)} MB"
     return result
 
 
@@ -426,6 +455,7 @@ async def api_tools_cpu_mode():
 
 @app.post("/api/tools/cpu-mode")
 async def api_tools_set_cpu_mode(req: GovernorRequest, request: Request):
+    request.state.audit_detail = req.governor[:20]
     result = await asyncio.to_thread(systools.set_governor, req.governor)
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -454,6 +484,7 @@ async def api_tools_unban(req: UnbanRequest, request: Request):
     except (ValueError, PermissionError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"fail2ban unban {req.ip} by '{request.state.user}'")
+    request.state.audit_detail = req.ip
     return await asyncio.to_thread(security.fail2ban_status)
 
 
@@ -469,7 +500,135 @@ async def api_tools_firewall_action(req: FirewallRequest, request: Request):
     except (ValueError, TypeError, PermissionError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"Firewall {req.action} {req.params} by '{request.state.user}'")
+    request.state.audit_detail = f"{req.action} {' '.join(f'{k}={v}' for k, v in req.params.items())}".strip()
     return result
+
+
+class LanRenameRequest(BaseModel):
+    alias: str = ""
+
+
+class LanWolRequest(BaseModel):
+    name: str
+
+
+class PortTestRequest(BaseModel):
+    host: str
+    ports: str
+
+
+@app.get("/api/tools/lan")
+async def api_tools_lan():
+    return await asyncio.to_thread(netscan.devices)
+
+
+@app.post("/api/tools/lan/scan")
+async def api_tools_lan_scan(request: Request):
+    try:
+        result = await asyncio.to_thread(netscan.scan)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"LAN scan by '{request.state.user}': {result['last_scan']}")
+    request.state.audit_detail = f"{result['last_scan']['online']} Geräte online"
+    return result
+
+
+@app.post("/api/tools/lan/{mac}/rename")
+async def api_tools_lan_rename(mac: str, req: LanRenameRequest, request: Request):
+    request.state.audit_detail = f"{mac} → {req.alias[:40]}"
+    try:
+        return await asyncio.to_thread(netscan.rename, mac, req.alias)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/tools/lan/{mac}/forget")
+async def api_tools_lan_forget(mac: str, request: Request):
+    request.state.audit_detail = mac[:20]
+    try:
+        return await asyncio.to_thread(netscan.forget, mac)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/tools/lan/{mac}/wol")
+async def api_tools_lan_wol(mac: str, req: LanWolRequest, request: Request):
+    request.state.audit_detail = f"{req.name[:40]} ({mac[:20]})"
+    try:
+        await asyncio.to_thread(wol.add_device, req.name, mac, "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return await asyncio.to_thread(netscan.devices)
+
+
+class NotesRequest(BaseModel):
+    text: str
+    base: int = 0         # "updated" of the version the edit started from
+
+
+@app.get("/api/notes")
+async def api_notes():
+    return settings_store.get("notes", {"text": "", "updated": 0, "user": ""})
+
+
+@app.post("/api/notes")
+async def api_notes_save(req: NotesRequest, request: Request):
+    if len(req.text) > 20000:
+        raise HTTPException(status_code=400, detail="Notizen dürfen höchstens 20 000 Zeichen lang sein.")
+    current = settings_store.get("notes", {"text": "", "updated": 0, "user": ""})
+    if req.base != current.get("updated", 0) and req.text != current.get("text"):
+        # Someone else saved in the meantime: don't overwrite their version
+        return JSONResponse({"detail": "Die Notizen wurden inzwischen woanders geändert.", "notes": current}, status_code=409)
+    notes = {"text": req.text, "updated": int(time.time() * 1000), "user": request.state.user}
+    settings_store.set("notes", notes)
+    return notes
+
+
+@app.get("/api/tools/activity")
+async def api_tools_activity(q: str = "", category: str = "", limit: int = 200, before: int = 0):
+    return await asyncio.to_thread(audit.entries, q, category, limit, before)
+
+
+@app.get("/api/tools/ports")
+async def api_tools_ports():
+    return await asyncio.to_thread(netscan.port_reachability)
+
+
+@app.post("/api/tools/port-test")
+async def api_tools_port_test(req: PortTestRequest, request: Request):
+    request.state.audit_detail = f"{req.host[:60]} · {req.ports[:60]}"
+    try:
+        return await asyncio.to_thread(netscan.test_ports, req.host, req.ports)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class FanCurveRequest(BaseModel):
+    temps: list
+    speeds: list          # percent
+
+
+@app.get("/api/tools/fan-curve")
+async def api_tools_fan_curve():
+    return await asyncio.to_thread(fancurve.status)
+
+
+@app.post("/api/tools/fan-curve")
+async def api_tools_fan_curve_set(req: FanCurveRequest, request: Request):
+    try:
+        result = await asyncio.to_thread(fancurve.set_curve, req.temps, req.speeds)
+    except (ValueError, PermissionError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    request.state.audit_detail = f"{req.temps} °C · {req.speeds} %"
+    return result
+
+
+@app.post("/api/tools/fan-curve/reset")
+async def api_tools_fan_curve_reset():
+    try:
+        return await asyncio.to_thread(fancurve.reset)
+    except (PermissionError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -507,7 +666,13 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
         await websocket.close(code=4401)
         return
     client = websocket.client.host if websocket.client else "unknown"
-    await terminal.run_session(websocket, user, client, rows, cols)
+    started = time.time()
+    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, "geöffnet")
+    try:
+        await terminal.run_session(websocket, user, client, rows, cols)
+    finally:
+        minutes = max(1, round((time.time() - started) / 60))
+        await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"beendet nach {minutes} Min.")
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +684,7 @@ async def api_service_action(service_id: str, action: str, request: Request):
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["message"])
     logger.info(f"systemctl {action} {result['unit']} by '{request.state.user}'")
+    request.state.audit_detail = f"{action} {result['unit']}"
     return result
 
 
@@ -545,12 +711,13 @@ async def api_wol_devices():
 
 
 @app.post("/api/wol/{device_id}/wake")
-async def api_wol_wake(device_id: str):
+async def api_wol_wake(device_id: str, request: Request):
     try:
         device = await asyncio.to_thread(wol.wake, device_id)
     except (ValueError, OSError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"Wake-on-LAN sent to {device['name']} ({device['mac']})")
+    request.state.audit_detail = f"{device['name']} ({device['mac']})"
     return {"ok": True, "message": f"Weckruf an {device['name']} gesendet."}
 
 
@@ -578,6 +745,7 @@ async def api_docker_action(name: str, action: str, request: Request):
     if not result["ok"]:
         raise HTTPException(status_code=400, detail=result["message"])
     logger.info(f"docker {action} {name} by '{request.state.user}'")
+    request.state.audit_detail = f"{action} {name}"
     return result
 
 
@@ -696,9 +864,24 @@ async def api_processes(limit: int = 8):
 
 
 @app.get("/api/history")
-async def api_history(range: str = "24h"):
-    """Downsampled metrics history: range=24h or 7d."""
-    return await asyncio.to_thread(history.get_history, range)
+async def api_history(range: str = "24h", iface: str = ""):
+    """Downsampled metrics history: range=24h or 7d; iface = network values of one interface."""
+    return await asyncio.to_thread(history.get_history, range, iface[:32])
+
+
+@app.get("/api/history/interfaces")
+async def api_history_interfaces():
+    return {"interfaces": await asyncio.to_thread(monitor.interfaces)}
+
+
+@app.get("/api/monitor/throttle")
+async def api_monitor_throttle(days: int = 30):
+    return await asyncio.to_thread(monitor.throttle_log, max(1, min(days, monitor.RETENTION_DAYS)))
+
+
+@app.get("/api/monitor/uptime")
+async def api_monitor_uptime(days: int = 7):
+    return await asyncio.to_thread(monitor.service_uptime, max(1, min(days, monitor.RETENTION_DAYS)))
 
 
 @app.get("/api/homelab")
@@ -718,7 +901,8 @@ async def api_apt_status():
 
 
 @app.post("/api/updates/apt")
-async def api_apt_start(req: AptRunRequest):
+async def api_apt_start(req: AptRunRequest, request: Request):
+    request.state.audit_detail = req.mode
     """Start apt update or update+full-upgrade via its systemd unit."""
     result = await asyncio.to_thread(homelab.start_apt_run, req.mode)
     if not result["ok"]:
@@ -874,9 +1058,10 @@ async def api_weather(force: bool = False):
 
 
 @app.post("/api/weather/location")
-async def api_set_weather_location(req: WeatherLocationRequest):
+async def api_set_weather_location(req: WeatherLocationRequest, request: Request):
     """Look up a city via Open-Meteo geocoding, save it, and return its weather."""
     name = req.city.strip()
+    request.state.audit_detail = name[:60]
     if not name:
         raise HTTPException(status_code=400, detail="Bitte einen Ort eingeben.")
 
@@ -903,7 +1088,8 @@ async def api_set_weather_location(req: WeatherLocationRequest):
 
 
 @app.post("/api/action/command")
-async def api_exec_command(req: CommandRequest):
+async def api_exec_command(req: CommandRequest, request: Request):
+    request.state.audit_detail = req.command[:40]
     """Execute whitelisted safe diagnostic commands."""
     allowed_commands = {
         "ping": ["ping", "-c", "3", "1.1.1.1"],
