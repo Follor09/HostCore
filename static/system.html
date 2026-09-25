@@ -320,6 +320,25 @@
           </form>
           <p class="field-hint">Ports: einzeln (443), als Bereich (6000:6010) oder als Liste (80,443) – Bereiche und Listen nur mit TCP oder UDP. Die Firewall prüft die Regeln von oben nach unten, die erste passende gilt.</p>
           <p class="field-hint">„Ablehnen“ antwortet dem Absender sofort, „Blockieren“ verwirft still. „Begrenzen“ blockiert eine IP, die sich in 30 Sekunden 6-mal oder öfter verbindet – gut gegen Passwort-Raten bei SSH.</p>
+          <h3 class="subhead">Länder sperren</h3>
+          <div class="geo-box" id="geo-box">
+            <div class="geo-status" id="geo-status"></div>
+            <div class="geo-db" id="geo-db"></div>
+            <div data-perm="firewall.manage" class="geo-editor" id="geo-editor" hidden>
+              <div class="geo-selected" id="geo-selected"></div>
+              <div class="geo-picker">
+                <input type="search" id="geo-search" placeholder="Land suchen, z.B. China oder CN" autocomplete="off" spellcheck="false" aria-label="Land suchen">
+                <div class="geo-results" id="geo-results" hidden></div>
+              </div>
+              <div class="geo-suggest" id="geo-suggest" hidden></div>
+              <div class="form-actions">
+                <span class="form-msg" id="geo-msg" role="status"></span>
+                <button type="button" class="btn-secondary" id="geo-clear">Alle freigeben</button>
+                <button type="button" class="btn-primary" id="geo-apply">Übernehmen</button>
+              </div>
+            </div>
+            <p class="field-hint">Sperrt alle Verbindungsversuche aus den gewählten Ländern, bevor die Regeln oben greifen. Antworten auf Verbindungen, die der Pi selbst aufbaut (Updates, DNS …), kommen weiter an; LAN und VPN sind nie betroffen. Das Land, aus dem du gerade verbunden bist, lässt sich nicht sperren.</p>
+          </div>
           <p class="field-hint" id="fw-docker-hint" hidden>Hinweis: Ports, die Docker-Container veröffentlichen, umgehen ufw und sind trotzdem erreichbar.</p>
         </div>
         <p class="field-hint" id="fw-hint"></p>
@@ -380,6 +399,10 @@
             <h3 class="subhead">Häufigste Ziel-Ports</h3>
             <div class="table-scroll"><table class="data-table" id="fwt-ports"></table></div>
           </div>
+        </div>
+        <div id="fwt-countries-wrap" hidden>
+          <h3 class="subhead">Herkunftsländer</h3>
+          <div class="fwt-countries" id="fwt-countries"></div>
         </div>
         <h3 class="subhead">Letzte Einträge</h3>
         <div class="table-scroll"><table class="data-table" id="fwt-recent"></table></div>

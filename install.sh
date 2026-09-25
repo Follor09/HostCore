@@ -85,9 +85,15 @@ as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
 as_owner chmod +x "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/set-password.sh"
 
 echo "⚙️  Installing systemd units..."
-for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer pi-dashboard-apt@.service; do
+for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer pi-dashboard-apt@.service pi-dashboard-geoblock.service; do
     sed -e "s|__USER__|$OWNER|g" -e "s|__DIR__|$DIR|g" -e "s|__SRC__|$SRC|g" "$SRC/$unit" > "/etc/systemd/system/$unit"
 done
+
+# Country blocking in the firewall uses ipset (small, only with ufw)
+if command -v ufw >/dev/null && ! command -v ipset >/dev/null; then
+    echo "🌍 Installing ipset for country blocking..."
+    apt-get install -y -qq ipset || echo "   ⚠️  ipset install failed, country blocking stays unavailable"
+fi
 
 # NVMe health: smartctl needs root, so allow exactly one read-only command
 if [ -e /dev/nvme0 ] && ! command -v smartctl >/dev/null; then

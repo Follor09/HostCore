@@ -14,6 +14,7 @@ import ast
 import ipaddress
 import glob
 import json
+import logging
 import os
 import re
 import shutil
@@ -23,6 +24,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 import psutil
+
+logger = logging.getLogger("pi_dashboard.security")
 
 HELPER = "/var/lib/pi-dashboard/src/pi-helper.sh"
 DASHBOARD_PORT = 8000
@@ -191,6 +194,9 @@ def ssh_logins() -> Dict[str, Any]:
     top = sorted(per_ip.values(), key=lambda p: p["attempts"], reverse=True)[:10]
     summary["fail_ips_7d"] = len(per_ip)
 
+    import geoip
+    for item in top + events[:100]:
+        item["country"] = geoip.lookup(item["ip"])
     data = {"supported": True, "days": SSH_DAYS, "summary": summary, "top_ips": top,
             "events": events[:100], "active": _active_sessions(), "hint": hint,
             "truncated": len(res.stdout.splitlines()) >= SSH_MAX_LINES,
@@ -226,8 +232,10 @@ def fail2ban_status() -> Dict[str, Any]:
         jails = _parse_banned(_helper("f2b-banned", timeout=15))
     except (PermissionError, RuntimeError, subprocess.TimeoutExpired) as e:
         return {"installed": True, "active": True, "jails": [], "error": str(e)}
+    import geoip
     return {"installed": True, "active": True,
-            "jails": [{"name": name, "banned": ips} for name, ips in sorted(jails.items())]}
+            "jails": [{"name": name, "banned": ips} for name, ips in sorted(jails.items())],
+            "countries": geoip.lookup_many(ip for ips in jails.values() for ip in ips)}
 
 
 def fail2ban_unban(ip: str) -> None:
@@ -677,13 +685,22 @@ def firewall_traffic(range_: str = "24h", action: str = "block", direction: str 
         if 0 <= i < n:
             timeline[i]["internet" if e["scope"] == "internet" else "local"] += 1
 
+    import geoip
     names = _lan_names()
+    country = geoip.lookup_many(e["remote"] for e in events if e["scope"] == "internet")
+    countries: Dict[str, Dict[str, Any]] = {}
+    for e in events:
+        cc = country.get(e["remote"], "")
+        if cc:
+            c = countries.setdefault(cc, {"cc": cc, "count": 0, "sources": set()})
+            c["count"] += 1
+            c["sources"].add(e["remote"])
     remotes: Dict[str, Dict[str, Any]] = {}
     ports: Dict[tuple, Dict[str, Any]] = {}
     for e in events:
         r = remotes.setdefault(e["remote"], {"ip": e["remote"], "scope": e["scope"], "count": 0, "ports": {},
                                              "first": e["ts"], "last": e["ts"], "directions": set(),
-                                             "name": names.get(e["remote"], "")})
+                                             "name": names.get(e["remote"], ""), "country": country.get(e["remote"], "")})
         r["count"] += 1
         r["last"] = max(r["last"], e["ts"])
         r["first"] = min(r["first"], e["ts"])
@@ -725,9 +742,96 @@ def firewall_traffic(range_: str = "24h", action: str = "block", direction: str 
                     "internet": internet, "per_hour": round(len(events) / (span / 3600), 1),
                     "counts": counts, "top_port": top_ports[0] if top_ports else None},
         "top_sources": top_sources, "top_ports": top_ports,
-        "recent": sorted(events, key=lambda e: e["ts"], reverse=True)[:200],
+        "top_countries": [{**c, "sources": len(c["sources"])} for c in sorted(countries.values(), key=lambda c: -c["count"])[:15]],
+        "geoip": geoip.installed(),
+        "recent": [{**e, "country": country.get(e["remote"], "")} for e in sorted(events, key=lambda e: e["ts"], reverse=True)[:200]],
         "firewall": {"installed": bool(fw) or bool(shutil.which("ufw")), "active": fw.get("active", False),
                      "logging": fw.get("logging", "")},
         "hint": raw.get("hint", ""), "error": raw.get("error", ""),
         "truncated": raw.get("truncated", False), "source": raw.get("source", ""),
     }
+
+
+# ---------------------------------------------------------------------------
+# Country blocking: ipsets filled from the GeoIP database, dropped in ufw's before.rules
+# ---------------------------------------------------------------------------
+GEOBLOCK_MAX = 600000
+
+
+def _helper_input(args: List[str], data: str, timeout: float = 120) -> str:
+    if not os.path.exists(HELPER):
+        raise PermissionError("Helfer fehlt – install.sh auf dem Pi erneut ausführen.")
+    res = subprocess.run(["sudo", "-n", HELPER, *args], input=data, capture_output=True, text=True, timeout=timeout)
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "password" in err.lower() or "not allowed" in err.lower():
+            raise PermissionError("Keine Berechtigung – install.sh auf dem Pi erneut ausführen.")
+        raise RuntimeError(err.splitlines()[-1][:200] if err else "Fehlgeschlagen.")
+    return res.stdout
+
+
+def geoblock_status() -> Dict[str, Any]:
+    import geoip
+    import settings_store
+    saved = settings_store.get("geoblock", {}) or {}
+    helper: Dict[str, str] = {}
+    error = ""
+    if shutil.which("ufw") or os.path.exists("/usr/sbin/ufw"):
+        try:
+            for line in _helper("geoblock-status").splitlines():
+                k, _, v = line.partition("=")
+                helper[k.strip()] = v.strip()
+        except (PermissionError, RuntimeError, subprocess.TimeoutExpired) as e:
+            error = str(e)
+    countries = saved.get("countries", [])
+    return {
+        "countries": countries, "applied": saved.get("applied", 0), "networks": saved.get("networks", 0),
+        "ipset": helper.get("ipset") == "yes", "rules": helper.get("rules") == "yes",
+        "loaded": {"v4": int(helper.get("v4", 0) or 0), "v6": int(helper.get("v6", 0) or 0)},
+        "active": bool(countries) and helper.get("rules") == "yes",
+        "error": error, "db": geoip.info(),
+        "available": [{**c} for c in geoip.countries()],
+    }
+
+
+def geoblock_apply(ccs: List[str], client_ip: str = "") -> Dict[str, Any]:
+    import geoip
+    import settings_store
+    ccs = sorted({str(c).upper() for c in ccs if re.fullmatch(r"[A-Za-z]{2}", str(c))})
+    if not ccs:
+        return geoblock_clear()
+    if not geoip.installed():
+        raise ValueError("Erst die Länder-Datenbank laden.")
+    known = {c["cc"] for c in geoip.countries()}
+    unknown = [c for c in ccs if c not in known]
+    if unknown:
+        raise ValueError(f"Unbekannte Länder: {', '.join(unknown)}")
+    mine = geoip.lookup(client_ip) if client_ip else ""
+    if mine and mine in ccs:
+        raise ValueError(f"Du bist gerade aus diesem Land verbunden ({mine}) – das würde dich aussperren.")
+    nets = geoip.networks(ccs)
+    total = len(nets["v4"]) + len(nets["v6"])
+    if total > GEOBLOCK_MAX:
+        raise ValueError(f"Zu viele Netze ({total:,}) – weniger oder kleinere Länder wählen (max. {GEOBLOCK_MAX:,}).".replace(",", "."))
+    _helper_input(["geoblock-apply"], "\n".join(nets["v4"] + nets["v6"]) + "\n")
+    settings_store.set("geoblock", {"countries": ccs, "applied": int(time.time()), "networks": total})
+    _traffic_cache.clear()
+    return geoblock_status()
+
+
+def geoblock_clear() -> Dict[str, Any]:
+    import settings_store
+    _helper("geoblock-clear")
+    settings_store.set("geoblock", {"countries": [], "applied": int(time.time()), "networks": 0})
+    return geoblock_status()
+
+
+def geoblock_reapply() -> None:
+    """After a monthly database update: same countries, fresh networks."""
+    import settings_store
+    ccs = (settings_store.get("geoblock", {}) or {}).get("countries", [])
+    if ccs:
+        try:
+            geoblock_apply(ccs)
+        except Exception as e:
+            logger.warning(f"Geoblock re-apply failed: {e}")

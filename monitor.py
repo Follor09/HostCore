@@ -384,6 +384,11 @@ class Monitor:
                 except Exception as e:
                     logger.warning(f"Disk snapshot failed: {e}")
                 try:
+                    import geoip
+                    geoip.refresh_if_old()
+                except Exception as e:
+                    logger.warning(f"GeoIP refresh failed: {e}")
+                try:
                     import files
                     files.trash_purge()
                 except Exception as e:

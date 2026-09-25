@@ -592,6 +592,25 @@
     return new Date(ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
+  // Countries: flag emoji + name in the page language (Intl), no lookup table needed
+  let regionNames = null;
+  try { regionNames = new Intl.DisplayNames([LOCALE], { type: 'region' }); } catch (e) { /* old browser */ }
+  const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
+  const countryName = cc => { try { return (regionNames && regionNames.of(cc)) || cc; } catch (e) { return cc; } };
+
+  function countryTag(cc, extraClass = '') {
+    const tag = el('span', `health-tag country-tag ${extraClass}`, `${flag(cc)} ${countryName(cc)}`);
+    tag.title = cc;
+    tag.setAttribute('data-no-i18n', '');
+    return tag;
+  }
+
+  // Scope tag; for internet addresses with a known country: flag + country instead
+  function originTag(scope, cc) {
+    if (scope === 'internet' && cc) return countryTag(cc, 'warning');
+    return scopeTag(scope);
+  }
+
   function scopeTag(scope) {
     const [level, text] = SCOPE[scope] || SCOPE.internet;
     return el('span', `health-tag ${level}`, text);
@@ -917,6 +936,7 @@
         const c = row.insertCell();
         c.className = 'mono';
         c.textContent = fmtEndpoint(ip, port);
+        if (e.country && ip === e.remote) { c.prepend(`${flag(e.country)} `); c.title = countryName(e.country); }
       });
       const proto = row.insertCell();
       proto.textContent = e.proto.toUpperCase();
@@ -977,7 +997,7 @@
         n.setAttribute('data-no-i18n', '');
         ip.appendChild(n);
       }
-      row.insertCell().appendChild(scopeTag(x.scope));
+      row.insertCell().appendChild(originTag(x.scope, x.country));
       row.insertCell().textContent = fmtNum(x.count);
       const ports = row.insertCell();
       ports.className = 'wrap mono';
@@ -1039,6 +1059,29 @@
       c.textContent = 'Keine Einträge.';
     }
 
+    const cbox = $('fwt-countries');
+    cbox.innerHTML = '';
+    $('fwt-countries-wrap').hidden = !(r.top_countries || []).length;
+    const blocked = new Set((cache.geoblock && cache.geoblock.countries) || []);
+    (r.top_countries || []).forEach(c => {
+      const chip = el('div', 'fwt-country');
+      const name = el('span', 'fwt-country-name', `${flag(c.cc)} ${countryName(c.cc)}`);
+      name.setAttribute('data-no-i18n', '');
+      chip.append(name, el('span', 'fwt-country-count', `${fmtNum(c.count)} · ${fmtNum(c.sources)} IP`));
+      if (blocked.has(c.cc)) chip.appendChild(el('span', 'health-tag critical', 'gesperrt'));
+      else if (canManage && cache.geoblock && cache.geoblock.db.installed) {
+        const b = el('button', 'text-btn', 'Land sperren…');
+        b.addEventListener('click', () => { geoAdd(c.cc); $('firewall').querySelector('#geo-box').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+        chip.appendChild(b);
+      }
+      cbox.appendChild(chip);
+    });
+    if (!r.geoip && r.summary.internet) {
+      $('fwt-countries-wrap').hidden = false;
+      cbox.appendChild(el('p', 'field-hint', 'Herkunftsländer anzeigen: unter Firewall → Länder sperren die Länder-Datenbank laden.'));
+    }
+
+    if (cache.geoblock) renderGeoSuggest();
     fwtShown = 25;
     renderTrafficRecent(r);
     const hints = [];
@@ -1047,6 +1090,175 @@
     if (r.truncated) hints.push('Sehr viele Einträge – nur die neuesten 50.000 wurden ausgewertet.');
     if (!r.error && !r.hint && fw.active && !logOff) hints.push('Die Firewall protokolliert gleiche Pakete nur begrenzt oft – echte Zahlen können höher sein. Erlaubte Verbindungen erscheinen nur bei Regeln mit „Treffer protokollieren“.');
     $('fwt-hint').textContent = hints.join(' ');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Country blocking (ipset) + GeoIP database
+  // ---------------------------------------------------------------------------
+  const geo = { selected: new Set(), polling: null };
+
+  function geoAdd(cc) {
+    geo.selected.add(cc);
+    renderGeoSelected();
+    $('geo-msg').className = 'form-msg warning';
+    $('geo-msg').textContent = 'Noch nicht übernommen.';
+  }
+
+  function renderGeoSelected() {
+    const box = $('geo-selected');
+    box.innerHTML = '';
+    if (!geo.selected.size) box.appendChild(el('span', 'field-hint', 'Kein Land ausgewählt.'));
+    [...geo.selected].sort((a, b) => countryName(a).localeCompare(countryName(b), LOCALE)).forEach(cc => {
+      const chip = el('span', 'geo-chip');
+      const label = el('span', '', `${flag(cc)} ${countryName(cc)}`);
+      label.setAttribute('data-no-i18n', '');
+      const x = el('button', 'geo-chip-x', '×');
+      x.type = 'button';
+      x.title = `${countryName(cc)} entfernen`;
+      x.setAttribute('data-no-i18n', '');
+      x.addEventListener('click', () => {
+        geo.selected.delete(cc);
+        renderGeoSelected();
+        $('geo-msg').className = 'form-msg warning';
+        $('geo-msg').textContent = 'Noch nicht übernommen.';
+      });
+      chip.append(label, x);
+      box.appendChild(chip);
+    });
+    const avail = new Map(((cache.geoblock && cache.geoblock.available) || []).map(c => [c.cc, c.ranges]));
+    const ranges = [...geo.selected].reduce((n, cc) => n + (avail.get(cc) || 0), 0);
+    if (geo.selected.size) box.appendChild(el('span', 'field-hint geo-count', `${geo.selected.size} ${geo.selected.size === 1 ? 'Land' : 'Länder'} · ca. ${fmtNum(ranges)} Adressbereiche`));
+  }
+
+  function renderGeoResults() {
+    const q = $('geo-search').value.trim().toLowerCase();
+    const box = $('geo-results');
+    box.innerHTML = '';
+    if (!q) { box.hidden = true; return; }
+    const hits = ((cache.geoblock && cache.geoblock.available) || [])
+      .map(c => ({ ...c, name: countryName(c.cc) }))
+      .filter(c => c.cc.toLowerCase() === q || c.name.toLowerCase().includes(q))
+      .map(c => ({ ...c, rank: c.cc.toLowerCase() === q ? 0 : c.name.toLowerCase().startsWith(q) ? 1 : c.name.toLowerCase().split(/[\s-]+/).some(w => w.startsWith(q)) ? 2 : 3 }))
+      .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name, LOCALE))
+      .slice(0, 8);
+    hits.forEach(c => {
+      const b = el('button', 'geo-result');
+      b.type = 'button';
+      b.setAttribute('data-no-i18n', '');
+      b.append(el('span', '', `${flag(c.cc)} ${c.name}`), el('span', 'geo-result-cc', geo.selected.has(c.cc) ? '✓' : c.cc));
+      b.addEventListener('click', () => { geoAdd(c.cc); $('geo-search').value = ''; renderGeoResults(); $('geo-search').focus(); });
+      box.appendChild(b);
+    });
+    if (!hits.length) box.appendChild(el('div', 'geo-none', 'Kein Land gefunden.'));
+    box.hidden = false;
+  }
+
+  function renderGeoDb(db) {
+    const box = $('geo-db');
+    box.innerHTML = '';
+    const canManage = !window.PiAuth || window.PiAuth.can('firewall.manage');
+    const line = el('span', 'geo-db-line');
+    if (db.running) line.textContent = `Länder-Datenbank wird geladen… ${db.progress || 0} %`;
+    else if (db.installed) line.textContent = `Länder-Datenbank: Stand ${db.month} · ${fmtNum(db.rows)} Bereiche · ${fmtBytes(db.size)}`;
+    else line.textContent = 'Für Länder (Flaggen bei IPs, Länder sperren) wird die kostenlose Länder-Datenbank von DB-IP gebraucht (ca. 5 MB Download, ~35 MB auf der Platte, monatlich aktualisiert).';
+    box.appendChild(line);
+    if (db.error) box.appendChild(el('span', 'form-msg error', db.error));
+    if (canManage && !db.running) {
+      const btn = el('button', db.installed ? 'btn-secondary' : 'btn-primary', db.installed ? 'Jetzt aktualisieren' : 'Länder-Datenbank laden');
+      btn.type = 'button';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try { renderGeoDb(await api('/api/tools/geoip/download', {})); pollGeoDb(); } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+      });
+      box.appendChild(btn);
+    }
+    if (db.installed || db.running) {
+      const a = el('a', 'geo-attr', db.attribution.text);
+      a.href = db.attribution.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.setAttribute('data-no-i18n', '');
+      box.appendChild(a);
+    }
+  }
+
+  function pollGeoDb() {
+    clearInterval(geo.polling);
+    geo.polling = setInterval(async () => {
+      try {
+        const db = await api('/api/tools/geoip');
+        renderGeoDb(db);
+        if (!db.running) {
+          clearInterval(geo.polling);
+          if (db.installed && !db.error) {
+            toast('Länder-Datenbank geladen.', 'success');
+            load('geoblock'); load('fwTraffic'); load('ssh');
+          }
+        }
+      } catch (e) { clearInterval(geo.polling); }
+    }, 1000);
+  }
+
+  function renderGeoblock(g) {
+    const status = $('geo-status');
+    status.innerHTML = '';
+    let level = '', text;
+    if (g.error) { level = 'critical'; text = g.error; }
+    else if (g.active) {
+      level = 'good';
+      text = `Aktiv: ${g.countries.length} ${g.countries.length === 1 ? 'Land' : 'Länder'} gesperrt (${fmtNum(g.loaded.v4 + g.loaded.v6)} Netze)`;
+    } else if (g.countries.length && !g.rules) { level = 'warning'; text = 'Gespeichert, aber die Firewall-Regel fehlt – „Übernehmen“ erneut ausführen.'; }
+    else text = 'Keine Länder gesperrt.';
+    status.appendChild(el('span', `health-tag ${level}`, text));
+    if (g.countries.length) {
+      const list = el('span', 'geo-status-list');
+      g.countries.forEach(cc => list.appendChild(countryTag(cc)));
+      status.appendChild(list);
+    }
+    if (!g.ipset && !g.error) status.appendChild(el('span', 'field-hint', 'ipset fehlt – wird beim nächsten Update von install.sh installiert (oder: sudo apt install ipset).'));
+    renderGeoDb(g.db);
+    if (g.db.running) pollGeoDb();
+    $('geo-editor').hidden = !g.db.installed;
+    geo.selected = new Set(g.countries);
+    $('geo-msg').textContent = '';
+    renderGeoSelected();
+    renderGeoSuggest();
+  }
+
+  // Suggestions: countries that showed up most in blocked traffic
+  function renderGeoSuggest() {
+    const top = ((cache.fwTraffic && cache.fwTraffic.top_countries) || []).filter(c => !geo.selected.has(c.cc)).slice(0, 6);
+    const sug = $('geo-suggest');
+    sug.innerHTML = '';
+    sug.hidden = !top.length;
+    if (top.length) {
+      sug.appendChild(el('span', 'field-hint', 'Häufig im Firewall-Traffic:'));
+      top.forEach(c => {
+        const b = el('button', 'geo-sugg', `${flag(c.cc)} ${countryName(c.cc)} (${fmtNum(c.count)})`);
+        b.type = 'button';
+        b.setAttribute('data-no-i18n', '');
+        b.addEventListener('click', () => { geoAdd(c.cc); b.remove(); });
+        sug.appendChild(b);
+      });
+    }
+  }
+
+  async function applyGeoblock(countries) {
+    const msg = $('geo-msg');
+    ['geo-apply', 'geo-clear'].forEach(id => { $(id).disabled = true; });
+    msg.className = 'form-msg';
+    msg.textContent = 'Wird übernommen… (kann bei vielen Ländern einige Sekunden dauern)';
+    try {
+      cache.geoblock = await api('/api/tools/geoblock', { countries });
+      renderGeoblock(cache.geoblock);
+      toast(countries.length ? 'Länder-Sperre aktualisiert.' : 'Alle Länder freigegeben.', 'success');
+      load('fwTraffic');
+    } catch (err) {
+      msg.className = 'form-msg error';
+      msg.textContent = err.message;
+    } finally {
+      ['geo-apply', 'geo-clear'].forEach(id => { $(id).disabled = false; });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1079,6 +1291,8 @@
       j.banned.forEach(ip => {
         const row = infoRow(ip, `Gesperrt in „${j.name}“`, []);
         row.classList.add('sub-row');
+        const cc = (f.countries || {})[ip];
+        if (cc) row.querySelector('.iface-tags').appendChild(countryTag(cc));
         const btn = el('button', 'btn-secondary', 'Entsperren');
         btn.dataset.perm = 'firewall.manage';
         btn.addEventListener('click', async () => {
@@ -1116,7 +1330,7 @@
         ok ? 'Erfolgreich' : e.attempts > 1 ? `Fehlgeschlagen (${e.attempts}×)` : 'Fehlgeschlagen'));
       row.insertCell().textContent = e.user;
       row.insertCell().textContent = e.ip;
-      row.insertCell().appendChild(scopeTag(e.scope));
+      row.insertCell().appendChild(originTag(e.scope, e.country));
       row.insertCell().textContent = e.method || '–';
     });
     if (!events.length) {
@@ -1166,7 +1380,7 @@
     (s.top_ips || []).forEach(p => {
       const row = body.insertRow();
       row.insertCell().textContent = p.ip;
-      row.insertCell().appendChild(scopeTag(p.scope));
+      row.insertCell().appendChild(originTag(p.scope, p.country));
       row.insertCell().textContent = p.attempts;
       const users = row.insertCell();
       users.className = 'wrap';
@@ -1487,7 +1701,9 @@
       detail.className = 'wrap mono';
       detail.textContent = e.detail || '–';
       detail.setAttribute('data-no-i18n', '');
-      row.insertCell().textContent = e.ip || '–';
+      const ipCell = row.insertCell();
+      ipCell.textContent = e.ip || '–';
+      if (e.country) { ipCell.prepend(`${flag(e.country)} `); ipCell.title = countryName(e.country); }
       row.insertCell().appendChild(el('span', `health-tag ${e.ok ? 'good' : 'critical'}`, e.ok ? 'OK' : `Fehler ${e.status}`));
     });
     if (!activity.entries.length) {
@@ -1916,6 +2132,7 @@
     cleanup: ['/api/tools/cleanup', renderCleanup],
     firewall: ['/api/tools/firewall', renderFirewall],
     fwTraffic: ['/api/tools/firewall/traffic', renderTraffic],
+    geoblock: ['/api/tools/geoblock', renderGeoblock],
     ssh: ['/api/tools/ssh', renderSsh],
     uptime: ['/api/monitor/uptime?days=7', renderUptime],
     throttle: ['/api/monitor/throttle?days=30', renderThrottle],
@@ -1927,7 +2144,7 @@
     forecast: ['/api/disk-forecast', renderForecast]
   };
 
-  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', fwTraffic: 'security.view', logUnits: 'logs.view' };
+  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', fwTraffic: 'security.view', geoblock: 'security.view', logUnits: 'logs.view' };
 
   const loadSeq = {};
 
@@ -1975,6 +2192,14 @@
     $('fwt-filters').addEventListener('submit', e => { e.preventDefault(); load('fwTraffic'); });
     $('fwt-more').addEventListener('click', () => { fwtShown += 100; renderTrafficRecent(cache.fwTraffic); });
     $('fwt-enable-log').addEventListener('click', () => firewallAction('logging', { level: 'low' }));
+    $('geo-search').addEventListener('input', renderGeoResults);
+    $('geo-search').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); const first = $('geo-results').querySelector('.geo-result'); if (first) first.click(); }
+      if (e.key === 'Escape') { $('geo-search').value = ''; renderGeoResults(); }
+    });
+    document.addEventListener('click', e => { if (!e.target.closest('.geo-picker')) $('geo-results').hidden = true; });
+    $('geo-apply').addEventListener('click', () => applyGeoblock([...geo.selected]));
+    confirmClick($('geo-clear'), 'Alle freigeben', 'Wirklich alle freigeben?', () => applyGeoblock([]));
     new ResizeObserver(() => cache.fwTraffic && drawTrafficChart(cache.fwTraffic)).observe($('fwt-chart'));
     $('lan-scan').addEventListener('click', runLanScan);
     ['input', 'change'].forEach(ev => {

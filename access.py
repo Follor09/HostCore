@@ -40,7 +40,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/api/logs$", "logs.view"),
     ("GET", r"^/api/services/[^/]+/journal$", "logs.view"),
     ("GET", r"^/api/workloads/docker/[^/]+/logs$", "logs.view"),
-    ("GET", r"^/api/tools/(ssh|activity|firewall|firewall/traffic)$", "security.view"),
+    ("GET", r"^/api/tools/(ssh|activity|firewall|firewall/traffic|geoip|geoblock)$", "security.view"),
     ("GET", r"^/api/(tools/.*|events|report|disk-forecast|monitor/.*|sensors.*)$", "system.view"),
     ("POST", r"^/api/action/command$", "system.view"),        # read-only diagnostics (uptime, df ...)
 
@@ -70,7 +70,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     # --- Network
     ("POST", r"^/api/tools/(lan/scan|lan/[^/]+/(rename|forget|wol)|port-test|dns|traceroute)$", "network.tools"),
     ("POST", r"^/api/wol(/[^/]+/wake)?$", "network.tools"),
-    ("POST", r"^/api/tools/(firewall|fail2ban/unban)$", "firewall.manage"),
+    ("POST", r"^/api/tools/(firewall|fail2ban/unban|geoblock|geoip/download|geoip/remove)$", "firewall.manage"),
 
     # --- Terminal
     ("*", r"^/api/terminal.*$", "terminal"),

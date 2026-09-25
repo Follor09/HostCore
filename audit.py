@@ -75,6 +75,9 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("GET", r"^/api/files/download$", "files", "Datei heruntergeladen"),
     ("PUT", r"^/api/files/upload$", "files", "Datei hochgeladen"),
     ("POST", r"^/api/files/share$", "files", "Freigabe-Link erstellt"),
+    ("POST", r"^/api/tools/geoblock$", "security", "Länder-Sperre geändert"),
+    ("POST", r"^/api/tools/geoip/download$", "security", "Länder-Datenbank geladen"),
+    ("POST", r"^/api/tools/geoip/remove$", "security", "Länder-Datenbank gelöscht"),
     ("POST", r"^/api/files/text$", "files", "Datei bearbeitet"),
     ("POST", r"^/api/files/new$", "files", "Datei/Ordner angelegt"),
     ("POST", r"^/api/files/delete$", "files", "In den Papierkorb verschoben"),
@@ -143,7 +146,9 @@ def entries(query: str = "", category: str = "", limit: int = 200, before: int =
     with _conn() as conn:
         rows = conn.execute(sql, args).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM audit").fetchone()[0]
+    import geoip
     items = [{"id": i, "ts": ts, "user": u, "ip": ip, "category": c, "action": a, "detail": d,
-              "ok": 200 <= (s or 0) < 400, "status": s} for i, ts, u, ip, c, a, d, s in rows]
+              "ok": 200 <= (s or 0) < 400, "status": s, "country": geoip.lookup(ip or "")}
+             for i, ts, u, ip, c, a, d, s in rows]
     return {"entries": items, "total": total, "categories": CATEGORIES,
             "more": len(items) == max(1, min(limit, 500))}

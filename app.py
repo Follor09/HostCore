@@ -34,6 +34,8 @@ import files
 import terminal
 import systools
 import security
+import geoip
+geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
 import fancurve
@@ -721,6 +723,45 @@ async def api_tools_unban(req: UnbanRequest, request: Request):
 @app.get("/api/tools/firewall")
 async def api_tools_firewall():
     return await asyncio.to_thread(security.firewall_status)
+
+
+class GeoblockRequest(BaseModel):
+    countries: list = []
+
+
+@app.get("/api/tools/geoip")
+async def api_geoip():
+    return geoip.info()
+
+
+@app.post("/api/tools/geoip/download")
+async def api_geoip_download():
+    return await asyncio.to_thread(geoip.start_download)
+
+
+@app.post("/api/tools/geoip/remove")
+async def api_geoip_remove():
+    try:
+        return await asyncio.to_thread(geoip.remove)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.get("/api/tools/geoblock")
+async def api_geoblock():
+    return await asyncio.to_thread(security.geoblock_status)
+
+
+@app.post("/api/tools/geoblock")
+async def api_geoblock_apply(req: GeoblockRequest, request: Request):
+    client_ip = request.client.host if request.client else ""
+    request.state.audit_detail = ", ".join(str(c) for c in req.countries[:40]) or "–"
+    try:
+        result = await asyncio.to_thread(security.geoblock_apply, req.countries, client_ip)
+    except (ValueError, PermissionError, RuntimeError, subprocess.TimeoutExpired) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"Geoblock {req.countries} by '{request.state.user}'")
+    return result
 
 
 @app.get("/api/tools/firewall/traffic")

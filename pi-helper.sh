@@ -12,6 +12,10 @@
 #                         <top|end> <log|nolog> [comment]
 #                         ports: 443, 6000:6010 or a list like 80,443 (lists/ranges need tcp/udp)
 #   pi-helper.sh ufw-logging <off|low|medium>
+#   pi-helper.sh geoblock-status
+#   pi-helper.sh geoblock-apply < networks      one CIDR per line (IPv4 + IPv6), loaded into ipsets
+#   pi-helper.sh geoblock-clear
+#   pi-helper.sh geoblock-boot                  (pi-dashboard-geoblock.service, before ufw starts)
 #   pi-helper.sh ufw-delete <rule-number>
 #   pi-helper.sh ufw-preset <k3s|netbird|web>
 #   pi-helper.sh fan-curve set <t0> <t1> <t2> <t3> <s0> <s1> <s2> <s3>   (m°C, PWM 0-255)
@@ -48,6 +52,36 @@ is_ip() {  # IPv4/IPv6 address, optionally with /prefix
 }
 
 need() { command -v "$1" >/dev/null || die "$1 ist nicht installiert."; }
+
+GEO_FILE=/var/lib/pi-dashboard/geoblock.ipset
+V4_CIDR='([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])'
+V6_CIDR='[0-9a-f:]{2,39}/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8])'
+
+# Managed block in ufw's before.rules / before6.rules: after "accept established", so
+# answers to our own connections still get through; blocked packets are logged like ufw's
+geo_rules() {
+    local f chain set
+    for f in /etc/ufw/before.rules /etc/ufw/before6.rules; do
+        [ -f "$f" ] || continue
+        if [ "$f" = /etc/ufw/before.rules ]; then chain=ufw-before-input set=picore-geo4; else chain=ufw6-before-input set=picore-geo6; fi
+        cp -p "$f" "$f.picore-bak"
+        awk -v add="$1" -v chain="$chain" -v set="$set" '
+            /^# PiCore geoblock start/ { skip = 1; next }
+            /^# PiCore geoblock end/   { skip = 0; next }
+            skip { next }
+            { print }
+            add == "add" && !done && $0 ~ "^-A " chain " -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT" {
+                print "# PiCore geoblock start (managed by the dashboard)"
+                print "-A " chain " -m set --match-set " set " src -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix \"[UFW BLOCK] \""
+                print "-A " chain " -m set --match-set " set " src -j DROP"
+                print "# PiCore geoblock end"
+                done = 1
+            }
+        ' "$f" > "$f.picore-tmp"
+        chmod --reference="$f" "$f.picore-tmp"
+        mv "$f.picore-tmp" "$f"
+    done
+}
 
 CMD="${1:-}"
 [ $# -gt 0 ] && shift
@@ -115,6 +149,78 @@ case "$CMD" in
         need ufw
         [[ "${1:-}" =~ ^(off|low|medium)$ ]] || die "Ungültige Stufe."
         ufw logging "$1"
+        ;;
+    geoblock-status)
+        echo "ipset=$(command -v ipset >/dev/null && echo yes || echo no)"
+        echo "rules=$(grep -q '^# PiCore geoblock start' /etc/ufw/before.rules 2>/dev/null && echo yes || echo no)"
+        if command -v ipset >/dev/null; then
+            for f in 4 6; do
+                N="$(ipset list "picore-geo$f" -terse 2>/dev/null | sed -n 's/^Number of entries: //p')"
+                echo "v$f=${N:-0}"
+            done
+        fi
+        [ -f "$GEO_FILE" ] && echo "saved=$(stat -c %Y "$GEO_FILE")"
+        ;;
+    geoblock-apply)
+        need ufw
+        need ipset
+        TMP="$(mktemp)"
+        trap 'rm -f "$TMP" "$TMP.set"' EXIT
+        head -c 16000000 > "$TMP"
+        # Nothing but CIDRs: every line is checked, one bad line rejects the whole list
+        BAD="$(grep -cvE "^($V4_CIDR|$V6_CIDR)\$" "$TMP" || true)"
+        [ "$BAD" = 0 ] || die "Ungültige Netzliste."
+        LINES="$(wc -l < "$TMP")"
+        [ "$LINES" -ge 1 ] && [ "$LINES" -le 600000 ] || die "Netzliste leer oder zu groß."
+        {
+            echo "create picore-geo4 hash:net family inet hashsize 65536 maxelem 1000000 -exist"
+            echo "create picore-geo6 hash:net family inet6 hashsize 65536 maxelem 1000000 -exist"
+            echo "create picore-geo4-new hash:net family inet hashsize 65536 maxelem 1000000 -exist"
+            echo "create picore-geo6-new hash:net family inet6 hashsize 65536 maxelem 1000000 -exist"
+            echo "flush picore-geo4-new"
+            echo "flush picore-geo6-new"
+            grep -E "^$V4_CIDR\$" "$TMP" | sed 's/^/add picore-geo4-new /'
+            grep -E "^$V6_CIDR\$" "$TMP" | sed 's/^/add picore-geo6-new /'
+        } > "$TMP.set"
+        ipset restore -exist < "$TMP.set"
+        ipset swap picore-geo4-new picore-geo4
+        ipset swap picore-geo6-new picore-geo6
+        ipset destroy picore-geo4-new
+        ipset destroy picore-geo6-new
+        # Saved for boot (pi-dashboard-geoblock.service loads it before ufw starts)
+        install -d -m 700 "$(dirname "$GEO_FILE")"
+        ipset save picore-geo4 > "$GEO_FILE.tmp"
+        ipset save picore-geo6 >> "$GEO_FILE.tmp"
+        mv "$GEO_FILE.tmp" "$GEO_FILE"
+        systemctl enable --quiet pi-dashboard-geoblock.service 2>/dev/null || true
+        if ! grep -q '^# PiCore geoblock start' /etc/ufw/before.rules; then
+            geo_rules add
+            ufw status | grep -q '^Status: active' && ufw reload >/dev/null
+        fi
+        echo "ok $LINES"
+        ;;
+    geoblock-clear)
+        need ufw
+        geo_rules remove
+        ufw status | grep -q '^Status: active' && ufw reload >/dev/null
+        if command -v ipset >/dev/null; then
+            ipset destroy picore-geo4 2>/dev/null || true
+            ipset destroy picore-geo6 2>/dev/null || true
+        fi
+        rm -f "$GEO_FILE"
+        systemctl disable --quiet pi-dashboard-geoblock.service 2>/dev/null || true
+        echo "ok"
+        ;;
+    geoblock-boot)
+        # Must never fail: ufw starts right after and needs the sets its rules refer to
+        if command -v ipset >/dev/null; then
+            ipset create picore-geo4 hash:net family inet hashsize 65536 maxelem 1000000 -exist || true
+            ipset create picore-geo6 hash:net family inet6 hashsize 65536 maxelem 1000000 -exist || true
+            if [ -f "$GEO_FILE" ]; then
+                ipset restore -exist < "$GEO_FILE" || true
+            fi
+        fi
+        exit 0
         ;;
     ufw-delete)
         need ufw

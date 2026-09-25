@@ -5619,6 +5619,228 @@ body.editor-open { overflow: hidden; }
 
 
 /* ==========================================================================
+   Countries: flags, country blocking, traffic by country
+   ========================================================================== */
+.country-tag {
+  white-space: nowrap;
+}
+
+.geo-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: rgba(var(--shade-rgb), 0.18);
+}
+
+.geo-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.geo-status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.geo-db {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.geo-db-line {
+  flex: 1 1 280px;
+}
+
+.geo-attr {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.geo-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.geo-editor[hidden] { display: none; }
+
+.geo-selected {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+}
+
+.geo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-rose) 35%, transparent);
+}
+
+.geo-chip-x {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.geo-chip-x:hover {
+  color: var(--text-main);
+  background: rgba(var(--ink-rgb), 0.08);
+}
+
+.geo-count {
+  margin-left: 4px;
+}
+
+.geo-picker {
+  position: relative;
+  max-width: 420px;
+}
+
+.geo-picker input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  background: rgba(var(--shade-rgb), 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.geo-picker input:focus { border-color: var(--border-focus); }
+
+.geo-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised, var(--bg-card, #111827));
+  box-shadow: 0 12px 30px rgba(var(--shade-rgb), 0.45);
+}
+
+.geo-results[hidden] { display: none; }
+
+.geo-result {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.geo-result:hover,
+.geo-result:focus-visible { background: rgba(var(--ink-rgb), 0.07); }
+
+.geo-result-cc {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.geo-none {
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.geo-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.geo-suggest[hidden] { display: none; }
+
+.geo-sugg {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-subtle);
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.geo-sugg:hover { color: var(--text-main); border-color: var(--border-focus); }
+
+.fwt-countries {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.fwt-country {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(var(--shade-rgb), 0.18);
+  font-size: 0.8rem;
+}
+
+.fwt-country-name {
+  flex: 1 1 auto;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.fwt-country-count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.fwt-country .text-btn,
+.fwt-country .health-tag {
+  grid-column: 1 / -1;
+  justify-self: start;
+  text-align: left;
+  font-size: 0.74rem;
+}
+
+
+/* ==========================================================================
    Light theme (html[data-theme="light"], set by theme.js before first paint)
    ========================================================================== */
 :root[data-theme="light"] {

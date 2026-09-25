@@ -1,0 +1,14 @@
+[Unit]
+Description=PiCore Dashboard: country block lists for the firewall (ipset, before ufw)
+DefaultDependencies=no
+After=local-fs.target systemd-modules-load.service
+Before=ufw.service network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=__SRC__/pi-helper.sh geoblock-boot
+
+[Install]
+WantedBy=multi-user.target

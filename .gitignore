@@ -8,3 +8,5 @@ history.db
 history.db-journal
 auth.json
 auth.json.tmp
+geoip.db
+geoip.db.tmp

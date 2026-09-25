@@ -1038,7 +1038,41 @@
     'Datei/Ordner angelegt': 'File/folder created',
     'In den Papierkorb verschoben': 'Moved to the recycle bin',
     'Aus dem Papierkorb wiederhergestellt': 'Restored from the recycle bin',
-    'Endgültig gelöscht': 'Deleted for good'
+    'Endgültig gelöscht': 'Deleted for good',
+    // Countries + geoblock
+    'Länder sperren': 'Block countries',
+    'Land suchen, z.B. China oder CN': 'Search country, e.g. China or CN',
+    'Land suchen': 'Search country',
+    'Alle freigeben': 'Unblock all',
+    'Übernehmen': 'Apply',
+    'Wirklich alle freigeben?': 'Really unblock all?',
+    'Sperrt alle Verbindungsversuche aus den gewählten Ländern, bevor die Regeln oben greifen. Antworten auf Verbindungen, die der Pi selbst aufbaut (Updates, DNS …), kommen weiter an; LAN und VPN sind nie betroffen. Das Land, aus dem du gerade verbunden bist, lässt sich nicht sperren.': 'Blocks all connection attempts from the selected countries before the rules above apply. Replies to connections the Pi makes itself (updates, DNS …) still get through; LAN and VPN are never affected. The country you are connected from right now cannot be blocked.',
+    'Herkunftsländer': 'Countries of origin',
+    'gesperrt': 'blocked',
+    'Land sperren…': 'Block country…',
+    'Herkunftsländer anzeigen: unter Firewall → Länder sperren die Länder-Datenbank laden.': 'To show countries: load the country database under Firewall → Block countries.',
+    'Noch nicht übernommen.': 'Not applied yet.',
+    'Kein Land ausgewählt.': 'No country selected.',
+    'Kein Land gefunden.': 'No country found.',
+    'Für Länder (Flaggen bei IPs, Länder sperren) wird die kostenlose Länder-Datenbank von DB-IP gebraucht (ca. 5 MB Download, ~35 MB auf der Platte, monatlich aktualisiert).': 'Countries (flags next to IPs, blocking countries) need the free country database from DB-IP (about 5 MB download, ~35 MB on disk, updated monthly).',
+    'Jetzt aktualisieren': 'Update now',
+    'Länder-Datenbank laden': 'Load country database',
+    'Länder-Datenbank geladen.': 'Country database loaded.',
+    'Keine Länder gesperrt.': 'No countries blocked.',
+    'Gespeichert, aber die Firewall-Regel fehlt – „Übernehmen“ erneut ausführen.': 'Saved, but the firewall rule is missing – run “Apply” again.',
+    'ipset fehlt – wird beim nächsten Update von install.sh installiert (oder: sudo apt install ipset).': 'ipset is missing – install.sh installs it with the next update (or: sudo apt install ipset).',
+    'Häufig im Firewall-Traffic:': 'Frequent in firewall traffic:',
+    'Wird übernommen… (kann bei vielen Ländern einige Sekunden dauern)': 'Applying… (can take a few seconds with many countries)',
+    'Länder-Sperre aktualisiert.': 'Country block updated.',
+    'Alle Länder freigegeben.': 'All countries unblocked.',
+    'Länder-Sperre geändert': 'Country block changed',
+    'Länder-Datenbank gelöscht': 'Country database deleted',
+    'Erst die Länder-Datenbank laden.': 'Load the country database first.',
+    'Download läuft gerade.': 'Download in progress.',
+    'Datenbank nicht gefunden (DB-IP).': 'Database not found (DB-IP).',
+    'Datenbank unvollständig.': 'Database incomplete.',
+    'Ungültige Netzliste.': 'Invalid network list.',
+    'Netzliste leer oder zu groß.': 'Network list empty or too large.'
   };
 
   // ---------------------------------------------------------------------------
@@ -1282,7 +1316,15 @@
     [/^Compose-Datei ungültig: (.+)$/, 'Compose file invalid: $1'],
     [/^Der ursprüngliche Ordner (.+) existiert nicht mehr\.$/, 'The original folder $1 no longer exists.'],
     [/^Löschen fehlgeschlagen: (.+)$/, 'Delete failed: $1'],
-    [/^Wiederherstellen fehlgeschlagen: (.+)$/, 'Restore failed: $1']
+    [/^Wiederherstellen fehlgeschlagen: (.+)$/, 'Restore failed: $1'],
+    [/^Länder-Datenbank: Stand (\S+) · (.+) Bereiche · (.+)$/, 'Country database: $1 · $2 ranges · $3'],
+    [/^Länder-Datenbank wird geladen… (\d+) %$/, 'Loading country database… $1 %'],
+    [/^Aktiv: (\d+) (Land|Länder) gesperrt \((.+) Netze\)$/, (m, n, w, k) => `Active: ${n} ${w === 'Land' ? 'country' : 'countries'} blocked (${k} networks)`],
+    [/^(\d+) (Land|Länder) · ca\. (.+) Adressbereiche$/, (m, n, w, k) => `${n} ${w === 'Land' ? 'country' : 'countries'} · approx. ${k} address ranges`],
+    [/^(.+) entfernen$/, 'Remove $1'],
+    [/^Unbekannte Länder: (.+)$/, 'Unknown countries: $1'],
+    [/^Du bist gerade aus diesem Land verbunden \((\w+)\) – das würde dich aussperren\.$/, 'You are connected from this country right now ($1) – that would lock you out.'],
+    [/^Zu viele Netze \((.+)\) – weniger oder kleinere Länder wählen \(max\. (.+)\)\.$/, 'Too many networks ($1) – choose fewer or smaller countries (max. $2).']
   ];
 
   function translateDynamic(s) {
