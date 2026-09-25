@@ -205,9 +205,11 @@ async def api_login(req: LoginRequest, request: Request):
 
     auth.record_success(ip)
     request.state.audit_detail = "Angemeldet bleiben" if req.remember else ""
-    logger.info(f"Login '{req.username}' from {ip}")
-    response = JSONResponse({"ok": True, "user": req.username.strip()})
-    _set_session_cookie(response, request, req.username.strip(), req.remember)
+    username = auth.canonical_username()  # typed in any case, stored in one spelling
+    request.state.audit_user = username
+    logger.info(f"Login '{username}' from {ip}")
+    response = JSONResponse({"ok": True, "user": username})
+    _set_session_cookie(response, request, username, req.remember)
     return response
 
 

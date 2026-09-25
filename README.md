@@ -110,6 +110,7 @@ Das Dashboard ist komplett passwortgeschützt. Das Passwort wird **nur auf dem P
 ```
 
 - Passwort als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed).
+- Benutzername ohne Groß-/Kleinschreibung („Niko“ = „niko“), das Passwort dagegen exakt.
 - Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab.
 - Nach 5 Fehlversuchen wird die IP zunehmend lange gesperrt (30 s … 15 min).
 - Aktionen (Updates, Neustart, Befehle …) werden nur von der eigenen Seite akzeptiert (CSRF-Schutz).

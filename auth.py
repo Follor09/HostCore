@@ -90,10 +90,16 @@ def verify_login(username: str, password: str) -> bool:
         return False
     expected = bytes.fromhex(cfg["password_hash"])
     actual = _scrypt(password, bytes.fromhex(cfg["salt"]))
-    # Compare both parts without short-circuiting, so timing reveals nothing
-    user_ok = hmac.compare_digest(username.encode(), cfg["username"].encode())
+    # Compare both parts without short-circuiting, so timing reveals nothing.
+    # Usernames are case-insensitive ("Niko" = "niko"); the password is not.
+    user_ok = hmac.compare_digest(username.strip().casefold().encode(), cfg["username"].casefold().encode())
     pass_ok = hmac.compare_digest(actual, expected)
     return user_ok and pass_ok
+
+
+def canonical_username() -> str:
+    """The username as it was saved - sessions always carry this spelling."""
+    return (load_config() or {}).get("username", "")
 
 
 def set_password(username: str, password: str) -> None:
