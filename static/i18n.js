@@ -1384,7 +1384,10 @@
     'Maximal 20 Remote-Pis.': 'At most 20 remote Pis.',
     'Token zu kurz.': 'Token too short.',
     // Hardware capabilities
-    'Die Lüfterkurve gibt es nur auf dem Raspberry Pi 5.': 'The fan curve is only available on the Raspberry Pi 5.'
+    'Die Lüfterkurve gibt es nur auf dem Raspberry Pi 5.': 'The fan curve is only available on the Raspberry Pi 5.',
+    // Remote agent fixes
+    'Freigabe-Links gibt es nur für Dateien dieses Pis.': 'Share links are only available for files on this Pi.',
+    'Ungültige Antwort vom Agent.': 'Invalid response from the agent.'
   };
 
   // ---------------------------------------------------------------------------

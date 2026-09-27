@@ -7844,6 +7844,11 @@ html:not(.perms-ready) [data-perm] {
   visibility: hidden;
 }
 
+/* Only for this Pi, not while a remote Pi is selected (hosts.js sets .remote-host) */
+body.remote-host [data-local-only] {
+  display: none !important;
+}
+
 /* Hardware this Pi doesn't have (caps.js), e.g. fan curve and PMIC on a Pi 4 */
 .cap-off {
   display: none !important;

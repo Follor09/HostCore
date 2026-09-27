@@ -121,6 +121,17 @@ async def remote_proxy(request: Request, call_next):
     except httpx.HTTPError as e:
         remotes.mark_offline(remote["id"], f"Nicht erreichbar ({type(e).__name__})")
         return JSONResponse({"detail": f"{remote['name']} nicht erreichbar ({type(e).__name__}).", "remote": remote["name"]}, status_code=502)
+    if path == "/api/settings" and request.method == "GET" and resp.status_code == 200:
+        # The account part belongs to this dashboard (the agent has no users)
+        try:
+            await resp.aread()
+            data = resp.json()
+            data["account"] = {**_me(request.state.user), "username": request.state.user, "public_view": auth.public_view()}
+            return JSONResponse(data)
+        except ValueError:
+            return JSONResponse({"detail": "Ungültige Antwort vom Agent."}, status_code=502)
+        finally:
+            await resp.aclose()
     keep = {k: v for k, v in resp.headers.items()
             if k.lower() in ("content-type", "content-disposition", "content-length", "cache-control", "content-security-policy",
                              "x-content-type-options", "content-range", "accept-ranges")}
@@ -738,6 +749,9 @@ async def api_files_zip(ticket: str, request: Request):
 
 @app.post("/api/files/share")
 async def api_files_share(req: ShareRequest, request: Request):
+    if _remote_for(request):
+        # Share links are served by this Pi - they can't hand out a remote Pi's files
+        raise HTTPException(status_code=400, detail="Freigabe-Links gibt es nur für Dateien dieses Pis.")
     request.state.audit_detail = f"{req.path[:200]} · {req.hours} Std."
     return await _files_call(lambda p: files.create_share(p, req.hours, request.state.user), req.path)
 
