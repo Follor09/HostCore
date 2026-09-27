@@ -225,6 +225,7 @@ Im Haupt-Dashboard unter **Einstellungen → Remote-Pis** Name, Adresse (`http:/
 - **Rechte:** Anmeldung, Benutzer und Berechtigungen kommen vom Haupt-Dashboard und gelten auch für die Remote-Pis; im Aktivitätsprotokoll des Agents steht, wer (`name@remote`) etwas getan hat. Das Terminal-Passwort wird im Haupt-Dashboard geprüft.
 - **Nur lokal:** Login, Benutzer/Rechte, eigene Links, Notizen, Freigabe-Links und „Was ist neu“ gehören immer zum Haupt-Dashboard.
 - **Sicherheit:** Der Token wird bei jeder Anfrage mitgeschickt – über `http` im Klartext. Remote-Pis darum nur im Heimnetz oder über das VPN (NetBird) ansprechen; `https://` funktioniert, wenn davor ein Reverse-Proxy mit Zertifikat steht. Tokens sind nach dem Eintragen nicht mehr abrufbar. Remote-Pis verwalten dürfen nur Administratoren.
+- **Ältere Pis:** Das Dashboard erkennt die Hardware und blendet aus, was es dort nicht gibt – auf einem Pi 4 z.B. Lüfterkurve, Stromversorgung/Stromverbrauch (PMIC) und ohne Lüfter die Lüfter-Karte. Das gilt auch für das Dashboard selbst, wenn es auf einem Pi 4 läuft.
 - Der Agent aktualisiert sich wie jedes Dashboard selbst von GitHub; `agent.json` (Token) bleibt dabei erhalten.
 
 ### 🌐 Sprache / Language

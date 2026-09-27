@@ -443,7 +443,7 @@
       </div>
 
       <!-- Metric 6: Lüfter (Active Cooler) -->
-      <div class="glass-card metric-card fan-card" data-widget="fan">
+      <div class="glass-card metric-card fan-card" data-widget="fan" data-cap="fan">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-cyan">
@@ -484,7 +484,7 @@
       </div>
 
       <!-- Metric: Stromversorgung (Pi 5 PMIC) -->
-      <div class="glass-card metric-card power-card" data-widget="power" id="power-card">
+      <div class="glass-card metric-card power-card" data-widget="power" data-cap="pmic" id="power-card">
         <div class="card-header">
           <div class="card-title-group">
             <div class="card-icon-pill icon-amber">
@@ -669,8 +669,8 @@
             <button data-metric="temp">Temperatur</button>
             <button data-metric="ram">RAM</button>
             <button data-metric="net">Netzwerk</button>
-            <button data-metric="fan">Lüfter</button>
-            <button data-metric="power">Leistung</button>
+            <button data-metric="fan" data-cap="fan">Lüfter</button>
+            <button data-metric="power" data-cap="pmic">Leistung</button>
             <button data-metric="disk">Laufwerk</button>
             <button data-metric="nvme" data-nvme hidden>NVMe</button>
           </div>
@@ -1212,6 +1212,7 @@
 
   <script src="/static/i18n.js"></script>
   <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
   <script src="/static/hosts.js"></script>
 
   <script src="/static/editor.js"></script>

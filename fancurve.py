@@ -59,7 +59,7 @@ def status() -> Dict[str, Any]:
     pending = bool(active) and [round(t, 1) for t in active[:4]] != [round(t, 1) for t in curve["temps"]]
     preset = next((k for k, p in PRESETS.items() if p["temps"] == curve["temps"] and p["speeds"] == curve["speeds"]), None)
     return {
-        "available": bool(fan.get("available")) and config_path() is not None,
+        "available": bool(fan.get("available")) and system_info.is_pi5() and config_path() is not None,
         "config_path": config_path(),
         "curve": curve, "custom": configured is not None, "preset": preset,
         "active_thresholds": active, "reboot_pending": pending,
@@ -70,6 +70,8 @@ def status() -> Dict[str, Any]:
 
 
 def set_curve(temps: List[float], speed_percent: List[float]) -> Dict[str, Any]:
+    if not system_info.is_pi5():
+        raise ValueError("Die Lüfterkurve gibt es nur auf dem Raspberry Pi 5.")
     if len(temps) != 4 or len(speed_percent) != 4:
         raise ValueError("Es braucht genau vier Stufen.")
     try:

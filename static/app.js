@@ -3228,6 +3228,17 @@
     bindSegmented('history-range', 'range', loadHistory);
     // Network data depends on the chosen interface, so switching to/from it reloads
     bindSegmented('history-metric', 'metric', () => (historyState.iface ? loadHistory() : renderHistory()));
+    // A saved metric this Pi can't measure (fan/power on a Pi 4) falls back to CPU, without overwriting the choice
+    if (window.PiCaps) window.PiCaps.ready.then(() => {
+      const active = document.querySelector('#history-metric button.active');
+      if (!active || !active.classList.contains('cap-off')) return;
+      historyState.metric = 'cpu';
+      document.querySelectorAll('#history-metric button').forEach(b => {
+        b.classList.toggle('active', b.dataset.metric === 'cpu');
+        b.setAttribute('aria-selected', b.dataset.metric === 'cpu');
+      });
+      renderHistory();
+    });
 
     const ifaceSelect = document.getElementById('history-iface');
     fetch('/api/history/interfaces').then(r => (r.ok ? r.json() : { interfaces: [] })).then(({ interfaces }) => {

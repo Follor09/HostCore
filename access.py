@@ -97,7 +97,7 @@ _COMPILED = [(m, re.compile(rx), perm) for m, rx, perm in RULES]
 # Reads that stay open in "view without login" mode (the dashboard itself)
 PUBLIC_READ_PREFIXES = ("/api/stats", "/api/system", "/api/processes", "/api/services", "/api/drives", "/api/weather",
                         "/api/history", "/api/homelab", "/api/updates", "/api/nvme", "/api/status-summary", "/api/health",
-                        "/api/wol", "/api/workloads", "/api/diagnostics", "/api/about")
+                        "/api/wol", "/api/workloads", "/api/diagnostics", "/api/about", "/api/capabilities")
 
 
 def required_permission(method: str, path: str) -> Optional[str]:

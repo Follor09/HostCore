@@ -108,13 +108,14 @@
     });
     // Containers: hide when every card inside is hidden; grids adapt to the visible count
     groups().filter(g => g.dataset.widget).forEach(g => {
-      const visible = widgetsOf(g).filter(w => !w.classList.contains('widget-off')).length;
+      const visible = widgetsOf(g).filter(w => !w.classList.contains('widget-off') && !w.classList.contains('cap-off')).length;
       g.classList.toggle('widget-off', visible === 0);
       g.dataset.visible = visible;
     });
     document.body.classList.toggle('layout-custom', activeTab().hidden.length > 0 || Object.keys(layout.order).length > 0);
     const empty = document.getElementById('dash-empty');
-    if (empty) empty.hidden = editing || allWidgets().some(id => !hidden.has(id));
+    const unsupported = new Set([...document.querySelectorAll('[data-widget].cap-off')].map(w => w.dataset.widget));
+    if (empty) empty.hidden = editing || allWidgets().some(id => !hidden.has(id) && !unsupported.has(id));
     renderTabs();
     window.dispatchEvent(new Event('resize'));  // charts re-measure
   }
@@ -431,6 +432,9 @@
         e.preventDefault();
       }
     }, true);
+
+    // Cards for hardware this Pi lacks disappear once caps.js knows; the grids recount
+    if (window.PiCaps) window.PiCaps.ready.then(refreshVisibility);
 
     window.PiLayout = { edit: () => setEditing(true), reset, tabs: () => layout.tabs.map(x => ({ id: x.id, name: tabName(x) })), switchTab, addTab };
   }

@@ -56,11 +56,11 @@
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
       <a href="#sensoren">Sensoren</a>
-      <a href="#strom">Stromverbrauch</a>
+      <a data-cap="pmic" href="#strom">Stromverbrauch</a>
       <a href="#ressourcen">Ressourcen</a>
       <a href="#verfuegbarkeit">Verfügbarkeit</a>
-      <a href="#drosselung">Drosselung</a>
-      <a href="#luefterkurve">Lüfterkurve</a>
+      <a data-cap="throttle" href="#drosselung">Drosselung</a>
+      <a data-cap="fancurve" href="#luefterkurve">Lüfterkurve</a>
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
       <a data-perm="logs.view" href="#fehler">Fehler-Übersicht</a>
@@ -515,7 +515,7 @@
       </section>
 
       <!-- Stromverbrauch -->
-      <section class="glass-card settings-section" id="strom">
+      <section data-cap="pmic" class="glass-card settings-section" id="strom">
         <div class="section-head">
           <h2>Stromverbrauch</h2>
         </div>
@@ -584,7 +584,7 @@
       </section>
 
       <!-- Drosselung -->
-      <section class="glass-card settings-section" id="drosselung">
+      <section data-cap="throttle" class="glass-card settings-section" id="drosselung">
         <div class="section-head">
           <h2>Drosselung</h2>
           <div class="head-tools">
@@ -604,7 +604,7 @@
       </section>
 
       <!-- Lüfterkurve -->
-      <section class="glass-card settings-section" id="luefterkurve">
+      <section data-cap="fancurve" class="glass-card settings-section" id="luefterkurve">
         <div class="section-head">
           <h2>Lüfterkurve</h2>
           <span class="health-tag" id="fan-curve-state">–</span>
@@ -788,6 +788,7 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
   <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
   <script src="/static/hosts.js"></script>
   <script src="/static/overview.js"></script>
   <script src="/static/system.js"></script>

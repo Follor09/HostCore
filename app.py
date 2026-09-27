@@ -1870,6 +1870,12 @@ async def api_container_images_check():
     return imagecheck.start_check()
 
 
+@app.get("/api/capabilities")
+async def api_capabilities():
+    """Hardware features of this Pi (or of the selected remote Pi, via the proxy)."""
+    return await asyncio.to_thread(system_info.get_capabilities)
+
+
 @app.get("/api/system")
 async def api_system():
     """Return full system snapshot."""

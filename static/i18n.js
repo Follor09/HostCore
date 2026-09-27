@@ -1382,7 +1382,9 @@
     'Token fehlt oder ist zu kurz (auf dem Remote-Pi: ./agent.sh token).': 'Token missing or too short (on the remote Pi: ./agent.sh token).',
     'Diesen Pi gibt es schon.': 'This Pi already exists.',
     'Maximal 20 Remote-Pis.': 'At most 20 remote Pis.',
-    'Token zu kurz.': 'Token too short.'
+    'Token zu kurz.': 'Token too short.',
+    // Hardware capabilities
+    'Die Lüfterkurve gibt es nur auf dem Raspberry Pi 5.': 'The fan curve is only available on the Raspberry Pi 5.'
   };
 
   // ---------------------------------------------------------------------------

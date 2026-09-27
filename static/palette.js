@@ -73,8 +73,14 @@
     if (!auth || !auth.loaded) return true;
     const need = NEEDS[c.id] || (c.id.startsWith('sec:/system#') || c.id.startsWith('sec:/containers#') ? 'system.view' : c.id.startsWith('act:') ? 'actions.run'
       : c.id.startsWith('wol:') ? 'network.tools' : null);
-    return !need || auth.can(need);
+    return (!need || auth.can(need)) && hasCaps(c);
   };
+  // Hardware the command needs (caps.js); a Pi 4 has no fan curve or PMIC
+  const CAPS = {
+    'sec:/system#luefterkurve': 'fancurve', 'sec:/system#strom': 'pmic', 'sec:/system#drosselung': 'throttle',
+    'dash:history-fan': 'fan', 'dash:history-power': 'pmic'
+  };
+  const hasCaps = c => !CAPS[c.id] || !window.PiCaps || window.PiCaps.has(CAPS[c.id]);
 
   function buildCommands() {
     const cmds = [];

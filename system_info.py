@@ -12,6 +12,7 @@ import subprocess
 import time
 import socket
 import psutil
+from typing import Any, Dict, List
 
 # Cache previous network counters for bandwidth rate calculation
 _last_net_time = 0
@@ -43,6 +44,50 @@ def is_raspberry_pi() -> bool:
         pass
 
     return False
+
+
+def soc_compatible() -> List[str]:
+    """SoC ids from the device tree, e.g. ["raspberrypi,5-model-b", "brcm,bcm2712"]."""
+    try:
+        with open("/proc/device-tree/compatible", "rb") as f:
+            return [x.decode(errors="replace") for x in f.read().split(b"\x00") if x]
+    except OSError:
+        return []
+
+
+def is_pi5() -> bool:
+    """Pi 5 generation (BCM2712: Pi 5, Pi 500, CM5) - PMIC, fan header, PCIe slot."""
+    return any("bcm2712" in c for c in soc_compatible())
+
+
+_caps_cache: Dict[str, Any] = {"ts": 0.0, "data": None}
+CAPS_CACHE_SECONDS = 300
+
+
+def get_capabilities() -> dict:
+    """
+    Which hardware features this machine has, so the interface can leave out what
+    can't work here (e.g. a Pi 4 has no PMIC power readings and no fan curve).
+    """
+    now = time.time()
+    if _caps_cache["data"] is not None and now - _caps_cache["ts"] < CAPS_CACHE_SECONDS:
+        return _caps_cache["data"]
+    pi5 = is_pi5()
+    fan = bool(get_fan_status().get("available"))
+    caps = []
+    if fan:
+        caps.append("fan")
+    if fan and pi5:
+        caps.append("fancurve")   # the fan_temp dtparams only exist for the Pi 5 fan header
+    if get_power_status().get("available"):
+        caps.append("pmic")
+    if read_throttled_raw() is not None:
+        caps.append("throttle")
+    if pi5:
+        caps.append("pi5")
+    data = {"model": get_pi_model(), "pi": is_raspberry_pi(), "caps": caps}
+    _caps_cache.update(ts=now, data=data)
+    return data
 
 
 def get_pi_model() -> str:
