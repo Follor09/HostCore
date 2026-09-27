@@ -390,6 +390,11 @@ class Monitor:
                 except Exception as e:
                     logger.warning(f"Disk snapshot failed: {e}")
                 try:
+                    import power
+                    power.rollup()
+                except Exception as e:
+                    logger.warning(f"Power roll-up failed: {e}")
+                try:
                     import imagecheck
                     imagecheck.check_if_due()
                 except Exception as e:

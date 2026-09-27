@@ -1247,7 +1247,34 @@
     'Download-Link abgelaufen.': 'Download link expired.',
     'Umbenannt': 'Renamed',
     'Verschoben/kopiert': 'Moved/copied',
-    'ZIP heruntergeladen': 'ZIP downloaded'
+    'ZIP heruntergeladen': 'ZIP downloaded',
+    // What's new + power
+    'Was ist neu': 'What\'s new',
+    'Verstanden': 'Got it',
+    'Letztes Update': 'Last update',
+    'Seit deinem letzten Besuch': 'Since your last visit',
+    'Frühere Änderungen': 'Earlier changes',
+    'Letzte Änderungen': 'Recent changes',
+    'Die Beschreibungen stammen aus dem Git-Verlauf des Dashboards und sind auf Englisch.': 'The descriptions come from the dashboard\'s Git history.',
+    'Länderdaten: DB-IP.com (CC BY 4.0)': 'Country data: DB-IP.com (CC BY 4.0)',
+    'Stromverbrauch': 'Power use',
+    'Was der Pi verbraucht und kostet – aus der Leistungsmessung des Pi 5 (PMIC), einmal pro Minute.': 'What the Pi uses and costs – from the Pi 5\'s power measurement (PMIC), once a minute.',
+    'kWh pro Tag': 'kWh per day',
+    'Stromverbrauch pro Tag': 'Power use per day',
+    'Strompreis (ct/kWh)': 'Electricity price (ct/kWh)',
+    'Zuschlag (Watt)': 'Extra (watts)',
+    'Währung': 'Currency',
+    'Der PMIC misst die Platine (SoC, RAM, Spannungswandler). Netzteil-Verluste, NVMe, USB-Geräte und Lüfter sieht er nur teilweise – mit dem Zuschlag lässt sich das ausgleichen (typisch 1–3 W; genau misst nur ein Zwischenstecker). Tage, an denen der Pi aus war, zählen nur die gemessene Zeit.': 'The PMIC measures the board (SoC, RAM, voltage regulators). It only partly sees power supply losses, NVMe, USB devices and the fan – the extra evens that out (typically 1–3 W; only a plug-in meter measures exactly). Days when the Pi was off count only the measured time.',
+    'Keine Leistungsdaten – die Messung gibt es nur auf dem Raspberry Pi 5 (vcgencmd pmic_read_adc). Die ersten Werte erscheinen nach ein paar Minuten.': 'No power data – the measurement only exists on the Raspberry Pi 5 (vcgencmd pmic_read_adc). The first values appear after a few minutes.',
+    'Dieser Monat': 'This month',
+    'Hochgerechnet Monat': 'Projected month',
+    'Hochgerechnet Jahr': 'Projected year',
+    'keine Messung': 'no measurement',
+    'des Tages gemessen': 'of the day measured',
+    'Strompreis gespeichert.': 'Electricity price saved.',
+    'Bitte Preis und Zuschlag als Zahl angeben.': 'Please enter price and extra as numbers.',
+    'Preis: 0–500 ct/kWh.': 'Price: 0–500 ct/kWh.',
+    'Zuschlag: 0–100 W.': 'Extra: 0–100 W.'
   };
 
   // ---------------------------------------------------------------------------
@@ -1530,7 +1557,8 @@
     [/^Nicht gefunden: (.+)$/, 'Not found: $1'],
     [/^(.+) darf nicht verschoben werden\.$/, '$1 may not be moved.'],
     [/^Keine Schreibrechte für (.+)\.$/, 'No write permission for $1.'],
-    [/^(.+) kann nicht in sich selbst (verschoben|kopiert) werden\.$/, (m, n, v) => `${n} cannot be ${v === 'verschoben' ? 'moved' : 'copied'} into itself.`]
+    [/^(.+) kann nicht in sich selbst (verschoben|kopiert) werden\.$/, (m, n, v) => `${n} cannot be ${v === 'verschoben' ? 'moved' : 'copied'} into itself.`],
+    [/^Ø ([\d.,]+) W$/, 'avg $1 W']
   ];
 
   function translateDynamic(s) {

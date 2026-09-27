@@ -115,6 +115,7 @@
     HISTORY_METRICS.forEach(([metric, label]) =>
       cmds.push({ ...dashboardCommand(`history-${metric}`, `${t('Verlauf')}: ${t(label)}`, 'Verlauf', 'diagramm chart 24h 7 tage'), raw: true }));
 
+    if (window.PiWhatsNew) cmds.push({ id: 'whatsnew', label: 'Was ist neu', group: 'Aktionen', keywords: 'changelog update version änderungen neu', run: () => window.PiWhatsNew.open() });
     const other = window.I18N && window.I18N.lang === 'en' ? 'de' : 'en';
     cmds.push({ id: 'lang', label: other === 'en' ? 'Sprache: English' : 'Language: Deutsch', raw: true, group: 'Aktionen',
       keywords: 'sprache language english deutsch', run: () => window.I18N && window.I18N.setLang(other) });

@@ -140,6 +140,8 @@ Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder die Lupe oben rechts ein
 
 ### © Fußzeile
 
+**Was ist neu:** Nach einem Auto-Update zeigt das Dashboard beim nächsten Öffnen einmal, welche Änderungen dazugekommen sind (aus dem Git-Verlauf, also auf Englisch). Später jederzeit über „Was ist neu“ in der Fußzeile oder die Befehlspalette.
+
 Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit + Datum), Link zum Quellcode sowie Hinweise zu Open-Meteo (Wetterdaten, CC BY 4.0), xterm.js (MIT) und den Schriften (SIL OFL). Der Name steht in `static/footer.js` (`OWNER`).
 
 ### 📋 Überblick
@@ -169,6 +171,7 @@ Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil ode
 
 - **Netzwerk:** Schnittstellen mit IPs, MAC, Traffic, Link-Speed und WLAN-Signal (SSID, dBm, Band); Gateway & DNS; offene Ports mit Dienst, Prozess und „nur lokal / im Netzwerk erreichbar“.
 - **Sensoren:** alle Temperaturen (CPU, RP1-Chip, PMIC, NVMe …), Spannungen und Ströme der Pi-5-Stromschienen, Lüfterdrehzahl und Unterspannungs-Alarm – live, mit 24-Stunden-Kurven.
+- **Stromverbrauch:** Leistung des Pi 5 (PMIC) als kWh und Kosten – heute, dieser Monat, Hochrechnung für Monat und Jahr, Balken pro Tag (30 Tage; Tage mit Lücken sind heller). Strompreis (ct/kWh), Währung und ein fester Zuschlag in Watt (Netzteil-Verluste, NVMe, USB – die misst der PMIC nicht vollständig) lassen sich einstellen. Tageswerte werden stündlich zusammengefasst und ein gutes Jahr aufbewahrt.
 - **Ressourcen-Verbrauch:** welche Programme über 24 Std. / 7 Tage am meisten CPU und RAM gebraucht haben (pro Programm zusammengefasst, bei Python/Node mit Skriptname), mit Verlauf je Programm – findet z.B. nächtliche Last.
 - **Datenverbrauch:** empfangen/gesendet heute, pro Tag (30 Tage) und pro Monat, je Schnittstelle wählbar. 2 Jahre gespeichert.
 - **DNS & Traceroute:** DNS-Abfragen (A, AAAA, CNAME, MX, TXT, NS, PTR) gegen System-DNS, Cloudflare, Google, Quad9 oder einen eigenen Server; Traceroute mit Namen und Zeiten (`sudo apt install traceroute`, falls nicht vorhanden).

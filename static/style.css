@@ -6340,6 +6340,130 @@ a.iface-row.ov-problem:hover {
 }
 
 /* ==========================================================================
+   What's new, power cost
+   ========================================================================== */
+.modal-backdrop.whatsnew-modal { z-index: 105; }
+
+.modal-card.sheet-card.whatsnew-sheet {
+  max-width: 680px;
+  max-height: 86vh;
+}
+
+.whatsnew-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.whatsnew-group {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+}
+
+.whatsnew-item {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(var(--shade-rgb), 0.2);
+}
+
+.whatsnew-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.whatsnew-item h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-main);
+}
+
+.whatsnew-date {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.whatsnew-item ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.whatsnew-item p {
+  margin: 6px 0 0 !important;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.whatsnew-older summary {
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.whatsnew-older[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--ink-rgb), 0.25);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.footer-link:hover { color: var(--text-main); }
+
+.power-form {
+  align-items: flex-end;
+  margin-top: 14px;
+}
+
+.power-form .fw-field {
+  flex: 0 1 170px;
+}
+
+.power-form .fw-field input {
+  width: 100%;
+}
+
+.power-form .power-cur {
+  flex-basis: 80px;
+}
+
+#power-chart .bar.partial {
+  opacity: 0.55;
+}
+
+#power-body[hidden] { display: none; }
+
+#power-stats .value {
+  font-size: 1.05rem;
+}
+
+/* ==========================================================================
    Light theme (html[data-theme="light"], set by theme.js before first paint)
    ========================================================================== */
 :root[data-theme="light"] {

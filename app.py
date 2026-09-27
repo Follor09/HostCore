@@ -37,6 +37,8 @@ import security
 import geoip
 import containers
 import imagecheck
+import changelog
+import power
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -1469,6 +1471,30 @@ async def get_terminal_page():
 @app.get("/system")
 async def get_system_page():
     return _serve_page("system.html")
+
+
+@app.get("/api/changelog")
+async def api_changelog():
+    return await asyncio.to_thread(changelog.changelog)
+
+
+class PowerSettingsRequest(BaseModel):
+    price_ct: float
+    extra_w: float = 0
+    currency: str = "€"
+
+
+@app.get("/api/power")
+async def api_power():
+    return await asyncio.to_thread(power.overview)
+
+
+@app.post("/api/power/settings")
+async def api_power_settings(req: PowerSettingsRequest):
+    try:
+        return await asyncio.to_thread(power.save_settings, req.price_ct, req.extra_w, req.currency)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/containers")

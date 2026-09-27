@@ -8,7 +8,8 @@
   const CREDITS = [
     ['Wetterdaten: Open-Meteo.com (CC BY 4.0)', 'https://open-meteo.com/'],
     ['Web-Terminal: xterm.js (MIT)', 'https://xtermjs.org/'],
-    ['Schriften: Inter, Outfit, JetBrains Mono (SIL OFL)', 'https://fonts.google.com/']
+    ['Schriften: Inter, Outfit, JetBrains Mono (SIL OFL)', 'https://fonts.google.com/'],
+    ['Länderdaten: DB-IP.com (CC BY 4.0)', 'https://db-ip.com/']
   ];
 
   function link(text, href) {
@@ -43,6 +44,14 @@
       v.className = 'footer-version';
       v.textContent = `Version ${about.commit}${about.date ? ` (${new Date(`${about.date}T12:00:00`).toLocaleDateString((window.I18N && window.I18N.locale) || 'de-DE')})` : ''}`;
       main.append(sep(), v);
+    }
+    if (window.PiWhatsNew && !document.body.classList.contains('login-page')) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'footer-link';
+      b.textContent = 'Was ist neu';
+      b.addEventListener('click', () => window.PiWhatsNew.open());
+      main.append(sep(), b);
     }
     if (about.repo) main.append(sep(), link('Quellcode auf GitHub', about.repo));
     main.append(sep(), document.createTextNode('Alle Rechte vorbehalten.'));

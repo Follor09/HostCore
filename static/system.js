@@ -1856,6 +1856,117 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Power use and cost
+  // ---------------------------------------------------------------------------
+  function fmtMoney(v, cur) {
+    return v == null ? '–' : `${v.toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
+  }
+
+  const fmtKwh = v => v == null ? '–' : `${v.toLocaleString(LOCALE, { maximumFractionDigits: v < 10 ? 2 : 1 })} kWh`;
+
+  function renderPower(p) {
+    $('power-body').hidden = !p.available;
+    $('power-hint').textContent = p.available ? '' : 'Keine Leistungsdaten – die Messung gibt es nur auf dem Raspberry Pi 5 (vcgencmd pmic_read_adc). Die ersten Werte erscheinen nach ein paar Minuten.';
+    const cfg = p.settings;
+    if (document.activeElement.closest && !document.activeElement.closest('#power-form')) {
+      $('power-price').value = cfg.price_ct;
+      $('power-extra').value = cfg.extra_w;
+      $('power-currency').value = cfg.currency;
+    }
+    if (!p.available) return;
+    const cur = cfg.currency;
+    benchValues($('power-stats'), [
+      ['Jetzt', p.now_w == null ? '–' : `${p.now_w.toLocaleString(LOCALE, { maximumFractionDigits: 1 })} W`],
+      ['Heute', p.today ? `${fmtKwh(p.today.kwh)} · ${fmtMoney(p.today.cost, cur)}` : '–'],
+      ['Dieser Monat', `${fmtKwh(p.month.kwh)} · ${fmtMoney(p.month.cost, cur)}`],
+      ['Hochgerechnet Monat', fmtMoney(p.month.projected_cost, cur)],
+      ['Hochgerechnet Jahr', `${fmtKwh(p.year.kwh)} · ${fmtMoney(p.year.cost, cur)}`],
+      ['Ø Leistung', `${p.avg_w.toLocaleString(LOCALE, { maximumFractionDigits: 1 })} W`]
+    ]);
+    drawPowerChart(p);
+  }
+
+  function drawPowerChart(p) {
+    const box = $('power-chart'), svg = box.querySelector('svg'), tip = box.querySelector('.history-tooltip');
+    svg.innerHTML = '';
+    tip.hidden = true;
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W) return;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const n = 30;
+    const byDay = new Map(p.days.map(d => [d.day, d]));
+    const days = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      days.push({ key, date: d, ...(byDay.get(key) || {}) });
+    }
+    const max = Math.max(...days.map(d => d.kwh || 0), 0.01);
+    const raw = max / 4, exp = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / exp;
+    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
+    const top = Math.ceil(max / step) * step;
+    const pad = { l: 58, r: 8, t: 10, b: 24 }, iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const y = v => pad.t + ih - v / top * ih;
+    for (let v = 0; v <= top + step / 2; v += step) {
+      svg.appendChild(svgEl('line', { x1: pad.l, x2: pad.l + iw, y1: y(v), y2: y(v), class: 'grid-line' }));
+      const l = svgEl('text', { x: pad.l - 8, y: y(v) + 3, 'text-anchor': 'end', class: 'axis-label' });
+      l.textContent = v ? `${+v.toFixed(3)} kWh` : '0';
+      svg.appendChild(l);
+    }
+    const slot = iw / n, bw = Math.max(2, Math.min(16, slot - 3));
+    days.forEach((d, i) => {
+      const x = pad.l + i * slot + (slot - bw) / 2;
+      if (d.kwh) {
+        const h = Math.max(1, y(0) - y(d.kwh)), rad = Math.min(3, bw / 2, h), y0 = y(0) - h;
+        svg.appendChild(svgEl('path', { d: `M${x},${y0 + h}V${y0 + rad}Q${x},${y0} ${x + rad},${y0}H${x + bw - rad}Q${x + bw},${y0} ${x + bw},${y0 + rad}V${y0 + h}Z`,
+          fill: 'var(--accent-amber)', class: `bar${d.coverage < 0.9 ? ' partial' : ''}`, 'data-i': i }));
+      }
+      if ((n - 1 - i) % 5 === 0) {
+        const l = svgEl('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle', class: 'axis-label' });
+        l.textContent = d.date.toLocaleDateString(LOCALE, { day: 'numeric', month: 'numeric' });
+        svg.appendChild(l);
+      }
+    });
+    svg.onpointermove = evt => {
+      const i = Math.floor((evt.clientX - svg.getBoundingClientRect().left - pad.l) / slot);
+      const d = days[i];
+      if (!d) { svg.onpointerleave(); return; }
+      svg.querySelectorAll('.bar').forEach(b => b.classList.toggle('dim', +b.dataset.i !== i));
+      tip.innerHTML = '';
+      tip.appendChild(el('div', 'tt-time', d.date.toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'numeric' })));
+      const rows = d.kwh == null ? [['–', 'keine Messung']] : [
+        [fmtKwh(d.kwh), fmtMoney(d.cost, p.settings.currency)], [`Ø ${d.avg_w.toLocaleString(LOCALE)} W`, `max. ${d.max_w.toLocaleString(LOCALE)} W`]];
+      if (d.coverage != null && d.coverage < 0.9) rows.push([`${Math.round(d.coverage * 100)} %`, 'des Tages gemessen']);
+      rows.forEach(([a, b]) => {
+        const row = el('div', 'tt-row');
+        row.append(el('b', '', a), document.createTextNode(b));
+        tip.appendChild(row);
+      });
+      tip.hidden = false;
+      const cx = pad.l + (i + 0.5) * slot;
+      tip.style.left = `${cx + 14 + tip.offsetWidth > W ? cx - 14 - tip.offsetWidth : cx + 14}px`;
+    };
+    svg.onpointerleave = () => { svg.querySelectorAll('.bar.dim').forEach(b => b.classList.remove('dim')); tip.hidden = true; };
+  }
+
+  async function savePower(e) {
+    e.preventDefault();
+    const price = parseFloat(String($('power-price').value).replace(',', '.'));
+    const extra = parseFloat(String($('power-extra').value || '0').replace(',', '.'));
+    if (!isFinite(price) || !isFinite(extra)) { toast('Bitte Preis und Zuschlag als Zahl angeben.', 'error'); return; }
+    try {
+      cache.power = await api('/api/power/settings', {
+        price_ct: price,
+        extra_w: extra,
+        currency: $('power-currency').value.trim() || '€'
+      });
+      document.activeElement.blur();
+      renderPower(cache.power);
+      toast('Strompreis gespeichert.', 'success');
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  // ---------------------------------------------------------------------------
   // Data usage
   // ---------------------------------------------------------------------------
   function drawUsageChart(r) {
@@ -2133,6 +2244,7 @@
     firewall: ['/api/tools/firewall', renderFirewall],
     fwTraffic: ['/api/tools/firewall/traffic', renderTraffic],
     geoblock: ['/api/tools/geoblock', renderGeoblock],
+    power: ['/api/power', renderPower],
     ssh: ['/api/tools/ssh', renderSsh],
     uptime: ['/api/monitor/uptime?days=7', renderUptime],
     throttle: ['/api/monitor/throttle?days=30', renderThrottle],
@@ -2179,6 +2291,8 @@
     $('bench-cpu').addEventListener('click', () => runBenchmark('cpu'));
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
     $('log-form').addEventListener('submit', searchLogs);
+    $('power-form').addEventListener('submit', savePower);
+    new ResizeObserver(() => cache.power && drawPowerChart(cache.power)).observe($('power-chart'));
     $('fw-form').addEventListener('submit', addFirewallRule);
     ['input', 'change'].forEach(ev => $('fw-form').addEventListener(ev, updateRulePreview));
     updateRulePreview();
