@@ -60,7 +60,8 @@
   const NEEDS = {
     'page:system': 'system.view', 'page:report': 'system.view', 'page:terminal': 'terminal', 'page:containers': 'system.view',
     'sec:/system#logs': 'logs.view', 'sec:/system#ssh': 'security.view', 'sec:/system#aktivitaet': 'security.view',
-    'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools',
+    'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools', 'sec:/system#firewall-traffic': 'security.view',
+    'sec:/system#verbindungen': 'security.view', 'sec:/system#fehler': 'logs.view',
     'sec:/settings#wetter': 'settings.manage', 'sec:/settings#dienste': 'settings.manage', 'sec:/settings#wake-on-lan': 'settings.manage',
     'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
     'sec:/settings#verlauf': 'settings.manage', 'sec:/settings#freigaben': 'files.share',
@@ -102,7 +103,9 @@
       ['stacks', 'Compose-Stacks', 'docker compose stack yaml aktualisieren'], ['images', 'Image-Updates', 'image update neu version registry'],
       ['statistik', 'Container-Statistik', 'cpu ram verlauf container stats']
     ]);
-    section('/system', 'System-Werkzeuge', [['firewall-traffic', 'Firewall-Traffic', 'blockiert traffic ufw log länder country']]);
+    section('/system', 'System-Werkzeuge', [['firewall-traffic', 'Firewall-Traffic', 'blockiert traffic ufw log länder country'],
+      ['verbindungen', 'Verbindungen', 'connections netstat ss offen programm socket'], ['fehler', 'Fehler-Übersicht', 'errors log journal fehler häufig'],
+      ['pakete', 'Paketverwaltung', 'apt install paket programm installieren entfernen'], ['strom', 'Stromverbrauch', 'strom kosten watt kwh energie power']]);
     section('/settings', 'Einstellungen', [
       ['konto', 'Konto', 'passwort sitzung account'], ['benutzer', 'Benutzer', 'users user accounts konten anlegen'],
       ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],

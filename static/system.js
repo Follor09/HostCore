@@ -1856,6 +1856,346 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Live connections
+  // ---------------------------------------------------------------------------
+  const CONN_STATE = { 'ESTAB': 'Verbunden', 'SYN-SENT': 'Baut auf', 'SYN-RECV': 'Baut auf', 'TIME-WAIT': 'Wird beendet', 'CLOSE-WAIT': 'Wird beendet',
+    'FIN-WAIT-1': 'Wird beendet', 'FIN-WAIT-2': 'Wird beendet', 'LAST-ACK': 'Wird beendet', 'CLOSING': 'Wird beendet' };
+  let connTimer = null;
+
+  function renderConnections(r) {
+    const s = r.summary;
+    benchValues($('conn-stats'), [
+      ['Offen', fmtNum(s.total)], ['Eingehend', fmtNum(s.incoming)], ['Ausgehend', fmtNum(s.outgoing)],
+      ['Ins Internet', fmtNum(s.internet)], ['Länder', s.countries ? fmtNum(s.countries) : '–']
+    ]);
+    const progs = $('conn-programs');
+    progs.innerHTML = '';
+    r.programs.slice(0, 10).forEach(p => {
+      const b = el('button', 'conn-prog');
+      b.type = 'button';
+      b.append(raw(p.name), el('span', 'conn-prog-n', String(p.count)));
+      b.addEventListener('click', () => { $('conn-q').value = p.name === '?' ? '' : p.name; renderConnTable(); });
+      progs.appendChild(b);
+    });
+    renderConnTable();
+    const hints = [];
+    if (r.note) hints.push(r.note);
+    if (s.internal) hints.push(`${s.internal} interne Verbindungen (localhost, Container-Netze) ausgeblendet.`);
+    if (r.truncated) hints.push('Nur die ersten 1500 Verbindungen.');
+    $('conn-hint').textContent = hints.join(' ');
+  }
+
+  function raw(text) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    span.setAttribute('data-no-i18n', '');
+    return span;
+  }
+
+  function renderConnTable() {
+    const r = cache.connections;
+    if (!r) return;
+    const dir = $('conn-dir').value, scope = $('conn-scope').value, q = $('conn-q').value.trim().toLowerCase();
+    const showInternal = $('conn-internal').checked;
+    const items = r.connections.filter(c => (showInternal || !c.internal) && (!dir || c.direction === dir) && (!scope || c.scope === scope)
+      && (!q || [c.program, c.remote, c.local, String(c.rport), String(c.lport), c.name].some(v => (v || '').toLowerCase().includes(q))));
+    const t = $('conn-table');
+    t.innerHTML = '';
+    const head = t.createTHead().insertRow();
+    ['Programm', 'Richtung', 'Gegenstelle', 'Herkunft', ''].forEach(h => head.appendChild(el('th', '', h)));
+    const body = t.createTBody();
+    const canBlock = !window.PiAuth || window.PiAuth.can('firewall.manage');
+    items.slice(0, 400).forEach(c => {
+      const row = body.insertRow();
+      const prog = row.insertCell();
+      prog.appendChild(raw(c.program || '?'));
+      prog.appendChild(el('span', 'lan-sub', `${c.pid ? `PID ${c.pid} · ` : ''}${c.proto.toUpperCase()} · Port ${c.lport || '–'}`));
+      const dirCell = row.insertCell();
+      dirCell.appendChild(el('span', `health-tag ${c.direction === 'in' ? 'warning' : ''}`, c.direction === 'in' ? 'Eingehend' : 'Ausgehend'));
+      if (c.state !== 'ESTAB') dirCell.appendChild(el('span', 'lan-sub', CONN_STATE[c.state] || c.state));
+      const remote = row.insertCell();
+      remote.className = 'mono';
+      remote.textContent = fmtEndpoint(c.remote, c.rport);
+      if (c.name) remote.appendChild(el('span', 'lan-sub', c.name));
+      row.insertCell().appendChild(originTag(c.scope, c.country));
+      const act = row.insertCell();
+      act.className = 'row-action';
+      if (canBlock && c.direction === 'in' && c.scope === 'internet') {
+        const b = el('button', 'btn-danger', 'IP sperren');
+        confirmClick(b, 'IP sperren', 'Sicher?', async () => {
+          if (await firewallAction('rule', { action: 'deny', direction: 'in', from: c.remote, position: 'top', proto: 'any', comment: 'Blocked via PiCore' })) {
+            toast(`${c.remote} gesperrt.`, 'success');
+            load('connections');
+          }
+        });
+        act.appendChild(b);
+      }
+    });
+    if (!items.length) {
+      const cell = body.insertRow().insertCell();
+      cell.colSpan = 5;
+      cell.textContent = 'Keine passenden Verbindungen.';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Error digest
+  // ---------------------------------------------------------------------------
+  let errDays = 7;
+
+  function errBars(perDay) {
+    const w = 84, h = 22, n = perDay.length, max = Math.max(...perDay, 1);
+    const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'err-bars', role: 'img', 'aria-label': 'Verlauf pro Tag' });
+    const bw = Math.max(1, w / n - 1);
+    perDay.forEach((v, i) => {
+      if (!v) return;
+      const bh = Math.max(2, v / max * (h - 2));
+      svg.appendChild(svgEl('rect', { x: i * (w / n), y: h - bh, width: bw, height: bh, rx: 1, fill: 'var(--accent-rose)' }));
+    });
+    return svg;
+  }
+
+  function renderErrors(r) {
+    const hint = $('err-hint');
+    hint.textContent = '';
+    if (!r.supported) { hint.textContent = 'Kein systemd-Journal auf diesem System.'; return; }
+    benchValues($('err-stats'), [
+      ['Fehler', fmtNum(r.total)], ['Letzte 24 Std.', fmtNum(r.last_24h)], ['Verschiedene', fmtNum(r.group_count)],
+      ['Neu (24 Std.)', fmtNum(r.groups.filter(g => g.new).length)]
+    ]);
+    renderErrorList();
+    const hints = [];
+    if (r.error) hints.push(r.error);
+    if (r.hint) hints.push(r.hint);
+    if (r.truncated) hints.push('Sehr viele Meldungen – nur die neuesten 30.000 wurden ausgewertet.');
+    hint.textContent = hints.join(' ');
+  }
+
+  function renderErrorList() {
+    const r = cache.errors;
+    if (!r || !r.groups) return;
+    const q = $('err-q').value.trim().toLowerCase();
+    let items = r.groups.filter(g => !q || g.source.toLowerCase().includes(q) || g.sample.toLowerCase().includes(q));
+    if ($('err-sort').value === 'last') items = [...items].sort((a, b) => b.last - a.last);
+    const box = $('err-list');
+    box.innerHTML = '';
+    items.slice(0, 100).forEach(g => {
+      const item = el('details', 'err-item');
+      const sum = el('summary', 'err-sum');
+      const main = el('div', 'err-main');
+      const src = el('span', 'err-source');
+      src.appendChild(raw(g.source));
+      if (g.new) src.appendChild(el('span', 'health-tag warning', 'neu'));
+      if (g.ongoing) src.appendChild(el('span', 'health-tag critical', 'gerade eben'));
+      const msg = el('span', 'err-msg');
+      msg.appendChild(raw(g.sample));
+      main.append(src, msg);
+      const side = el('div', 'err-side');
+      side.append(el('span', 'err-count', `${fmtNum(g.count)}×`), errBars(g.per_day), el('span', 'err-when', fmtTime(g.last)));
+      sum.append(main, side);
+      item.appendChild(sum);
+      const det = el('div', 'err-detail');
+      det.append(el('div', 'err-detail-row', `Zuerst: ${fmtTime(g.first)} · Zuletzt: ${fmtTime(g.last)}${g.unit ? ` · Dienst: ${g.unit}` : ''}`));
+      const pat = el('code', 'err-pattern');
+      pat.appendChild(raw(g.pattern));
+      det.appendChild(pat);
+      const b = el('button', 'btn-secondary', 'Im Log suchen');
+      b.dataset.perm = 'logs.view';
+      b.addEventListener('click', () => {
+        // longest literal piece of the message (without placeholders, quotes, brackets)
+        const words = g.pattern.split(/<[a-z]+>|["'()[\]{}]/).map(w => w.replace(/^[\s:;,.=\/-]+|[\s:;,.=\/-]+$/g, '')).sort((a, c) => c.length - a.length)[0] || '';
+        const unitSel = $('log-unit');
+        const unit = g.source === 'kernel' ? 'kernel' : g.unit;
+        unitSel.value = [...unitSel.options].some(o => o.value === unit) ? unit : '';
+        $('log-priority').value = 'err';
+        $('log-since').value = errDays <= 1 ? '24h' : '7d';
+        $('log-query').value = words.slice(0, 60);
+        searchLogs();
+        $('logs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      det.appendChild(b);
+      item.appendChild(det);
+      box.appendChild(item);
+    });
+    if (!items.length) box.appendChild(el('p', 'field-hint', r.total ? 'Keine passenden Meldungen.' : 'Keine Fehler im Zeitraum – sehr gut.'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Packages (apt)
+  // ---------------------------------------------------------------------------
+  let pkgTimer = null;
+
+  async function searchPackages(e) {
+    if (e) e.preventDefault();
+    const q = $('pkg-q').value.trim();
+    if (q.length < 2) return;
+    const t = $('pkg-results');
+    t.innerHTML = '';
+    $('pkg-hint').textContent = 'Suche…';
+    try {
+      const r = await api(`/api/packages/search?q=${encodeURIComponent(q)}`);
+      $('pkg-hint').textContent = r.total > r.results.length ? `${r.total} Treffer – die ersten ${r.results.length} werden gezeigt.` : r.total ? '' : 'Nichts gefunden.';
+      const head = t.createTHead().insertRow();
+      ['Paket', 'Beschreibung', ''].forEach(h => head.appendChild(el('th', '', h)));
+      const body = t.createTBody();
+      r.results.forEach(p => body.appendChild(pkgRow(p)));
+    } catch (err) { $('pkg-hint').textContent = err.message; }
+  }
+
+  function pkgRow(p, installedView = false) {
+    const row = document.createElement('tr');
+    const name = row.insertCell();
+    const b = el('button', 'text-btn mono', p.name);
+    b.type = 'button';
+    b.setAttribute('data-no-i18n', '');
+    b.addEventListener('click', () => showPackage(p.name, row));
+    name.appendChild(b);
+    if (p.version) name.appendChild(el('span', 'lan-sub', p.version));
+    const d = row.insertCell();
+    d.className = 'wrap';
+    d.appendChild(raw(p.summary || ''));
+    if (installedView) {
+      row.insertCell().textContent = fmtBytes(p.size);
+    }
+    const act = row.insertCell();
+    act.className = 'row-action';
+    const canChange = !window.PiAuth || window.PiAuth.can('updates.install');
+    if (p.installed || installedView) {
+      if (!installedView) act.appendChild(el('span', 'health-tag good', 'installiert'));
+      if (canChange && !p.base) act.appendChild(button('Entfernen…', 'btn-secondary', () => planPackages('remove', [p.name])));
+      if (p.base) act.appendChild(el('span', 'health-tag', 'Basis'));
+    } else if (canChange) {
+      act.appendChild(button('Installieren…', 'btn-primary', () => planPackages('install', [p.name])));
+    }
+    return row;
+  }
+
+  function button(label, cls, onClick) {
+    const b = el('button', cls, label);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  async function showPackage(name, row) {
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('pkg-detail-row')) { next.remove(); return; }
+    try {
+      const d = await api(`/api/packages/show?name=${encodeURIComponent(name)}`);
+      const tr = el('tr', 'pkg-detail-row');
+      const td = el('td');
+      td.colSpan = row.cells.length;
+      const kv = el('dl', 'kv-grid');
+      renderKv(kv, [['Version', d.version], ['Installiert', d.installed ? d.installed_version : 'nein'], ['Größe', fmtBytes(d.size)],
+        ['Download', fmtBytes(d.download)], ['Bereich', d.section], ['Braucht', d.depends || '–']]);
+      td.appendChild(kv);
+      if (d.description) { const p = el('p', 'pkg-desc'); p.appendChild(raw(d.description)); td.appendChild(p); }
+      if (d.homepage) { const a = el('a', 'text-btn', d.homepage); a.href = d.homepage; a.target = '_blank'; a.rel = 'noopener'; td.appendChild(a); }
+      tr.appendChild(td);
+      row.after(tr);
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  async function planPackages(action, names) {
+    const box = $('pkg-plan');
+    box.hidden = false;
+    box.innerHTML = '';
+    box.appendChild(el('p', 'field-hint', 'Probelauf…'));
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    try {
+      const sim = await api('/api/packages/simulate', { action, names });
+      box.innerHTML = '';
+      const tr = x => (window.I18N && window.I18N.t ? window.I18N.t(x) : x);
+      const title = el('h3', 'subhead');
+      title.setAttribute('data-no-i18n', '');
+      title.textContent = `${tr(action === 'install' ? 'Installieren' : 'Entfernen')}: ${names.join(', ')}`;
+      box.appendChild(title);
+      if (sim.error) { box.appendChild(el('p', 'form-msg error', sim.error)); return; }
+      const lists = [['install', 'Wird installiert'], ['upgrade', 'Wird aktualisiert'], ['remove', 'Wird entfernt']];
+      lists.forEach(([k, label]) => {
+        if (!sim[k].length) return;
+        const line = el('div', 'pkg-plan-line');
+        line.appendChild(el('span', `health-tag ${k === 'remove' ? 'critical' : k === 'upgrade' ? 'warning' : 'good'}`, `${label} (${sim[k].length})`));
+        line.appendChild(raw(sim[k].join(', ')));
+        box.appendChild(line);
+      });
+      if (sim.space) box.appendChild(el('p', 'field-hint', sim.frees ? `Gibt ${sim.space} frei.` : `Braucht ${sim.space} zusätzlich.`));
+      if (sim.blocked.length) { box.appendChild(el('p', 'form-msg error', `Würde Basis-Pakete entfernen (${sim.blocked.join(', ')}) – abgebrochen.`)); return; }
+      if (!sim.install.length && !sim.remove.length && !sim.upgrade.length) { box.appendChild(el('p', 'field-hint', 'Nichts zu tun.')); return; }
+      const actions = el('div', 'form-actions');
+      actions.appendChild(button('Abbrechen', 'btn-secondary', () => { box.hidden = true; }));
+      const go = button(action === 'install' ? 'Jetzt installieren' : 'Jetzt entfernen', action === 'install' ? 'btn-primary' : 'btn-danger', async () => {
+        go.disabled = true;
+        try {
+          const st = await api('/api/packages/run', { action, names });
+          box.hidden = true;
+          renderPkgRun(st);
+          pollPkgRun();
+        } catch (err) { toast(err.message, 'error'); go.disabled = false; }
+      });
+      actions.appendChild(go);
+      box.appendChild(actions);
+    } catch (err) {
+      box.innerHTML = '';
+      box.appendChild(el('p', 'form-msg error', err.message));
+    }
+  }
+
+  function renderPkgRun(st) {
+    if (!st || !st.state) return;
+    const box = $('pkg-run');
+    box.hidden = false;
+    const tr = x => (window.I18N && window.I18N.t ? window.I18N.t(x) : x);
+    const label = `apt ${st.action} ${st.packages}: ${st.running ? tr('läuft…') : st.state === 'done' ? tr('fertig') : `${tr('fehlgeschlagen')} (Code ${st.exit_code})`}`;
+    $('pkg-run-state').className = `health-tag ${st.running ? 'warning' : st.state === 'done' ? 'good' : 'critical'}`;
+    $('pkg-run-state').textContent = label;
+    $('pkg-run-state').setAttribute('data-no-i18n', '');
+    const log = $('pkg-run-log');
+    log.textContent = st.log || '…';
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function pollPkgRun() {
+    clearInterval(pkgTimer);
+    pkgTimer = setInterval(async () => {
+      try {
+        const st = await api('/api/packages/status');
+        renderPkgRun(st);
+        if (!st.running) {
+          clearInterval(pkgTimer);
+          toast(st.state === 'done' ? 'Paket-Aktion fertig.' : 'Paket-Aktion fehlgeschlagen.', st.state === 'done' ? 'success' : 'error');
+          cache.packages = null;
+          if (!$('pkg-installed-tab').hidden) loadInstalled();
+          if ($('pkg-q').value.trim()) searchPackages();
+        }
+      } catch (e) { clearInterval(pkgTimer); }
+    }, 1500);
+  }
+
+  async function loadInstalled() {
+    try {
+      cache.packages = cache.packages || await api('/api/packages');
+      renderInstalled();
+    } catch (err) { $('pkg-hint').textContent = err.message; }
+  }
+
+  function renderInstalled() {
+    const r = cache.packages;
+    if (!r) return;
+    if (!r.supported) { $('pkg-hint').textContent = 'Kein apt/dpkg auf diesem System.'; return; }
+    benchValues($('pkg-stats'), [['Installiert', fmtNum(r.count)], ['Selbst installiert', fmtNum(r.manual)], ['Belegt', fmtBytes(r.total_size)]]);
+    const q = $('pkg-filter').value.trim().toLowerCase(), all = $('pkg-all').checked;
+    const items = r.packages.filter(p => (all || p.manual) && (!q || p.name.includes(q) || (p.summary || '').toLowerCase().includes(q)));
+    const t = $('pkg-installed');
+    t.innerHTML = '';
+    const head = t.createTHead().insertRow();
+    ['Paket', 'Beschreibung', 'Größe', ''].forEach(h => head.appendChild(el('th', '', h)));
+    const body = t.createTBody();
+    items.slice(0, 300).forEach(p => body.appendChild(pkgRow(p, true)));
+    $('pkg-hint').textContent = items.length > 300 ? `${items.length} Pakete – die 300 größten werden gezeigt, Filter eingrenzen.` : '';
+  }
+
+  // ---------------------------------------------------------------------------
   // Power use and cost
   // ---------------------------------------------------------------------------
   function fmtMoney(v, cur) {
@@ -2245,6 +2585,8 @@
     fwTraffic: ['/api/tools/firewall/traffic', renderTraffic],
     geoblock: ['/api/tools/geoblock', renderGeoblock],
     power: ['/api/power', renderPower],
+    connections: ['/api/tools/connections', renderConnections],
+    errors: ['/api/tools/errors?days=7', renderErrors],
     ssh: ['/api/tools/ssh', renderSsh],
     uptime: ['/api/monitor/uptime?days=7', renderUptime],
     throttle: ['/api/monitor/throttle?days=30', renderThrottle],
@@ -2256,7 +2598,7 @@
     forecast: ['/api/disk-forecast', renderForecast]
   };
 
-  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', fwTraffic: 'security.view', geoblock: 'security.view', logUnits: 'logs.view' };
+  const LOADER_PERMS = { ssh: 'security.view', firewall: 'security.view', fwTraffic: 'security.view', geoblock: 'security.view', connections: 'security.view', errors: 'logs.view', logUnits: 'logs.view' };
 
   const loadSeq = {};
 
@@ -2291,6 +2633,35 @@
     $('bench-cpu').addEventListener('click', () => runBenchmark('cpu'));
     $('bench-drive').addEventListener('change', () => cache.bench && renderBenchmarks(cache.bench));
     $('log-form').addEventListener('submit', searchLogs);
+    ['conn-dir', 'conn-scope', 'conn-internal'].forEach(id => $(id).addEventListener('change', renderConnTable));
+    $('conn-q').addEventListener('input', renderConnTable);
+    $('conn-filters').addEventListener('submit', e => e.preventDefault());
+    $('conn-live').addEventListener('change', () => {
+      clearInterval(connTimer);
+      if ($('conn-live').checked) connTimer = setInterval(() => { if (!document.hidden) load('connections'); }, 5000);
+    });
+    document.querySelectorAll('#err-range button').forEach(b => b.addEventListener('click', () => {
+      errDays = +b.dataset.days;
+      document.querySelectorAll('#err-range button').forEach(x => x.classList.toggle('active', x === b));
+      LOADERS.errors[0] = `/api/tools/errors?days=${errDays}`;
+      load('errors');
+    }));
+    $('err-q').addEventListener('input', renderErrorList);
+    $('err-sort').addEventListener('change', renderErrorList);
+    $('err-filters').addEventListener('submit', e => e.preventDefault());
+    $('pkg-search-form').addEventListener('submit', searchPackages);
+    document.querySelectorAll('#pkg-tabs button').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('#pkg-tabs button').forEach(x => x.classList.toggle('active', x === b));
+      $('pkg-search-tab').hidden = b.dataset.tab !== 'search';
+      $('pkg-installed-tab').hidden = b.dataset.tab !== 'installed';
+      $('pkg-hint').textContent = '';
+      if (b.dataset.tab === 'installed') loadInstalled();
+    }));
+    $('pkg-filter').addEventListener('input', renderInstalled);
+    $('pkg-all').addEventListener('change', renderInstalled);
+    $('pkg-installed-form').addEventListener('submit', e => e.preventDefault());
+    $('pkg-run-hide').addEventListener('click', () => { $('pkg-run').hidden = true; });
+    api('/api/packages/status').then(st => { if (st.running) { renderPkgRun(st); pollPkgRun(); } }).catch(() => {});
     $('power-form').addEventListener('submit', savePower);
     new ResizeObserver(() => cache.power && drawPowerChart(cache.power)).observe($('power-chart'));
     $('fw-form').addEventListener('submit', addFirewallRule);

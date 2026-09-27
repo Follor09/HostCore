@@ -6464,6 +6464,214 @@ a.iface-row.ov-problem:hover {
 }
 
 /* ==========================================================================
+   Connections, error digest, packages
+   ========================================================================== */
+.conn-programs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+
+.conn-prog {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(var(--ink-rgb), 0.03);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.conn-prog:hover { border-color: var(--border-focus); }
+
+.conn-prog-n {
+  font-family: var(--font-body);
+  font-weight: 700;
+  color: var(--accent-cyan);
+}
+
+#conn-filters,
+#err-filters,
+#pkg-search-form,
+#pkg-installed-form {
+  margin-bottom: 12px;
+}
+
+#conn-filters input[type="checkbox"],
+#pkg-installed-form input[type="checkbox"] {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.err-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.err-item {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: rgba(var(--shade-rgb), 0.18);
+}
+
+.err-item[open] {
+  border-color: var(--border-focus);
+}
+
+.err-sum {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.err-sum::-webkit-details-marker { display: none; }
+
+.err-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.err-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.err-msg {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.err-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.err-count {
+  min-width: 48px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--accent-rose);
+}
+
+.err-bars {
+  width: 84px;
+  height: 22px;
+}
+
+.err-when {
+  min-width: 84px;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.err-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.err-detail-row {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.err-pattern {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-main);
+  background: var(--surface-code);
+}
+
+.pkg-plan,
+.pkg-run {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-focus);
+  background: rgba(var(--shade-rgb), 0.2);
+}
+
+.pkg-plan[hidden],
+.pkg-run[hidden] { display: none; }
+
+.pkg-plan .subhead { margin: 0; }
+
+.pkg-plan-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.pkg-run-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.pkg-run .stack-job-out {
+  max-height: 280px;
+}
+
+.pkg-detail-row td {
+  white-space: normal;
+  background: rgba(var(--ink-rgb), 0.02);
+}
+
+.pkg-desc {
+  margin: 8px 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+@media (max-width: 600px) {
+  .err-sum { flex-direction: column; align-items: stretch; }
+  .err-side { justify-content: space-between; }
+  .err-count { text-align: left; min-width: 0; }
+}
+
+/* ==========================================================================
    Light theme (html[data-theme="light"], set by theme.js before first paint)
    ========================================================================== */
 :root[data-theme="light"] {

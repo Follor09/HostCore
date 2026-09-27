@@ -79,6 +79,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/containers/kube/[^/]+/[^/]+/[^/]+/scale$", "system", "Kubernetes-Workload skaliert"),
     ("POST", r"^/api/containers/kube/pod/[^/]+/[^/]+/delete$", "system", "Pod neu erstellt"),
     ("POST", r"^/api/containers/stacks/[^/]+/[^/]+$", "system", "Compose-Stack gesteuert"),
+    ("POST", r"^/api/packages/run$", "system", "Paket installiert/entfernt"),
     ("POST", r"^/api/tools/geoblock$", "security", "Länder-Sperre geändert"),
     ("POST", r"^/api/tools/geoip/download$", "security", "Länder-Datenbank geladen"),
     ("POST", r"^/api/tools/geoip/remove$", "security", "Länder-Datenbank gelöscht"),

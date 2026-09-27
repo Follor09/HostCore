@@ -12,6 +12,8 @@
 #                         <top|end> <log|nolog> [comment]
 #                         ports: 443, 6000:6010 or a list like 80,443 (lists/ranges need tcp/udp)
 #   pi-helper.sh ufw-logging <off|low|medium>
+#   pi-helper.sh connections                     all sockets with their processes (ss -tunap)
+#   pi-helper.sh apt-pkg <install|remove> <pkg>...   starts apt as its own unit (survives dashboard restarts)
 #   pi-helper.sh geoblock-status
 #   pi-helper.sh geoblock-apply < networks      one CIDR per line (IPv4 + IPv6), loaded into ipsets
 #   pi-helper.sh geoblock-clear
@@ -221,6 +223,69 @@ case "$CMD" in
             fi
         fi
         exit 0
+        ;;
+    connections)
+        need ss
+        ss -H -tunap
+        ;;
+    apt-pkg|apt-pkg-run)
+        ACTION="${1:-}"
+        [ $# -gt 0 ] && shift
+        [[ "$ACTION" =~ ^(install|remove)$ ]] || die "Unbekannte Aktion."
+        [ $# -ge 1 ] && [ $# -le 20 ] || die "1–20 Pakete angeben."
+        for P in "$@"; do
+            [[ "$P" =~ ^[a-z0-9][a-z0-9+.-]{0,62}(:(arm64|armhf|all))?$ ]] || die "Ungültiger Paketname: $P"
+        done
+        if [ "$ACTION" = remove ]; then
+            # Everything apt would take away (incl. packages depending on these) must be safe to remove
+            REMOVED="$( { apt-get -s remove -- "$@" 2>/dev/null || true; } | sed -n 's/^Remv \([^ ]*\).*/\1/p')"
+            [ -n "$REMOVED" ] || die "Nichts zu entfernen."
+            [ "$(wc -l <<<"$REMOVED")" -le 30 ] || die "Das würde mehr als 30 Pakete entfernen."
+            for R in $REMOVED; do
+                case "${R%%:*}" in
+                    sudo|openssh-server|openssh-sftp-server|systemd|systemd-*|ufw|apt|dpkg|bash|coreutils|libc6|python3|python3-minimal|python3.*|\
+                    raspi-firmware|raspberrypi-kernel|raspberrypi-bootloader|linux-image-*|rpi-eeprom|firmware-*|\
+                    network-manager|dhcpcd|dhcpcd5|wpasupplicant|netbase|iproute2|iptables|ipset|git|ca-certificates|\
+                    docker-ce|docker.io|containerd|containerd.io|login|passwd|util-linux|mount|init|init-system-helpers)
+                        die "$R ist für das System oder das Dashboard nötig und wird nicht entfernt." ;;
+                esac
+                META="$(dpkg-query -W -f='${Essential} ${Priority}' "$R" 2>/dev/null || true)"
+                case "$META" in
+                    yes*|*required|*important) die "$R ist ein Basis-Paket und wird nicht entfernt." ;;
+                esac
+            done
+        fi
+        STATE=/run/pi-dashboard
+        if [ "$CMD" = apt-pkg ]; then
+            for U in pi-dashboard-apt@update pi-dashboard-apt@upgrade pi-dashboard-pkg; do
+                systemctl is-active --quiet "$U.service" && die "apt läuft gerade schon."
+            done
+            SELF="$(readlink -f "$0")"
+            systemctl reset-failed pi-dashboard-pkg.service 2>/dev/null || true
+            systemd-run --unit=pi-dashboard-pkg --collect --quiet --setenv=DEBIAN_FRONTEND=noninteractive \
+                "$SELF" apt-pkg-run "$ACTION" "$@"
+            echo "started"
+            exit 0
+        fi
+        # apt-pkg-run: the actual apt call inside the unit, log + status for the dashboard
+        mkdir -p "$STATE" && chmod 755 "$STATE"
+        LOG="$STATE/pkg.log"
+        STATUS="$STATE/pkg.status"
+        STARTED="$(date +%s)"
+        PKGS="$*"
+        : > "$LOG"; chmod 644 "$LOG"
+        printf '{"action":"%s","packages":"%s","state":"running","exit_code":null,"started":%s,"finished":null}\n' "$ACTION" "$PKGS" "$STARTED" > "$STATUS"
+        chmod 644 "$STATUS"
+        echo "▶ apt-get $ACTION $PKGS" >> "$LOG"
+        set +e
+        apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$ACTION" -- "$@" >> "$LOG" 2>&1
+        RC=$?
+        set -e
+        STATE_WORD=$([ $RC -eq 0 ] && echo done || echo failed)
+        printf '{"action":"%s","packages":"%s","state":"%s","exit_code":%s,"started":%s,"finished":%s}\n' "$ACTION" "$PKGS" "$STATE_WORD" "$RC" "$STARTED" "$(date +%s)" > "$STATUS.tmp"
+        chmod 644 "$STATUS.tmp"
+        mv "$STATUS.tmp" "$STATUS"
+        exit $RC
         ;;
     ufw-delete)
         need ufw

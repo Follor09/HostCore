@@ -39,6 +39,8 @@ import containers
 import imagecheck
 import changelog
 import power
+import packages
+import logdigest
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -1495,6 +1497,65 @@ async def api_power_settings(req: PowerSettingsRequest):
         return await asyncio.to_thread(power.save_settings, req.price_ct, req.extra_w, req.currency)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/tools/connections")
+async def api_connections():
+    return await asyncio.to_thread(security.connections)
+
+
+@app.get("/api/tools/errors")
+async def api_error_digest(days: int = 7):
+    return await asyncio.to_thread(logdigest.digest, days)
+
+
+class PackagesRequest(BaseModel):
+    names: list
+    action: str = "install"
+
+
+def _pkg_call(fn, *args):
+    try:
+        return fn(*args)
+    except packages.PackageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (PermissionError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="apt antwortet nicht.")
+
+
+@app.get("/api/packages")
+async def api_packages():
+    return await asyncio.to_thread(packages.installed)
+
+
+@app.get("/api/packages/search")
+async def api_packages_search(q: str):
+    return await asyncio.to_thread(_pkg_call, packages.search, q)
+
+
+@app.get("/api/packages/show")
+async def api_packages_show(name: str):
+    return await asyncio.to_thread(_pkg_call, packages.show, name)
+
+
+@app.get("/api/packages/status")
+async def api_packages_status():
+    return await asyncio.to_thread(packages.status)
+
+
+@app.post("/api/packages/simulate")
+async def api_packages_simulate(req: PackagesRequest):
+    return await asyncio.to_thread(_pkg_call, packages.simulate, req.action, [str(n) for n in req.names])
+
+
+@app.post("/api/packages/run")
+async def api_packages_run(req: PackagesRequest, request: Request):
+    request.state.audit_detail = f"{req.action} {' '.join(str(n) for n in req.names)}"[:250]
+    result = await asyncio.to_thread(_pkg_call, packages.start, req.action, [str(n) for n in req.names])
+    logger.info(f"apt {req.action} {req.names} by '{request.state.user}'")
+    return result
 
 
 @app.get("/containers")

@@ -49,6 +49,7 @@
       <a data-perm="network.tools" href="#dns">DNS &amp; Traceroute</a>
       <a href="#geraete">Geräte im Netzwerk</a>
       <a href="#port-check">Port-Check</a>
+      <a data-perm="security.view" href="#verbindungen">Verbindungen</a>
       <a data-perm="security.view" href="#firewall">Firewall</a>
       <a data-perm="security.view" href="#firewall-traffic">Firewall-Traffic</a>
       <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
@@ -62,7 +63,9 @@
       <a href="#luefterkurve">Lüfterkurve</a>
       <a href="#cpu-modus">CPU-Modus</a>
       <a href="#leistungstest">Leistungstest</a>
+      <a data-perm="logs.view" href="#fehler">Fehler-Übersicht</a>
       <a data-perm="logs.view" href="#logs">Logs</a>
+      <a href="#pakete">Paketverwaltung</a>
       <a href="#aufraeumen">Aufräumen</a>
       <a data-perm="security.view" href="#aktivitaet">Aktivität</a>
     </nav>
@@ -227,6 +230,37 @@
         <div class="table-scroll" id="port-test-wrap" hidden>
           <table class="data-table" id="port-test-results"></table>
         </div>
+      </section>
+
+      <!-- Verbindungen -->
+      <section data-perm="security.view" class="glass-card settings-section" id="verbindungen">
+        <div class="section-head">
+          <h2>Verbindungen</h2>
+          <div class="head-tools">
+            <label class="toggle-label"><input type="checkbox" id="conn-live"> Live</label>
+            <button class="mini-icon-btn" data-reload="connections" title="Neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+          </div>
+        </div>
+        <p class="section-desc">Alle Netzwerkverbindungen, die gerade offen sind: welches Programm mit welcher Adresse spricht.</p>
+        <div class="bench-values ssh-stats" id="conn-stats"></div>
+        <div class="conn-programs" id="conn-programs"></div>
+        <form class="log-filters" id="conn-filters">
+          <select id="conn-dir" aria-label="Richtung">
+            <option value="">Alle Richtungen</option>
+            <option value="in">Eingehend</option>
+            <option value="out">Ausgehend</option>
+          </select>
+          <select id="conn-scope" aria-label="Gegenstelle">
+            <option value="">Alle Gegenstellen</option>
+            <option value="internet">Internet</option>
+            <option value="lan">LAN</option>
+            <option value="vpn">VPN</option>
+          </select>
+          <input type="search" id="conn-q" placeholder="Programm, Adresse oder Port" autocomplete="off" spellcheck="false" aria-label="Filter">
+          <label class="toggle-label"><input type="checkbox" id="conn-internal"> Interne zeigen (localhost, Container)</label>
+        </form>
+        <div class="table-scroll"><table class="data-table" id="conn-table"></table></div>
+        <p class="field-hint" id="conn-hint"></p>
       </section>
 
       <!-- Firewall -->
@@ -629,6 +663,32 @@
         </div>
       </section>
 
+      <!-- Fehler-Übersicht -->
+      <section data-perm="logs.view" class="glass-card settings-section" id="fehler">
+        <div class="section-head">
+          <h2>Fehler-Übersicht</h2>
+          <div class="head-tools">
+            <div class="segmented" id="err-range" role="tablist" aria-label="Zeitraum">
+              <button data-days="1">24 Std.</button>
+              <button class="active" data-days="7">7 Tage</button>
+              <button data-days="30">30 Tage</button>
+            </div>
+            <button class="mini-icon-btn" data-reload="errors" title="Neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+          </div>
+        </div>
+        <p class="section-desc">Fehlermeldungen aus dem System-Log, zusammengefasst: gleiche Meldungen (mit anderen Zahlen, IDs oder Adressen) zählen als eine. So fällt auf, was sich wiederholt – und was neu ist.</p>
+        <div class="bench-values ssh-stats" id="err-stats"></div>
+        <form class="log-filters" id="err-filters">
+          <input type="search" id="err-q" placeholder="Quelle oder Meldung filtern" autocomplete="off" spellcheck="false" aria-label="Filter">
+          <select id="err-sort" aria-label="Sortierung">
+            <option value="count">Häufigste zuerst</option>
+            <option value="last">Neueste zuerst</option>
+          </select>
+        </form>
+        <div class="err-list" id="err-list"></div>
+        <p class="field-hint" id="err-hint"></p>
+      </section>
+
       <!-- Log-Suche -->
       <section data-perm="logs.view" class="glass-card settings-section" id="logs">
         <h2>Log-Suche</h2>
@@ -654,6 +714,41 @@
         </form>
         <p class="field-hint" id="log-status"></p>
         <div class="log-results" id="log-results"></div>
+      </section>
+
+      <!-- Pakete -->
+      <section class="glass-card settings-section" id="pakete">
+        <div class="section-head">
+          <h2>Paketverwaltung</h2>
+          <div class="head-tools">
+            <div class="segmented" id="pkg-tabs" role="tablist" aria-label="Ansicht">
+              <button class="active" data-tab="search">Suchen</button>
+              <button data-tab="installed">Installiert</button>
+            </div>
+          </div>
+        </div>
+        <p class="section-desc">Programme aus den Debian/Raspberry-Pi-Paketquellen suchen, installieren und entfernen (apt). Vor jeder Änderung zeigt eine Probe, was genau passiert.</p>
+        <div id="pkg-search-tab">
+          <form class="log-filters" id="pkg-search-form">
+            <input type="search" id="pkg-q" placeholder="z.B. htop, ncdu, samba, mosquitto" autocomplete="off" spellcheck="false" aria-label="Paket suchen">
+            <button type="submit" class="btn-primary">Suchen</button>
+          </form>
+          <div class="table-scroll"><table class="data-table" id="pkg-results"></table></div>
+        </div>
+        <div id="pkg-installed-tab" hidden>
+          <form class="log-filters" id="pkg-installed-form">
+            <input type="search" id="pkg-filter" placeholder="Installierte Pakete filtern" autocomplete="off" spellcheck="false" aria-label="Filter">
+            <label class="toggle-label"><input type="checkbox" id="pkg-all"> Auch automatisch installierte zeigen</label>
+          </form>
+          <div class="bench-values ssh-stats" id="pkg-stats"></div>
+          <div class="table-scroll"><table class="data-table" id="pkg-installed"></table></div>
+        </div>
+        <div class="pkg-plan" id="pkg-plan" hidden></div>
+        <div class="pkg-run" id="pkg-run" hidden>
+          <div class="pkg-run-head"><span id="pkg-run-state"></span><button type="button" class="text-btn" id="pkg-run-hide">Ausblenden</button></div>
+          <pre class="stack-job-out" id="pkg-run-log" data-no-i18n></pre>
+        </div>
+        <p class="field-hint" id="pkg-hint"></p>
       </section>
 
       <!-- Aufräumen -->

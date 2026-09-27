@@ -835,3 +835,105 @@ def geoblock_reapply() -> None:
             geoblock_apply(ccs)
         except Exception as e:
             logger.warning(f"Geoblock re-apply failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Live connections: every open TCP/UDP connection with its program (ss via the helper,
+# as root, so processes of other users are named too; psutil as a fallback)
+# ---------------------------------------------------------------------------
+_RE_SS_USER = re.compile(r'\("([^"]+)",pid=(\d+)')
+INTERNAL_NETS = [ipaddress.ip_network(n) for n in ("127.0.0.0/8", "::1/128", "10.42.0.0/16", "10.43.0.0/16", "172.16.0.0/12", "fe80::/10")]
+
+
+def _split_addr(text: str):
+    """'192.168.1.2:22', '[::ffff:1.2.3.4]:443', '*:53', '[fe80::1%eth0]:546' -> (ip, port)"""
+    host, _, port = text.rpartition(":")
+    host = host.strip("[]").split("%")[0]
+    if host.startswith("::ffff:") and "." in host:
+        host = host[7:]
+    if host in ("*", "0.0.0.0", "::", ""):
+        host = "*"
+    return host, int(port) if port.isdigit() else None
+
+
+def _internal(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in n for n in INTERNAL_NETS if n.version == addr.version)
+
+
+def _from_ss(out: str) -> tuple:
+    conns, listen_ports = [], set()
+    for line in out.splitlines():
+        parts = line.split(None, 6)
+        if len(parts) < 6:
+            continue
+        proto, state, _, _, local, peer = parts[:6]
+        procs = _RE_SS_USER.findall(parts[6]) if len(parts) > 6 else []
+        lip, lport = _split_addr(local)
+        rip, rport = _split_addr(peer)
+        if state == "LISTEN" or (proto == "udp" and state == "UNCONN" and rip == "*"):
+            if lport:
+                listen_ports.add((proto, lport))
+            continue
+        conns.append({"proto": proto, "state": state, "local": lip, "lport": lport, "remote": rip, "rport": rport,
+                      "program": procs[0][0] if procs else "", "pid": int(procs[0][1]) if procs else None})
+    return conns, listen_ports
+
+
+def _from_psutil() -> tuple:
+    conns, listen_ports = [], set()
+    names: Dict[int, str] = {}
+    for c in _safe_connections():
+        proto = "udp" if c.type == socket.SOCK_DGRAM else "tcp"
+        if c.status == psutil.CONN_LISTEN or (proto == "udp" and not c.raddr):
+            if c.laddr:
+                listen_ports.add((proto, c.laddr.port))
+            continue
+        if not c.raddr:
+            continue
+        name = ""
+        if c.pid:
+            if c.pid not in names:
+                try:
+                    names[c.pid] = psutil.Process(c.pid).name()
+                except psutil.Error:
+                    names[c.pid] = ""
+            name = names[c.pid]
+        lip, _ = _split_addr(f"{c.laddr.ip}:0")
+        rip, _ = _split_addr(f"{c.raddr.ip}:0")
+        conns.append({"proto": proto, "state": {"ESTABLISHED": "ESTAB"}.get(c.status, c.status.replace("_", "-")),
+                      "local": lip, "lport": c.laddr.port, "remote": rip, "rport": c.raddr.port, "program": name, "pid": c.pid})
+    return conns, listen_ports
+
+
+def connections() -> Dict[str, Any]:
+    import geoip
+    source, note = "ss", ""
+    try:
+        conns, listen = _from_ss(_helper("connections", timeout=15))
+    except (PermissionError, RuntimeError, subprocess.TimeoutExpired) as e:
+        conns, listen = _from_psutil()
+        source, note = "psutil", f"Ohne Helfer: Programme anderer Benutzer bleiben unbenannt ({e})."
+    lan_names = _lan_names()
+    for c in conns:
+        c["direction"] = "in" if (c["proto"], c["lport"]) in listen else "out"
+        c["scope"] = ip_scope(c["remote"]) if c["remote"] != "*" else "local"
+        c["internal"] = _internal(c["remote"]) or _internal(c["local"]) and c["scope"] == "local"
+        c["country"] = geoip.lookup(c["remote"]) if c["scope"] == "internet" else ""
+        c["name"] = lan_names.get(c["remote"], "")
+    conns.sort(key=lambda c: (c["internal"], c["direction"] != "in", c["scope"] != "internet", c["program"] or "~", c["remote"]))
+    visible = [c for c in conns if not c["internal"]]
+    progs: Dict[str, int] = {}
+    for c in visible:
+        progs[c["program"] or "?"] = progs.get(c["program"] or "?", 0) + 1
+    return {"source": source, "note": note, "connections": conns[:1500], "truncated": len(conns) > 1500,
+            "summary": {"total": len(visible), "internal": len(conns) - len(visible),
+                        "incoming": sum(1 for c in visible if c["direction"] == "in"),
+                        "outgoing": sum(1 for c in visible if c["direction"] == "out"),
+                        "internet": sum(1 for c in visible if c["scope"] == "internet"),
+                        "countries": len({c["country"] for c in visible if c["country"]}),
+                        "listening": len(listen)},
+            "programs": sorted(({"name": k, "count": v} for k, v in progs.items()), key=lambda p: -p["count"])[:12]}

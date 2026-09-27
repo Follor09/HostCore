@@ -44,7 +44,11 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/api/containers/kube/logs$", "logs.view"),
     ("GET", r"^/api/containers/.*$", "system.view"),
     ("GET", r"^/api/power$", "system.view"),
-    ("GET", r"^/api/tools/(ssh|activity|firewall|firewall/traffic|geoip|geoblock)$", "security.view"),
+    ("GET", r"^/api/tools/(ssh|activity|firewall|firewall/traffic|geoip|geoblock|connections)$", "security.view"),
+    ("GET", r"^/api/tools/errors$", "logs.view"),
+    ("GET", r"^/api/packages(/.*)?$", "system.view"),
+    ("POST", r"^/api/packages/simulate$", "system.view"),
+    ("POST", r"^/api/packages/run$", "updates.install"),
     ("GET", r"^/api/(tools/.*|events|report|disk-forecast|monitor/.*|sensors.*)$", "system.view"),
     ("POST", r"^/api/action/command$", "system.view"),        # read-only diagnostics (uptime, df ...)
 
