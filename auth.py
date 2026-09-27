@@ -410,7 +410,12 @@ def permissions(username: Optional[str]) -> Set[str]:
     return set(group["perms"]) if group else set()
 
 
+AGENT_MODE = False   # set by app.py: an agent trusts the (token-authenticated) main dashboard
+
+
 def can(username: Optional[str], perm: str) -> bool:
+    if AGENT_MODE and username:
+        return True
     return perm in permissions(username)
 
 

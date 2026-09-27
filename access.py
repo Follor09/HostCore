@@ -36,6 +36,12 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/settings/(services|history/clear|wol|wol/[^/]+/delete|health|health/[^/]+/(delete|run)|links|links/[^/]+/(delete|move))$", "settings.manage"),
     ("POST", r"^/api/weather/location$", "settings.manage"),
 
+    # --- Remote Pis: switching is for everyone logged in, managing them for admins
+    ("GET", r"^/api/remotes/current$", "login"),
+    ("POST", r"^/api/remotes/select$", "login"),
+    ("GET", r"^/api/remotes$", "users.manage"),
+    ("POST", r"^/api/remotes(/.*)?$", "users.manage"),
+
     # --- Views
     ("GET", r"^/api/tools/(logs|log-units)$", "logs.view"),
     ("GET", r"^/api/logs$", "logs.view"),

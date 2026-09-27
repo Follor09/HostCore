@@ -10,3 +10,5 @@ auth.json
 auth.json.tmp
 geoip.db
 geoip.db.tmp
+agent.json
+agent.json.tmp

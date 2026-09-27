@@ -1346,7 +1346,43 @@
     'Nach links': 'Move left',
     'Nach rechts': 'Move right',
     'Seite': 'Page',
-    'Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet auf dieser Seite aus. Oben lassen sich weitere Seiten anlegen.': 'Arrows or dragging change the order, the eye hides a card on this page. More pages can be added at the top.'
+    'Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet auf dieser Seite aus. Oben lassen sich weitere Seiten anlegen.': 'Arrows or dragging change the order, the eye hides a card on this page. More pages can be added at the top.',
+    // Remote Pis
+    'Pi wechseln': 'Switch Pi',
+    'Dashboard zeigt': 'Dashboard shows',
+    'nicht erreichbar': 'not reachable',
+    'Remote-Pis verwalten': 'Manage remote Pis',
+    'Remote-Pi': 'Remote Pi',
+    'Zurück zu': 'Back to',
+    'Remote-Pis': 'Remote Pis',
+    'Weitere Raspberry Pis mit diesem Dashboard steuern. Auf dem anderen Pi läuft dazu der PiCore-Agent – dann lässt sich oben rechts zwischen den Pis wechseln, und alles (Live-Werte, Dienste, Container, Dateien, Terminal, Firewall, Updates …) zeigt den gewählten Pi. Rechte und Anmeldung bleiben die von diesem Dashboard.': 'Control more Raspberry Pis with this dashboard. The other Pi runs the PiCore agent – then you can switch between the Pis at the top right, and everything (live values, services, containers, files, terminal, firewall, updates …) shows the selected Pi. Permissions and login stay those of this dashboard.',
+    'Pi hinzufügen': 'Add Pi',
+    'Token': 'Token',
+    'z.B. Pi Garage': 'e.g. Pi garage',
+    'vom Agent (./agent.sh token)': 'from the agent (./agent.sh token)',
+    'Verbindung testen': 'Test connection',
+    'So wird ein Pi zum Agent': 'How to turn a Pi into an agent',
+    'Noch keine Remote-Pis.': 'No remote Pis yet.',
+    'Nicht erreichbar': 'Not reachable',
+    'Wird angezeigt': 'Showing',
+    'Neuer Token': 'New token',
+    'Neuer Token (./agent.sh token auf dem Remote-Pi)': 'New token (./agent.sh token on the remote Pi)',
+    'Token gespeichert.': 'Token saved.',
+    'Teste…': 'Testing…',
+    'Verbunden mit': 'Connected to',
+    'hinzugefügt – oben rechts lässt sich jetzt zwischen den Pis wechseln.': 'added – you can now switch between the Pis at the top right.',
+    'Remote-Pi hinzugefügt': 'Remote Pi added',
+    'Remote-Pi entfernt': 'Remote Pi removed',
+    'Remote-Pi gewählt': 'Remote Pi selected',
+    'Adresse wie http://192.168.178.50:8000 angeben.': 'Enter an address like http://192.168.178.50:8000.',
+    'Token falsch.': 'Wrong token.',
+    'Dort läuft kein PiCore-Agent (oder eine zu alte Version).': 'No PiCore agent runs there (or a version that is too old).',
+    'Dort läuft ein normales Dashboard, kein Agent: auf dem Pi ./install.sh --agent ausführen.': 'A normal dashboard runs there, not an agent: run ./install.sh --agent on that Pi.',
+    'Name angeben.': 'Enter a name.',
+    'Token fehlt oder ist zu kurz (auf dem Remote-Pi: ./agent.sh token).': 'Token missing or too short (on the remote Pi: ./agent.sh token).',
+    'Diesen Pi gibt es schon.': 'This Pi already exists.',
+    'Maximal 20 Remote-Pis.': 'At most 20 remote Pis.',
+    'Token zu kurz.': 'Token too short.'
   };
 
   // ---------------------------------------------------------------------------
@@ -1648,7 +1684,11 @@
     [/^Paket (.+) nicht gefunden\.$/, 'Package $1 not found.'],
     [/^Ungültiger Paketname: (.+)$/, 'Invalid package name: $1'],
     [/^(.+) ist für das System oder das Dashboard nötig und wird nicht entfernt\.$/, '$1 is needed by the system or the dashboard and will not be removed.'],
-    [/^(.+) ist ein Basis-Paket und wird nicht entfernt\.$/, '$1 is a base package and will not be removed.']
+    [/^(.+) ist ein Basis-Paket und wird nicht entfernt\.$/, '$1 is a base package and will not be removed.'],
+    [/^(.+) nicht erreichbar \((\w+)\)\.$/, '$1 not reachable ($2).'],
+    [/^Nicht erreichbar \((\w+)\)( – Adresse, Port und Firewall prüfen\.)?$/, (m, e, h) => `Not reachable (${e})${h ? ' – check address, port and firewall.' : ''}`],
+    [/^Antwort (\d+)\.$/, 'Response $1.'],
+    [/^Zurück zu (.+)$/, 'Back to $1']
   ];
 
   function translateDynamic(s) {

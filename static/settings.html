@@ -49,6 +49,7 @@
       <a href="#konto" class="active">Konto</a>
       <a href="#benutzer" data-perm="users.manage">Benutzer</a>
       <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
+      <a href="#remote" data-perm="users.manage">Remote-Pis</a>
       <a href="#sprache">Sprache</a>
       <a href="#darstellung">Darstellung</a>
       <a href="#wetter" data-perm="settings.manage">Wetter</a>
@@ -170,6 +171,32 @@
           </label>
           <button type="submit" class="btn-primary">Anlegen</button>
         </form>
+      </section>
+
+      <section class="glass-card settings-section" id="remote" data-perm="users.manage">
+        <h2>Remote-Pis</h2>
+        <p class="section-desc">Weitere Raspberry Pis mit diesem Dashboard steuern. Auf dem anderen Pi läuft dazu der PiCore-Agent – dann lässt sich oben rechts zwischen den Pis wechseln, und alles (Live-Werte, Dienste, Container, Dateien, Terminal, Firewall, Updates …) zeigt den gewählten Pi. Rechte und Anmeldung bleiben die von diesem Dashboard.</p>
+        <div class="iface-list" id="remote-list"></div>
+        <h3 class="subhead">Pi hinzufügen</h3>
+        <form class="remote-form" id="remote-form" autocomplete="off">
+          <label class="fw-field"><span>Name</span><input type="text" id="remote-name" maxlength="40" placeholder="z.B. Pi Garage" required></label>
+          <label class="fw-field"><span>Adresse</span><input type="text" id="remote-url" placeholder="http://192.168.178.50:8000" spellcheck="false" required></label>
+          <label class="fw-field remote-token"><span>Token</span><input type="password" id="remote-token" placeholder="vom Agent (./agent.sh token)" spellcheck="false" required></label>
+          <div class="remote-form-actions">
+            <button type="button" class="btn-secondary" id="remote-test">Verbindung testen</button>
+            <button type="submit" class="btn-primary">Hinzufügen</button>
+          </div>
+        </form>
+        <p class="form-msg" id="remote-msg" role="status"></p>
+        <details class="remote-howto">
+          <summary>So wird ein Pi zum Agent</summary>
+          <ol>
+            <li>Auf dem anderen Pi das Repository klonen (wie beim ersten Pi) und im Ordner <code>./install.sh --agent</code> ausführen.</li>
+            <li>Am Ende stehen Adresse und Token im Terminal – beides hier eintragen. Später zeigt <code>./agent.sh token</code> den Token wieder.</li>
+            <li>Der Agent hat keine eigene Oberfläche und kein Login, aktualisiert sich aber wie dieses Dashboard automatisch von GitHub.</li>
+            <li>Der Token wird im Klartext übertragen: Remote-Pis am besten nur im Heimnetz oder über das VPN (NetBird) ansprechen. Neuer Token: <code>./agent.sh rotate</code>.</li>
+          </ol>
+        </details>
       </section>
 
       <section class="glass-card settings-section" id="sprache">
@@ -333,8 +360,10 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
   <script src="/static/perms.js"></script>
+  <script src="/static/hosts.js"></script>
   <script src="/static/settings.js"></script>
   <script src="/static/users.js"></script>
+  <script src="/static/remotes-ui.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

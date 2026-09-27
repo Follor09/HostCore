@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One-time setup on the Raspberry Pi (safe to re-run):
 # venv + dependencies, dashboard service, and GitHub auto-update timer.
-# Usage (inside the cloned repo): ./install.sh
+# Usage (inside the cloned repo): ./install.sh            normal dashboard
+#                                  ./install.sh --agent    agent for a main dashboard (no own UI)
 #
 # Root never runs code from the dashboard folder: that folder belongs to the dashboard
 # user, so anything root executes from there would let that user become root.
@@ -82,7 +83,14 @@ if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
     as_owner python3 -m venv "$DIR/venv"
 fi
 as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
-as_owner chmod +x "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/set-password.sh"
+as_owner chmod +x "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/set-password.sh" "$DIR/agent.sh"
+
+# Agent mode: agent.json in the dashboard folder (kept across updates)
+AGENT_TOKEN=""
+case " $* " in
+    *" --agent "*) AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/agent.py" enable)" ;;
+esac
+[ -z "$AGENT_TOKEN" ] && [ -f "$DIR/agent.json" ] && AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/agent.py" token || true)"
 
 echo "⚙️  Installing systemd units..."
 for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer pi-dashboard-apt@.service pi-dashboard-geoblock.service; do
@@ -138,8 +146,8 @@ systemctl enable --now pi-dashboard-update.timer
 systemctl enable raspberry-dashboard
 systemctl restart raspberry-dashboard
 
-# Login: ask for a password on first install (interactive runs only)
-if [ ! -f "$DIR/auth.json" ]; then
+# Login: ask for a password on first install (interactive runs only) - an agent has no login
+if [ -z "$AGENT_TOKEN" ] && [ ! -f "$DIR/auth.json" ]; then
     if [ -t 0 ]; then
         echo "🔐 Dashboard-Login einrichten:"
         as_owner "$DIR/set-password.sh" set-password || echo "   ⚠️  Später nachholen: ./set-password.sh"
@@ -150,5 +158,11 @@ fi
 
 IP="$(hostname -I | awk '{print $1}')"
 echo ""
+if [ -n "$AGENT_TOKEN" ]; then
+    echo "✅ Done! PiCore-Agent läuft. Im Haupt-Dashboard unter Einstellungen → Remote-Pis eintragen:"
+    echo "   Adresse: http://${IP}:8000"
+    echo "   Token:   $AGENT_TOKEN      (später wieder anzeigen: ./agent.sh token)"
+else
 echo "✅ Done! Dashboard: http://${IP}:8000"
+fi
 echo "🔄 Auto-update: checks GitHub every minute -> journalctl -u pi-dashboard-update -f"

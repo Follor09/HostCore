@@ -41,6 +41,8 @@ import changelog
 import power
 import packages
 import logdigest
+import agent
+import remotes
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -78,6 +80,57 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
+AGENT = agent.enabled()
+auth.AGENT_MODE = AGENT
+_proxy_client: Optional[httpx.AsyncClient] = None
+
+
+def _proxy() -> httpx.AsyncClient:
+    global _proxy_client
+    if _proxy_client is None:
+        _proxy_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=600.0, write=600.0, pool=10.0),
+                                          follow_redirects=False)
+    return _proxy_client
+
+
+def _remote_for(request_or_ws) -> Optional[dict]:
+    """The remote Pi this browser has switched to (cookie), if any - never in agent mode."""
+    if AGENT:
+        return None
+    return remotes.selected(request_or_ws.cookies.get(remotes.COOKIE))
+
+
+@app.middleware("http")
+async def remote_proxy(request: Request, call_next):
+    """Innermost middleware (after login, permissions and the activity log): API calls for a
+    selected remote Pi go to its agent, with this dashboard's permissions already checked."""
+    path = request.url.path
+    remote = _remote_for(request) if path.startswith("/api/") else None
+    if not remote or remotes.LOCAL_ONLY.match(path):
+        return await call_next(request)
+    request.state.audit_detail = f"@{remote['name']}"
+    url = remote["url"] + path + (f"?{request.url.query}" if request.url.query else "")
+    headers = {"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""}
+    for h in ("content-type", "content-length", "accept", "range"):
+        if h in request.headers:
+            headers[h] = request.headers[h]
+    body = request.stream() if request.method in ("POST", "PUT", "PATCH", "DELETE") else None
+    try:
+        req = _proxy().build_request(request.method, url, headers=headers, content=body)
+        resp = await _proxy().send(req, stream=True)
+    except httpx.HTTPError as e:
+        remotes.mark_offline(remote["id"], f"Nicht erreichbar ({type(e).__name__})")
+        return JSONResponse({"detail": f"{remote['name']} nicht erreichbar ({type(e).__name__}).", "remote": remote["name"]}, status_code=502)
+    keep = {k: v for k, v in resp.headers.items()
+            if k.lower() in ("content-type", "content-disposition", "content-length", "cache-control", "content-security-policy",
+                             "x-content-type-options", "content-range", "accept-ranges")}
+    async def body_iter():
+        try:
+            async for chunk in resp.aiter_raw():
+                yield chunk
+        finally:
+            await resp.aclose()
+    return StreamingResponse(body_iter(), status_code=resp.status_code, headers=keep)
 
 # Serve static assets
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -122,6 +175,17 @@ async def audit_log(request: Request, call_next):
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     path = request.url.path
+    if AGENT:
+        # Agent: only the token-authenticated main dashboard, no pages, no users
+        if path.startswith("/static/"):
+            return await call_next(request)
+        if path.startswith("/api/"):
+            if not agent.check(request.headers.get("authorization", "")):
+                return JSONResponse({"detail": "Agent: Token fehlt oder falsch."}, status_code=401)
+            request.state.user = agent.remote_user(request.headers)
+            request.state.audit_user = request.state.user
+            return await call_next(request)
+        return HTMLResponse(agent.landing_html())
     user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
     request.state.user = user
 
@@ -1253,12 +1317,18 @@ async def api_tools_fan_curve_reset():
 # Web terminal
 # ---------------------------------------------------------------------------
 class TerminalTicketRequest(BaseModel):
-    password: str
+    password: str = ""
 
 
 @app.post("/api/terminal/ticket")
 async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
-    """Re-check the password before handing out a one-time terminal ticket."""
+    """Re-check the password before handing out a one-time terminal ticket.
+    For a remote Pi the password is checked here and the agent issues the ticket."""
+    if AGENT:
+        # the main dashboard already checked the password; the token proves it's the main dashboard
+        if terminal.session_count() >= terminal.MAX_SESSIONS:
+            raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
+        return {"ticket": terminal.issue_ticket(request.state.user), "expires_in": terminal.TICKET_TTL}
     ip = request.client.host if request.client else "unknown"
     wait = auth.lockout_remaining(ip)
     if wait:
@@ -1268,21 +1338,93 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
         logger.warning(f"Terminal: wrong password for '{request.state.user}' from {ip}")
         raise HTTPException(status_code=403, detail="Passwort ist falsch.")
     auth.record_success(ip)
+    remote = _remote_for(request)
+    if remote:
+        try:
+            res = await _proxy().post(f"{remote['url']}/api/terminal/ticket", json={},
+                                      headers={"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""})
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"{remote['name']} nicht erreichbar ({type(e).__name__}).")
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "Fehler") if res.headers.get("content-type", "").startswith("application/json") else "Fehler")
+        return res.json()
     if terminal.session_count() >= terminal.MAX_SESSIONS:
         raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
     return {"ticket": terminal.issue_ticket(request.state.user), "expires_in": terminal.TICKET_TTL}
 
 
+async def _ws_relay(websocket: WebSocket, remote: dict, path_qs: str, user: str) -> None:
+    """Pass a WebSocket through to a remote agent (live data, terminal) in both directions."""
+    url = "ws" + remote["url"][4:] + path_qs          # http -> ws, https -> wss
+    headers = {"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": user or ""}
+    try:
+        from websockets.asyncio.client import connect as ws_connect
+        cm = ws_connect(url, additional_headers=headers, max_size=None, open_timeout=6)
+    except ImportError:  # websockets < 13
+        import websockets
+        cm = websockets.connect(url, extra_headers=headers, max_size=None, open_timeout=6)
+    try:
+        async with cm as upstream:
+            async def down():
+                async for msg in upstream:
+                    if isinstance(msg, bytes):
+                        await websocket.send_bytes(msg)
+                    else:
+                        await websocket.send_text(msg)
+
+            async def up():
+                while True:
+                    m = await websocket.receive()
+                    if m["type"] == "websocket.disconnect":
+                        return
+                    if m.get("text") is not None:
+                        await upstream.send(m["text"])
+                    elif m.get("bytes") is not None:
+                        await upstream.send(m["bytes"])
+
+            tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+            code = getattr(upstream, "close_code", None)
+            with contextlib.suppress(Exception):
+                await websocket.close(code=code if code and code >= 4000 else 1000)
+    except Exception as e:
+        logger.info(f"Remote WebSocket to {remote['name']} failed: {e}")
+        with contextlib.suppress(Exception):
+            await websocket.send_json({"type": "remote_error", "detail": f"{remote['name']} nicht erreichbar."})
+            await websocket.close(code=4502)
+
+
 @app.websocket("/ws/terminal")
 async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, cols: int = 80):
     # WebSockets bypass the HTTP middleware: check session, origin and ticket here
-    user = auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME))
-    origin = websocket.headers.get("origin", "")
-    same_origin = origin.split("://", 1)[-1] == websocket.headers.get("host", "")
-    await websocket.accept()
-    if not user or not auth.can(user, "terminal") or not same_origin or not terminal.redeem_ticket(ticket, user):
-        await websocket.close(code=4401)
-        return
+    if AGENT:
+        await websocket.accept()
+        if not agent.check(websocket.headers.get("authorization", "")):
+            await websocket.close(code=4401)
+            return
+        user = agent.remote_user(websocket.headers)
+        if not terminal.redeem_ticket(ticket, user):
+            await websocket.close(code=4401)
+            return
+    else:
+        user = auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME))
+        origin = websocket.headers.get("origin", "")
+        same_origin = origin.split("://", 1)[-1] == websocket.headers.get("host", "")
+        await websocket.accept()
+        if not user or not auth.can(user, "terminal") or not same_origin:
+            await websocket.close(code=4401)
+            return
+        remote = _remote_for(websocket)
+        if remote:
+            # the ticket was issued by the remote agent (the ticket request went there too)
+            await asyncio.to_thread(audit.record, user, websocket.client.host if websocket.client else "", "WS", "/ws/terminal", 200, f"@{remote['name']}")
+            await _ws_relay(websocket, remote, f"/ws/terminal?ticket={ticket}&rows={int(rows)}&cols={int(cols)}", user)
+            return
+        if not terminal.redeem_ticket(ticket, user):
+            await websocket.close(code=4401)
+            return
     client = websocket.client.host if websocket.client else "unknown"
     started = time.time()
     await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, "geöffnet")
@@ -1556,6 +1698,91 @@ async def api_packages_run(req: PackagesRequest, request: Request):
     result = await asyncio.to_thread(_pkg_call, packages.start, req.action, [str(n) for n in req.names])
     logger.info(f"apt {req.action} {req.names} by '{request.state.user}'")
     return result
+
+
+@app.get("/api/agent/info")
+async def api_agent_info():
+    """For the main dashboard: is this an agent, and which Pi is it."""
+    if not AGENT:
+        raise HTTPException(status_code=404, detail="Kein Agent.")
+    snap = await asyncio.to_thread(system_info.get_system_snapshot)
+    up = snap.get("uptime") or {}
+    return {"agent": True, "hostname": snap.get("host_name") or platform.node(), "model": snap.get("model", ""),
+            "ip": (snap.get("network_ip") or {}).get("primary_ip", "") if isinstance(snap.get("network_ip"), dict) else snap.get("network_ip", ""), "commit": (updater.update_state or {}).get("current_commit", ""),
+            "uptime": up.get("formatted", "") if isinstance(up, dict) else up}
+
+
+class RemoteRequest(BaseModel):
+    name: str = ""
+    url: str = ""
+    token: str = ""
+
+
+class SelectRemoteRequest(BaseModel):
+    id: str = ""
+
+
+def _remote_call(fn, *args):
+    try:
+        return fn(*args)
+    except remotes.RemoteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/remotes")
+async def api_remotes():
+    return {"remotes": await remotes.refresh_status(), "local": platform.node()}
+
+
+@app.get("/api/remotes/current")
+async def api_remotes_current(request: Request):
+    """For the host switcher (every logged-in user)."""
+    items = await remotes.refresh_status(max_age=30)
+    cur = request.cookies.get(remotes.COOKIE, "")
+    current = next((r for r in items if r["id"] == cur), None)
+    return {"local": platform.node(), "current": current,
+            "hosts": [{k: r[k] for k in ("id", "name", "online", "info")} for r in items]}
+
+
+@app.post("/api/remotes/select")
+async def api_remotes_select(req: SelectRemoteRequest, request: Request):
+    resp = JSONResponse({"ok": True, "id": req.id})
+    if req.id and remotes.get(req.id):
+        resp.set_cookie(remotes.COOKIE, req.id, max_age=90 * 86400, httponly=True, samesite="lax")
+        request.state.audit_detail = remotes.get(req.id)["name"]
+    else:
+        resp.delete_cookie(remotes.COOKIE)
+    return resp
+
+
+@app.post("/api/remotes")
+async def api_remotes_add(req: RemoteRequest, request: Request):
+    request.state.audit_detail = f"{req.name} ({req.url})"[:250]
+    try:
+        return await remotes.add(req.name, req.url, req.token)
+    except remotes.RemoteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/remotes/test")
+async def api_remotes_test(req: RemoteRequest):
+    try:
+        return await remotes.probe(remotes.normalize_url(req.url), req.token.strip())
+    except remotes.RemoteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/remotes/{remote_id}/update")
+async def api_remotes_update(remote_id: str, req: RemoteRequest):
+    return _remote_call(remotes.update, remote_id, req.name or None, req.token or None)
+
+
+@app.post("/api/remotes/{remote_id}/delete")
+async def api_remotes_delete(remote_id: str, request: Request):
+    r = remotes.get(remote_id)
+    request.state.audit_detail = r["name"] if r else remote_id
+    remotes.remove(remote_id)
+    return {"remotes": await remotes.refresh_status()}
 
 
 @app.get("/containers")
@@ -2004,9 +2231,19 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     # Middleware doesn't cover WebSockets: check the session here
     await websocket.accept()
-    if not auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME)) and not auth.public_view():
-        await websocket.close(code=4401)  # the page redirects to /login on this code
-        return
+    if AGENT:
+        if not agent.check(websocket.headers.get("authorization", "")):
+            await websocket.close(code=4401)
+            return
+    else:
+        user = auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME))
+        if not user and not auth.public_view():
+            await websocket.close(code=4401)  # the page redirects to /login on this code
+            return
+        remote = _remote_for(websocket)
+        if remote:
+            await _ws_relay(websocket, remote, "/ws", user or "")
+            return
     logger.info("WebSocket Client connected.")
     try:
         while True:

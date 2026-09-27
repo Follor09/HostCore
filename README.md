@@ -208,6 +208,25 @@ Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil ode
 
 Ansehen braucht „System ansehen“, Logs „Logs lesen“, alle Aktionen „Dienste steuern“, das Bearbeiten der Compose-Datei „Dateien ändern“.
 
+### 🛰️ Remote-Pis (Agent)
+
+Ein Dashboard kann weitere Raspberry Pis steuern. Auf dem anderen Pi läuft dafür der **PiCore-Agent** – dasselbe Dashboard ohne eigene Oberfläche und ohne Login, das nur mit einem Token auf das Haupt-Dashboard hört:
+
+```bash
+# auf dem Remote-Pi (Repo klonen wie beim ersten Pi):
+cd pi-dashboard && ./install.sh --agent     # zeigt am Ende Adresse + Token
+./agent.sh token                            # Token später wieder anzeigen
+./agent.sh rotate                           # neuer Token
+./agent.sh disable                          # wieder normales Dashboard
+```
+
+Im Haupt-Dashboard unter **Einstellungen → Remote-Pis** Name, Adresse (`http://IP:8000`) und Token eintragen („Verbindung testen“ prüft vorher). Danach wechselt der Schalter oben rechts zwischen „Dieser Pi“ und den Remote-Pis. Das Haupt-Dashboard leitet dann alle API-Aufrufe, die Live-Werte und das Web-Terminal an den Agent weiter – **alle Funktionen** (Dienste, Prozesse, Container & k3s, Dateien, Firewall, Updates, Pakete, Logs, Verlauf …) zeigen und steuern den gewählten Pi. Eine gelbe Leiste zeigt, welcher Pi gerade dran ist (rot, wenn er nicht erreichbar ist).
+
+- **Rechte:** Anmeldung, Benutzer und Berechtigungen kommen vom Haupt-Dashboard und gelten auch für die Remote-Pis; im Aktivitätsprotokoll des Agents steht, wer (`name@remote`) etwas getan hat. Das Terminal-Passwort wird im Haupt-Dashboard geprüft.
+- **Nur lokal:** Login, Benutzer/Rechte, eigene Links, Notizen, Freigabe-Links und „Was ist neu“ gehören immer zum Haupt-Dashboard.
+- **Sicherheit:** Der Token wird bei jeder Anfrage mitgeschickt – über `http` im Klartext. Remote-Pis darum nur im Heimnetz oder über das VPN (NetBird) ansprechen; `https://` funktioniert, wenn davor ein Reverse-Proxy mit Zertifikat steht. Tokens sind nach dem Eintragen nicht mehr abrufbar. Remote-Pis verwalten dürfen nur Administratoren.
+- Der Agent aktualisiert sich wie jedes Dashboard selbst von GitHub; `agent.json` (Token) bleibt dabei erhalten.
+
 ### 🌐 Sprache / Language
 
 Deutsch oder Englisch – umschaltbar unter *Einstellungen → Sprache* oder unten auf der Login-Seite, pro Browser gespeichert (ohne Auswahl nach Browsersprache). `static/i18n.js` übersetzt alle Texte inkl. Live-Werten und Server-Meldungen; Logs, Terminal und Dateinamen bleiben unverändert. Neue deutsche Texte: im Browser `I18N.misses` (Konsole, bei aktivem Englisch) zeigt, was im Wörterbuch noch fehlt.
