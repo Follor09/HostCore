@@ -118,6 +118,9 @@
     HISTORY_METRICS.forEach(([metric, label]) =>
       cmds.push({ ...dashboardCommand(`history-${metric}`, `${t('Verlauf')}: ${t(label)}`, 'Verlauf', 'diagramm chart 24h 7 tage'), raw: true }));
 
+    const tabs = window.PiLayout && window.PiLayout.tabs ? window.PiLayout.tabs() : [];
+    if (tabs.length > 1) tabs.forEach(tb => cmds.push({ id: `tab:${tb.id}`, label: `${t('Seite')}: ${tb.name}`, raw: true, group: 'Seiten',
+      keywords: 'tab seite dashboard', run: () => window.PiLayout.switchTab(tb.id) }));
     if (window.PiWhatsNew) cmds.push({ id: 'whatsnew', label: 'Was ist neu', group: 'Aktionen', keywords: 'changelog update version änderungen neu', run: () => window.PiWhatsNew.open() });
     const other = window.I18N && window.I18N.lang === 'en' ? 'de' : 'en';
     cmds.push({ id: 'lang', label: other === 'en' ? 'Sprache: English' : 'Language: Deutsch', raw: true, group: 'Aktionen',

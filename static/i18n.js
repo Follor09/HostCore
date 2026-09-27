@@ -1335,7 +1335,18 @@
     'Nichts zu entfernen.': 'Nothing to remove.',
     // Packages 2
     'Paketverwaltung': 'Package manager',
-    'Installieren': 'Install'
+    'Installieren': 'Install',
+    // Dashboard tabs
+    'Dashboard-Seiten': 'Dashboard pages',
+    'Diese Seite ist noch leer.': 'This page is still empty.',
+    'Karten auswählen': 'Choose cards',
+    '+ Neue Seite': '+ New page',
+    'Name der neuen Seite': 'Name of the new page',
+    'Seite löschen': 'Delete page',
+    'Nach links': 'Move left',
+    'Nach rechts': 'Move right',
+    'Seite': 'Page',
+    'Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet auf dieser Seite aus. Oben lassen sich weitere Seiten anlegen.': 'Arrows or dragging change the order, the eye hides a card on this page. More pages can be added at the top.'
   };
 
   // ---------------------------------------------------------------------------

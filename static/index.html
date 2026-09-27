@@ -126,6 +126,12 @@
   <!-- Main Content Dashboard Container -->
   <div class="status-bar" id="status-bar" role="status" aria-live="polite" hidden></div>
 
+  <nav class="dash-tabs" id="dash-tabs" aria-label="Dashboard-Seiten" hidden></nav>
+  <div class="dash-empty glass-card" id="dash-empty" hidden>
+    <p>Diese Seite ist noch leer.</p>
+    <button class="btn-primary" id="dash-empty-edit">Karten auswählen</button>
+  </div>
+
   <main class="dashboard-container" data-widget-group="main">
 
     <!-- Top Widgets Row: Clock, Weather, Server Services -->
@@ -1196,7 +1202,7 @@
   <div class="customize-bar" id="customize-bar" role="region" aria-label="Dashboard anpassen" hidden>
     <div class="customize-text">
       <strong>Dashboard anpassen</strong>
-      <span>Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet aus. <em id="customize-count"></em></span>
+      <span>Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet auf dieser Seite aus. Oben lassen sich weitere Seiten anlegen. <em id="customize-count"></em></span>
     </div>
     <div class="customize-actions">
       <button class="btn-secondary" id="customize-reset">Zurücksetzen</button>

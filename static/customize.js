@@ -1,6 +1,8 @@
 /**
  * PiCore Dashboard - customizable layout
  * Hide cards and change their order (arrows or drag & drop), saved per browser.
+ * Several dashboard pages ("tabs"): order and widths are shared, each tab has its own
+ * set of hidden cards.
  * Cards only move within their own area (top row, metric grid, bottom row, page sections),
  * so the grid layouts keep working.
  */
@@ -16,7 +18,8 @@
     notes: 'Notizen', events: 'Ereignisse', actions: 'Schnellaktionen', health: 'Web-Dienste', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
   };
 
-  let layout = { order: {}, hidden: [], sizes: {} };
+  // The first page has no stored name until it's renamed: shown as "Übersicht" in the page language
+  let layout = { order: {}, sizes: {}, tabs: [{ id: 'main', name: '', hidden: [] }], active: 'main' };
   // Which cards can change width: metric cards get wider, page sections get half width
   const SIZE_OPTIONS = { metrics: ['normal', 'wide'], main: ['full', 'half'] };
   const RESIZABLE_MAIN = ['history', 'workloads'];
@@ -31,11 +34,20 @@
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
       if (saved && typeof saved === 'object') {
-        layout = { order: saved.order || {}, hidden: Array.isArray(saved.hidden) ? saved.hidden : [],
-                   sizes: saved.sizes && typeof saved.sizes === 'object' ? saved.sizes : {} };
+        let tabs = Array.isArray(saved.tabs) ? saved.tabs.filter(t => t && t.id && (t.name || t.id === 'main')) : [];
+        // Older layouts had one global "hidden" list: it becomes the first tab
+        if (!tabs.length) tabs = [{ id: 'main', name: '', hidden: Array.isArray(saved.hidden) ? saved.hidden : [] }];
+        tabs.forEach(t => { if (!Array.isArray(t.hidden)) t.hidden = []; });
+        layout = { order: saved.order || {}, sizes: saved.sizes && typeof saved.sizes === 'object' ? saved.sizes : {},
+                   tabs, active: tabs.some(t => t.id === saved.active) ? saved.active : tabs[0].id };
       }
     } catch (e) { /* storage unavailable: default layout */ }
+    const fromHash = (location.hash.match(/^#tab-([\w-]+)$/) || [])[1];
+    if (fromHash && layout.tabs.some(t => t.id === fromHash)) layout.active = fromHash;
   }
+
+  const activeTab = () => layout.tabs.find(t => t.id === layout.active) || layout.tabs[0];
+  const allWidgets = () => [...document.querySelectorAll('[data-widget]')].filter(w => !isContainer(w)).map(w => w.dataset.widget);
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(layout)); } catch (e) { /* ignore */ }
@@ -89,7 +101,7 @@
   }
 
   function refreshVisibility() {
-    const hidden = new Set(layout.hidden);
+    const hidden = new Set(activeTab().hidden);
     document.querySelectorAll('[data-widget]').forEach(w => {
       if (isContainer(w)) return;
       w.classList.toggle('widget-off', hidden.has(w.dataset.widget));
@@ -100,7 +112,10 @@
       g.classList.toggle('widget-off', visible === 0);
       g.dataset.visible = visible;
     });
-    document.body.classList.toggle('layout-custom', layout.hidden.length > 0 || Object.keys(layout.order).length > 0);
+    document.body.classList.toggle('layout-custom', activeTab().hidden.length > 0 || Object.keys(layout.order).length > 0);
+    const empty = document.getElementById('dash-empty');
+    if (empty) empty.hidden = editing || allWidgets().some(id => !hidden.has(id));
+    renderTabs();
     window.dispatchEvent(new Event('resize'));  // charts re-measure
   }
 
@@ -118,7 +133,8 @@
 
   function toggleHidden(w) {
     const id = w.dataset.widget;
-    layout.hidden = layout.hidden.includes(id) ? layout.hidden.filter(x => x !== id) : [...layout.hidden, id];
+    const tab = activeTab();
+    tab.hidden = tab.hidden.includes(id) ? tab.hidden.filter(x => x !== id) : [...tab.hidden, id];
     save();
     refreshVisibility();
     updateTools();
@@ -198,7 +214,7 @@
         hide.setAttribute('aria-pressed', String(off));
       }
     });
-    const n = layout.hidden.length;
+    const n = activeTab().hidden.length;
     document.getElementById('customize-count').textContent = n ? `${n} ausgeblendet` : 'Alles sichtbar';
   }
 
@@ -238,6 +254,9 @@
   function setEditing(on) {
     editing = on;
     document.body.classList.toggle('customizing', on);
+    renderTabs();
+    const empty = document.getElementById('dash-empty');
+    if (empty) empty.hidden = true;
     document.getElementById('customize-bar').hidden = !on;
     document.getElementById('btn-customize').setAttribute('aria-pressed', String(on));
     if (on) {
@@ -246,6 +265,7 @@
       document.getElementById('customize-done').focus();
     } else {
       document.querySelectorAll('.widget-tools').forEach(b => b.remove());
+      refreshVisibility();
       document.querySelectorAll('[data-widget]').forEach(w => {
         w.draggable = false;
         w.removeEventListener('dragstart', onDragStart);
@@ -253,6 +273,116 @@
       });
     }
     window.dispatchEvent(new Event('resize'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tabs
+  // ---------------------------------------------------------------------------
+  function switchTab(id) {
+    if (!layout.tabs.some(t => t.id === id) || id === layout.active) return;
+    layout.active = id;
+    save();
+    try { history.replaceState(null, '', id === layout.tabs[0].id ? location.pathname : `#tab-${id}`); } catch (e) { /* ignore */ }
+    refreshVisibility();
+    if (editing) updateTools();
+    window.scrollTo({ top: 0 });
+  }
+
+  function addTab() {
+    const name = (window.prompt(t('Name der neuen Seite'), '') || '').trim().slice(0, 30);
+    if (!name) return;
+    let id = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'seite';
+    while (layout.tabs.some(x => x.id === id)) id += '-2';
+    // A new page starts empty: cards are switched on with the eye in edit mode
+    layout.tabs.push({ id, name, hidden: allWidgets() });
+    save();
+    switchTab(id);
+    if (!editing) setEditing(true);
+  }
+
+  function renameTab(tab) {
+    const name = (window.prompt(t('Neuer Name'), tabName(tab)) || '').trim().slice(0, 30);
+    if (!name) return;
+    tab.name = name;
+    save();
+    renderTabs();
+  }
+
+  function deleteTab(tab) {
+    if (layout.tabs.length < 2) return;
+    if (!window.confirm(`${t('Seite löschen')}: ${tabName(tab)}?`)) return;
+    layout.tabs = layout.tabs.filter(x => x !== tab);
+    if (layout.active === tab.id) layout.active = layout.tabs[0].id;
+    save();
+    refreshVisibility();
+    if (editing) updateTools();
+  }
+
+  function moveTab(tab, dir) {
+    const i = layout.tabs.indexOf(tab), j = i + dir;
+    if (j < 0 || j >= layout.tabs.length) return;
+    layout.tabs.splice(i, 1);
+    layout.tabs.splice(j, 0, tab);
+    save();
+    renderTabs();
+  }
+
+  const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
+  const tabName = tab => tab.name || t('Übersicht');
+
+  function renderTabs() {
+    const bar = document.getElementById('dash-tabs');
+    if (!bar) return;
+    bar.innerHTML = '';
+    bar.hidden = layout.tabs.length < 2 && !editing;
+    document.body.classList.toggle('has-tabs', !bar.hidden);
+    const list = document.createElement('div');
+    list.className = 'dash-tab-list';
+    list.setAttribute('role', 'tablist');
+    layout.tabs.forEach((tab, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = `dash-tab${tab.id === layout.active ? ' active' : ''}`;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dash-tab-btn';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(tab.id === layout.active));
+      b.textContent = tabName(tab);
+      b.setAttribute('data-no-i18n', '');
+      b.title = i < 9 ? `Alt+${i + 1}` : '';
+      b.addEventListener('click', () => switchTab(tab.id));
+      wrap.appendChild(b);
+      if (editing && tab.id === layout.active) {
+        const tools = document.createElement('span');
+        tools.className = 'dash-tab-tools';
+        const mk = (label, text, fn, disabled) => {
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'dash-tab-tool';
+          x.textContent = text;
+          x.title = t(label);
+          x.setAttribute('aria-label', t(label));
+          x.disabled = !!disabled;
+          x.addEventListener('click', e => { e.stopPropagation(); fn(); });
+          tools.appendChild(x);
+        };
+        mk('Nach links', '‹', () => moveTab(tab, -1), i === 0);
+        mk('Nach rechts', '›', () => moveTab(tab, 1), i === layout.tabs.length - 1);
+        mk('Umbenennen', '✎', () => renameTab(tab));
+        if (layout.tabs.length > 1) mk('Seite löschen', '×', () => deleteTab(tab));
+        wrap.appendChild(tools);
+      }
+      list.appendChild(wrap);
+    });
+    bar.appendChild(list);
+    if (editing) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'dash-tab-add';
+      add.textContent = '+ Neue Seite';
+      add.addEventListener('click', addTab);
+      bar.appendChild(add);
+    }
   }
 
   function reset() {
@@ -280,7 +410,20 @@
       reset();
     });
     document.addEventListener('dragover', onDragOver);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && editing) setEditing(false); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && editing) setEditing(false);
+      // Alt+1..9 switches dashboard pages
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-9]$/.test(e.code)) {
+        const tab = layout.tabs[+e.code.slice(5) - 1];
+        if (tab) { e.preventDefault(); switchTab(tab.id); }
+      }
+    });
+    window.addEventListener('hashchange', () => {
+      const id = (location.hash.match(/^#tab-([\w-]+)$/) || [])[1];
+      if (id) switchTab(id);
+    });
+    const emptyEdit = document.getElementById('dash-empty-edit');
+    if (emptyEdit) emptyEdit.addEventListener('click', () => setEditing(true));
     // Cards must not react to clicks while editing (e.g. the updates card opens a sheet)
     document.addEventListener('click', e => {
       if (editing && e.target.closest('[data-widget]') && !e.target.closest('.widget-tools, #customize-bar')) {
@@ -289,7 +432,7 @@
       }
     }, true);
 
-    window.PiLayout = { edit: () => setEditing(true), reset };
+    window.PiLayout = { edit: () => setEditing(true), reset, tabs: () => layout.tabs.map(x => ({ id: x.id, name: tabName(x) })), switchTab, addTab };
   }
 
   init();

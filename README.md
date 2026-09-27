@@ -167,6 +167,8 @@ Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → D
 
 Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil oder Ziehen umsortieren (innerhalb ihres Bereichs – obere Reihe, Messwerte, untere Reihe – und ganze Bereiche wie „Verlauf“ nach oben/unten) und per Auge ausblenden. Gespeichert pro Browser, „Zurücksetzen“ stellt das Standard-Layout wieder her.
 
+**Mehrere Seiten:** Im Anpassen-Modus legt „+ Neue Seite“ weitere Dashboard-Seiten an (z.B. „Server“, „Zuhause“, „Medien“). Eine neue Seite startet leer, das Auge blendet Karten auf der jeweiligen Seite ein oder aus – Reihenfolge und Breite gelten für alle Seiten. Seiten lassen sich umbenennen (✎), verschieben (‹ ›) und löschen (×). Umschalten per Klick, **Alt+1…9**, Befehlspalette („Seite: …“) oder Link (`/#tab-medien`). Gespeichert wird pro Browser.
+
 ### 🧰 System-Werkzeuge (`/system`, Schraubenschlüssel oben rechts)
 
 - **Netzwerk:** Schnittstellen mit IPs, MAC, Traffic, Link-Speed und WLAN-Signal (SSID, dBm, Band); Gateway & DNS; offene Ports mit Dienst, Prozess und „nur lokal / im Netzwerk erreichbar“.
