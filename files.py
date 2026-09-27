@@ -635,3 +635,437 @@ def trash_purge() -> int:
     for i in old:
         _remove_box(i["box"])
     return len(old)
+
+
+# ---------------------------------------------------------------------------
+# Search
+# ---------------------------------------------------------------------------
+SEARCH_LIMIT = 500
+SEARCH_SECONDS = 25
+KINDS = {
+    "image": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".bmp", ".tif", ".tiff", ".svg", ".raw", ".cr2", ".nef", ".avif"},
+    "video": {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".ts", ".wmv", ".flv", ".mpg", ".mpeg"},
+    "audio": {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".opus", ".wma"},
+    "document": {".pdf", ".doc", ".docx", ".odt", ".xls", ".xlsx", ".ods", ".ppt", ".pptx", ".odp", ".txt", ".md", ".rtf", ".csv", ".epub"},
+    "archive": {".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".zst", ".img", ".iso", ".deb"},
+    "code": {".py", ".js", ".ts", ".sh", ".yml", ".yaml", ".json", ".toml", ".ini", ".conf", ".c", ".h", ".cpp", ".go", ".rs", ".java", ".html", ".css", ".php", ".sql", ".env"},
+}
+
+
+def _kind_of(name: str) -> str:
+    ext = os.path.splitext(name)[1].lower()
+    return next((k for k, exts in KINDS.items() if ext in exts), "other")
+
+
+def search(path: str, query: str = "", kind: str = "", min_size: int = 0, days: int = 0) -> Dict[str, Any]:
+    """Name search below `path` on the same filesystem. * and ? work as wildcards."""
+    import fnmatch
+    real = resolve(path)
+    if not os.path.isdir(real):
+        raise FileAccessError("Kein Ordner.")
+    q = (query or "").strip().lower()
+    if len(q) > 200:
+        raise FileAccessError("Suchbegriff zu lang.")
+    if not q and not kind and not min_size and not days:
+        raise FileAccessError("Suchbegriff oder Filter angeben.")
+    pattern = q if any(c in q for c in "*?[") else None
+    since = time.time() - days * 86400 if days else 0
+    dev = os.stat(real).st_dev
+    results: List[Dict[str, Any]] = []
+    start, scanned, truncated, timed_out = time.time(), 0, False, False
+    for dirpath, dirnames, filenames in os.walk(real, onerror=lambda e: None):
+        dirnames[:] = [d for d in dirnames if d != TRASH_NAME
+                       and not is_denied(os.path.realpath(os.path.join(dirpath, d)))
+                       and _same_dev(os.path.join(dirpath, d), dev)]
+        candidates = [(d, True) for d in dirnames] if kind in ("", "dir") and not min_size else []
+        candidates += [(f, False) for f in filenames] if kind != "dir" else []
+        for name, is_dir in candidates:
+            scanned += 1
+            low = name.lower()
+            if q and not (fnmatch.fnmatch(low, pattern) if pattern else q in low):
+                continue
+            if kind and kind != "dir" and _kind_of(name) != kind:
+                continue
+            full = os.path.join(dirpath, name)
+            try:
+                st = os.lstat(full)
+            except OSError:
+                continue
+            if days and st.st_mtime < since:
+                continue
+            if not is_dir and (not stat.S_ISREG(st.st_mode) or st.st_size < min_size):
+                continue
+            results.append({"path": full, "name": name, "dir": dirpath, "type": "dir" if is_dir else "file",
+                            "size": None if is_dir else st.st_size, "mtime": int(st.st_mtime)})
+            if len(results) >= SEARCH_LIMIT:
+                truncated = True
+                break
+        if truncated:
+            break
+        if time.time() - start > SEARCH_SECONDS:
+            timed_out = True
+            break
+    results.sort(key=lambda r: (r["type"] != "dir", r["name"].lower()))
+    return {"path": real, "results": results, "scanned": scanned, "truncated": truncated, "timed_out": timed_out}
+
+
+# ---------------------------------------------------------------------------
+# Rename, move, copy
+# ---------------------------------------------------------------------------
+def _valid_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name or name in (".", "..") or "/" in name or "\x00" in name or len(name.encode()) > 255:
+        raise FileAccessError("Ungültiger Name.")
+    return name
+
+
+def _item(path: str) -> str:
+    """An entry itself (a symlink stays a link), checked like trash_move does."""
+    if not path or "\x00" in path:
+        raise FileAccessError("Ungültiger Pfad.")
+    parent = resolve(os.path.dirname(os.path.abspath(path)))
+    real = os.path.join(parent, os.path.basename(os.path.abspath(path)))
+    if not os.path.lexists(real):
+        raise FileAccessError(f"Nicht gefunden: {os.path.basename(real)}")
+    if is_denied(os.path.realpath(real)):
+        raise FileAccessError("Dieser Pfad ist aus Sicherheitsgründen gesperrt.")
+    return real
+
+
+def rename(path: str, new_name: str) -> Dict[str, Any]:
+    real = _item(path)
+    if _protected(os.path.realpath(real)) or _protected(real):
+        raise FileAccessError("Das darf nicht umbenannt werden.")
+    parent = os.path.dirname(real)
+    if not os.access(parent, os.W_OK | os.X_OK):
+        raise FileAccessError("Keine Schreibrechte im Ordner.")
+    target = os.path.join(parent, _valid_name(new_name))
+    if os.path.lexists(target):
+        raise FileExistsError(new_name)
+    if is_denied(os.path.realpath(target)):
+        raise FileAccessError("Dieser Name ist gesperrt.")
+    os.rename(real, target)
+    return {"path": target}
+
+
+def _free_name(directory: str, name: str) -> str:
+    target = os.path.join(directory, name)
+    if not os.path.lexists(target):
+        return target
+    stem, ext = os.path.splitext(name)
+    if os.path.isdir(target):
+        stem, ext = name, ""
+    for n in range(2, 1000):
+        candidate = os.path.join(directory, f"{stem} ({n}){ext}")
+        if not os.path.lexists(candidate):
+            return candidate
+    raise FileAccessError("Kein freier Name gefunden.")
+
+
+_file_jobs: Dict[str, Dict[str, Any]] = {}
+
+
+def _job(kind: str, **extra) -> Dict[str, Any]:
+    job_id = secrets.token_hex(6)
+    job = {"id": job_id, "kind": kind, "status": "running", "done": 0, "total": 0, "current": "", "error": "",
+           "started": time.time(), "ended": None, **extra}
+    _file_jobs[job_id] = job
+    for old in sorted(_file_jobs, key=lambda k: _file_jobs[k]["started"])[:-30]:
+        if _file_jobs[old]["status"] != "running":
+            _file_jobs.pop(old)
+    return job
+
+
+def get_job(job_id: str) -> Dict[str, Any]:
+    job = _file_jobs.get(job_id)
+    if not job:
+        raise FileAccessError("Auftrag nicht gefunden.")
+    return {k: v for k, v in job.items() if not k.startswith("_")}
+
+
+def cancel_job(job_id: str) -> None:
+    job = _file_jobs.get(job_id)
+    if job and job["status"] == "running":
+        job["_cancel"] = True
+
+
+def transfer(paths: List[str], target_dir: str, mode: str) -> Dict[str, Any]:
+    """Move or copy several entries into target_dir as a background job (names never overwritten)."""
+    import threading
+    if mode not in ("move", "copy"):
+        raise FileAccessError("Unbekannte Aktion.")
+    if not paths or len(paths) > 500:
+        raise FileAccessError("1–500 Einträge auswählen.")
+    target = resolve(target_dir)
+    if not os.path.isdir(target):
+        raise FileAccessError("Ziel ist kein Ordner.")
+    if not os.access(target, os.W_OK | os.X_OK):
+        raise FileAccessError("Keine Schreibrechte im Zielordner.")
+    items = []
+    for p in paths:
+        real = _item(p)
+        if mode == "move":
+            if _protected(os.path.realpath(real)) or _protected(real):
+                raise FileAccessError(f"{os.path.basename(real)} darf nicht verschoben werden.")
+            if not os.access(os.path.dirname(real), os.W_OK | os.X_OK):
+                raise FileAccessError(f"Keine Schreibrechte für {os.path.basename(real)}.")
+        if os.path.isdir(real) and not os.path.islink(real) and _inside(target, os.path.realpath(real)):
+            raise FileAccessError(f"{os.path.basename(real)} kann nicht in sich selbst {'verschoben' if mode == 'move' else 'kopiert'} werden.")
+        if mode == "move" and os.path.dirname(real) == target:
+            continue  # already there
+        items.append(real)
+    if not items:
+        raise FileAccessError("Die Einträge liegen schon in diesem Ordner.")
+    total = sum(_tree_size(p) for p in items)
+    if mode == "copy" or any(os.lstat(p).st_dev != os.stat(target).st_dev for p in items):
+        if total > shutil_free(target) - FREE_RESERVE:
+            raise FileAccessError("Nicht genug freier Speicher im Ziel.")
+    job = _job(mode, total=total, count=len(items), target=target)
+
+    def copy_file(src: str, dst: str) -> None:
+        with open(src, "rb") as fi, open(dst, "xb") as fo:
+            while True:
+                if job.get("_cancel"):
+                    raise InterruptedError()
+                chunk = fi.read(1024 * 1024)
+                if not chunk:
+                    break
+                fo.write(chunk)
+                job["done"] += len(chunk)
+        shutil.copystat(src, dst, follow_symlinks=False)
+
+    def copy_any(src: str, dst: str) -> None:
+        job["current"] = os.path.basename(src)
+        if os.path.islink(src):
+            os.symlink(os.readlink(src), dst)
+        elif os.path.isdir(src):
+            os.mkdir(dst)
+            for entry in sorted(os.listdir(src)):
+                if entry == TRASH_NAME or is_denied(os.path.realpath(os.path.join(src, entry))):
+                    continue
+                copy_any(os.path.join(src, entry), os.path.join(dst, entry))
+            shutil.copystat(src, dst, follow_symlinks=False)
+        elif os.path.isfile(src):
+            copy_file(src, dst)
+
+    def run() -> None:
+        results = []
+        try:
+            for src in items:
+                if job.get("_cancel"):
+                    raise InterruptedError()
+                dst = _free_name(target, os.path.basename(src))
+                if mode == "move":
+                    try:
+                        os.rename(src, dst)  # same filesystem: instant
+                        job["done"] += _tree_size(dst)
+                    except OSError as e:
+                        if e.errno != 18:  # EXDEV: other drive -> copy + delete
+                            raise
+                        copy_any(src, dst)
+                        if os.path.isdir(src) and not os.path.islink(src):
+                            shutil.rmtree(src)
+                        else:
+                            os.remove(src)
+                else:
+                    copy_any(src, dst)
+                results.append(dst)
+            job["status"] = "ok"
+        except InterruptedError:
+            job.update(status="cancelled", error="Abgebrochen.")
+        except (OSError, shutil.Error) as e:
+            job.update(status="error", error=str(getattr(e, "strerror", None) or e)[:300])
+        finally:
+            job.update(results=results, ended=time.time(), current="")
+
+    threading.Thread(target=run, daemon=True).start()
+    return get_job(job["id"])
+
+
+# ---------------------------------------------------------------------------
+# ZIP download (streamed: nothing is written to disk)
+# ---------------------------------------------------------------------------
+STORE_EXT = KINDS["image"] | KINDS["video"] | KINDS["audio"] | KINDS["archive"] | {".docx", ".xlsx", ".pptx", ".odt", ".ods", ".epub", ".pdf"}
+
+
+def zip_entries(paths: List[str]) -> Dict[str, Any]:
+    """Which files go into the ZIP (checked now) and the archive's name."""
+    if not paths or len(paths) > 1000:
+        raise FileAccessError("1–1000 Einträge auswählen.")
+    reals = [resolve(p) for p in paths]
+    files: List[tuple] = []
+    for real in reals:
+        base = os.path.dirname(real)
+        if os.path.isfile(real):
+            files.append((real, os.path.relpath(real, base)))
+        elif os.path.isdir(real):
+            dev = os.stat(real).st_dev
+            for dirpath, dirnames, filenames in os.walk(real, onerror=lambda e: None):
+                dirnames[:] = [d for d in dirnames if d != TRASH_NAME and not os.path.islink(os.path.join(dirpath, d))
+                               and not is_denied(os.path.realpath(os.path.join(dirpath, d))) and _same_dev(os.path.join(dirpath, d), dev)]
+                for n in filenames:
+                    full = os.path.join(dirpath, n)
+                    if os.path.isfile(full) and not os.path.islink(full) and os.access(full, os.R_OK) \
+                            and not is_denied(os.path.realpath(full)):
+                        files.append((full, os.path.relpath(full, base)))
+                if len(files) > 200000:
+                    raise FileAccessError("Zu viele Dateien (max. 200.000).")
+    if len(reals) == 1:
+        name = os.path.basename(reals[0].rstrip("/")) or "dateien"
+    else:
+        name = os.path.basename(os.path.dirname(reals[0])) or "auswahl"
+    return {"files": files, "name": re.sub(r"[^\w.\- ()]", "_", name)[:100] + ".zip"}
+
+
+class _ZipSink:
+    """File-like object the ZipFile writes into; the response generator drains it."""
+    def __init__(self):
+        self.buf = bytearray()
+        self.pos = 0
+
+    def write(self, b):
+        self.buf += b
+        self.pos += len(b)
+        return len(b)
+
+    def tell(self):
+        return self.pos
+
+    def flush(self):
+        pass
+
+    def drain(self) -> bytes:
+        out = bytes(self.buf)
+        self.buf.clear()
+        return out
+
+
+def zip_stream(files: List[tuple]):
+    import zipfile
+    sink = _ZipSink()
+    with zipfile.ZipFile(sink, "w", allowZip64=True) as zf:
+        for full, arc in files:
+            try:
+                st = os.stat(full)
+                info = zipfile.ZipInfo(arc, date_time=time.localtime(max(st.st_mtime, 315532800))[:6])
+                info.external_attr = (stat.S_IMODE(st.st_mode) | stat.S_IFREG) << 16
+                ext = os.path.splitext(full)[1].lower()
+                info.compress_type = zipfile.ZIP_STORED if ext in STORE_EXT or st.st_size < 100 else zipfile.ZIP_DEFLATED
+                with open(full, "rb") as fi, zf.open(info, "w", force_zip64=st.st_size > 2 ** 31) as fo:
+                    while True:
+                        chunk = fi.read(512 * 1024)
+                        if not chunk:
+                            break
+                        fo.write(chunk)
+                        if len(sink.buf) > 1024 * 1024:
+                            yield sink.drain()
+            except OSError:
+                continue  # vanished or unreadable meanwhile: skip
+            if sink.buf:
+                yield sink.drain()
+    yield sink.drain()
+
+
+# ---------------------------------------------------------------------------
+# Duplicate finder: size -> first 64 KB -> full hash
+# ---------------------------------------------------------------------------
+DUPE_MIN_SIZE = 1024 * 1024
+
+
+def _hash(path: str, job: Dict[str, Any], limit: Optional[int] = None) -> Optional[str]:
+    import hashlib
+    h = hashlib.blake2b(digest_size=20)
+    try:
+        with open(path, "rb") as f:
+            left = limit
+            while True:
+                if job.get("_cancel"):
+                    raise InterruptedError()
+                chunk = f.read(1024 * 1024 if left is None else min(1024 * 1024, left))
+                if not chunk:
+                    break
+                h.update(chunk)
+                if limit is None:
+                    job["done"] += len(chunk)
+                else:
+                    left -= len(chunk)
+                    if left <= 0:
+                        break
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def start_duplicates(path: str, min_size: int = DUPE_MIN_SIZE) -> Dict[str, Any]:
+    import threading
+    real = resolve(path)
+    if not os.path.isdir(real):
+        raise FileAccessError("Kein Ordner.")
+    if any(j["kind"] == "duplicates" and j["status"] == "running" for j in _file_jobs.values()):
+        raise FileAccessError("Es läuft schon eine Duplikat-Suche.")
+    job = _job("duplicates", path=real, phase="scan")
+
+    def run() -> None:
+        try:
+            dev = os.stat(real).st_dev
+            by_size: Dict[int, List[str]] = {}
+            seen_inodes = set()
+            for dirpath, dirnames, filenames in os.walk(real, onerror=lambda e: None):
+                if job.get("_cancel"):
+                    raise InterruptedError()
+                dirnames[:] = [d for d in dirnames if d != TRASH_NAME and not is_denied(os.path.realpath(os.path.join(dirpath, d)))
+                               and _same_dev(os.path.join(dirpath, d), dev)]
+                job["current"] = dirpath
+                for n in filenames:
+                    full = os.path.join(dirpath, n)
+                    try:
+                        st = os.lstat(full)
+                    except OSError:
+                        continue
+                    if not stat.S_ISREG(st.st_mode) or st.st_size < min_size or (st.st_dev, st.st_ino) in seen_inodes:
+                        continue  # hard links are the same file, not duplicates
+                    seen_inodes.add((st.st_dev, st.st_ino))
+                    by_size.setdefault(st.st_size, []).append(full)
+                    job["scanned"] = job.get("scanned", 0) + 1
+            same_size = {s: p for s, p in by_size.items() if len(p) > 1}
+            job.update(phase="hash", total=sum(s * len(p) for s, p in same_size.items()))
+            groups = []
+            for size, paths in sorted(same_size.items(), reverse=True):
+                by_head: Dict[str, List[str]] = {}
+                for p in paths:
+                    job["current"] = p
+                    h = _hash(p, job, limit=64 * 1024)
+                    if h:
+                        by_head.setdefault(h, []).append(p)
+                for candidates in by_head.values():
+                    if len(candidates) < 2:
+                        job["done"] += size * len(candidates)
+                        continue
+                    by_full: Dict[str, List[str]] = {}
+                    for p in candidates:
+                        job["current"] = p
+                        h = _hash(p, job)
+                        if h:
+                            by_full.setdefault(h, []).append(p)
+                    for h, same in by_full.items():
+                        if len(same) > 1:
+                            files_ = []
+                            for p in same:
+                                try:
+                                    files_.append({"path": p, "name": os.path.basename(p), "dir": os.path.dirname(p),
+                                                   "mtime": int(os.path.getmtime(p))})
+                                except OSError:
+                                    pass
+                            files_.sort(key=lambda f: f["mtime"])
+                            groups.append({"hash": h, "size": size, "files": files_, "wasted": size * (len(files_) - 1)})
+            groups.sort(key=lambda g: -g["wasted"])
+            job.update(groups=groups[:500], wasted=sum(g["wasted"] for g in groups), status="ok")
+        except InterruptedError:
+            job.update(status="cancelled", error="Abgebrochen.")
+        except Exception as e:
+            job.update(status="error", error=str(e)[:300])
+        finally:
+            job.update(ended=time.time(), current="")
+
+    threading.Thread(target=run, daemon=True).start()
+    return get_job(job["id"])

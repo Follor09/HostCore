@@ -17,7 +17,7 @@ import os
 import subprocess
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -102,7 +102,7 @@ async def audit_log(request: Request, call_next):
     """Record changing requests in the activity log (runs inside require_login, so the user is known)."""
     response = await call_next(request)
     path = request.url.path
-    if request.method in ("POST", "PUT") or path == "/api/files/download":
+    if request.method in ("POST", "PUT") or path == "/api/files/download" or path.startswith("/api/files/zip/"):
         user = getattr(request.state, "audit_user", None) or getattr(request.state, "user", None) or ""
         detail = getattr(request.state, "audit_detail", "")
         if path == "/api/files/download":
@@ -573,6 +573,99 @@ async def api_files_trash_empty(request: Request):
     count = await asyncio.to_thread(files.trash_empty)
     request.state.audit_detail = f"{count}"
     return await asyncio.to_thread(files.trash_list)
+
+
+@app.get("/api/files/search")
+async def api_files_search(path: str, q: str = "", kind: str = "", min_size: int = 0, days: int = 0):
+    return await asyncio.to_thread(_files_sync, files.search, path, q, kind, min_size, days)
+
+
+def _files_sync(fn, *args):
+    try:
+        return fn(*args)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="Den Namen gibt es dort schon.")
+    except files.FileAccessError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=e.strerror or str(e))
+
+
+class RenameRequest(BaseModel):
+    path: str
+    name: str
+
+
+class TransferRequest(BaseModel):
+    paths: list
+    target: str
+    mode: str                     # move | copy
+
+
+class PathsRequest(BaseModel):
+    paths: list
+
+
+class DuplicatesRequest(BaseModel):
+    path: str
+    min_size: int = files.DUPE_MIN_SIZE
+
+
+@app.post("/api/files/rename")
+async def api_files_rename(req: RenameRequest, request: Request):
+    request.state.audit_detail = f"{req.path} → {req.name}"[:250]
+    return await asyncio.to_thread(_files_sync, files.rename, req.path, req.name)
+
+
+@app.post("/api/files/transfer")
+async def api_files_transfer(req: TransferRequest, request: Request):
+    request.state.audit_detail = f"{len(req.paths)} → {req.target}"[:250]
+    return await asyncio.to_thread(_files_sync, files.transfer, [str(p) for p in req.paths], req.target, req.mode)
+
+
+@app.get("/api/files/jobs/{job_id}")
+async def api_files_job(job_id: str):
+    return _files_sync(files.get_job, job_id)
+
+
+@app.post("/api/files/jobs/{job_id}/cancel")
+async def api_files_job_cancel(job_id: str):
+    files.cancel_job(job_id)
+    return _files_sync(files.get_job, job_id)
+
+
+@app.post("/api/files/duplicates")
+async def api_files_duplicates(req: DuplicatesRequest):
+    return await asyncio.to_thread(_files_sync, files.start_duplicates, req.path, max(1, req.min_size))
+
+
+_zip_tickets: dict = {}
+
+
+@app.post("/api/files/zip")
+async def api_files_zip_ticket(req: PathsRequest, request: Request):
+    """Step 1: check the selection, hand out a short-lived ticket; step 2 (GET) streams it.
+    Lets the browser download with a normal link instead of holding the ZIP in memory."""
+    entries = await asyncio.to_thread(_files_sync, files.zip_entries, [str(p) for p in req.paths])
+    now = time.time()
+    for k in [k for k, v in _zip_tickets.items() if v["expires"] < now]:
+        _zip_tickets.pop(k, None)
+    ticket = secrets.token_urlsafe(18)
+    _zip_tickets[ticket] = {**entries, "user": request.state.user, "expires": now + 300, "paths": req.paths[:20]}
+    return {"ticket": ticket, "name": entries["name"], "count": len(entries["files"]),
+            "size": sum(os.path.getsize(f) for f, _ in entries["files"] if os.path.exists(f))}
+
+
+@app.get("/api/files/zip/{ticket}")
+async def api_files_zip(ticket: str, request: Request):
+    entry = _zip_tickets.pop(ticket, None)
+    if not entry or entry["expires"] < time.time() or entry["user"] != request.state.user:
+        raise HTTPException(status_code=404, detail="Download-Link abgelaufen.")
+    request.state.audit_detail = f"ZIP {entry['name']} ({len(entry['files'])})"
+    logger.info(f"ZIP download {entry['name']} ({len(entry['files'])} files) by '{request.state.user}'")
+    from urllib.parse import quote
+    return StreamingResponse(files.zip_stream(entry["files"]), media_type="application/zip", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(entry['name'])}", "Cache-Control": "no-store"})
 
 
 @app.post("/api/files/share")

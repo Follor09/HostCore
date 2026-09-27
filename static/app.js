@@ -733,9 +733,10 @@
     other: '<circle cx="12" cy="12" r="9"></circle>',
     edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path>',
     trash: '<path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path>',
-    restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path>'
+    restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path>',
+    rename: '<path d="M4 7V5h16v2"></path><path d="M12 5v14"></path><path d="M9 19h6"></path>'
   };
-  const filesState = { path: null, data: null, sizes: null, mode: 'list' };
+  const filesState = { path: null, data: null, sizes: null, mode: 'list', selected: new Map(), clip: null };
 
   function fmtSize(b) {
     if (b == null) return '';
@@ -758,7 +759,19 @@
 
   function fileRow(e, maxSize) {
     const row = document.createElement('div');
-    row.className = `file-row ${e.type}${e.locked ? ' locked' : ''}`;
+    row.className = `file-row ${e.type}${e.locked ? ' locked' : ''}${filesState.selected.has(e.path) ? ' selected' : ''}`;
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'file-check';
+    check.setAttribute('aria-label', `${e.name} auswählen`);
+    check.checked = filesState.selected.has(e.path);
+    if (e.locked || e.type === 'broken') check.style.visibility = 'hidden';
+    check.addEventListener('change', () => {
+      if (check.checked) filesState.selected.set(e.path, e); else filesState.selected.delete(e.path);
+      row.classList.toggle('selected', check.checked);
+      renderSelection();
+    });
+    row.appendChild(check);
     row.appendChild(fileIcon(e.locked ? 'lock' : e.type === 'dir' ? 'dir' : e.type === 'file' ? 'file' : 'other'));
 
     let name;
@@ -837,6 +850,7 @@
     if (e.type === 'file' && window.PiEditor) {
       cell.appendChild(iconButton('edit', `${e.name}: Bearbeiten`, () => window.PiEditor.open(e.path, { onSaved: () => filesState.mode === 'list' && refreshFiles() })));
     }
+    cell.appendChild(iconButton('rename', `${e.name}: Umbenennen`, () => renameEntry(e)));
     cell.appendChild(iconButton('trash', `${e.name}: In den Papierkorb`, btn => {
       // second click within 3 s deletes
       if (!btn.classList.contains('confirming')) {
@@ -886,6 +900,191 @@
     }
   }
 
+  // ---- Selection, clipboard, rename, search, ZIP, duplicates ----
+  function renderSelection() {
+    const n = filesState.selected.size;
+    $('files-selbar').hidden = !n;
+    $('files-selcount').textContent = `${n} ausgewählt`;
+    const clip = filesState.clip;
+    $('files-clipbar').hidden = !clip;
+    if (clip) {
+      $('files-cliptext').textContent = `${clip.paths.length} ${clip.paths.length === 1 ? 'Eintrag' : 'Einträge'} zum ${clip.mode === 'move' ? 'Verschieben' : 'Kopieren'} – Zielordner öffnen und einfügen`;
+      $('files-paste').disabled = filesState.mode !== 'list';
+    }
+  }
+
+  async function renameEntry(e) {
+    const name = window.prompt('Neuer Name', e.name);
+    if (!name || name.trim() === e.name) return;
+    try {
+      await filesPost('/api/files/rename', { path: e.path, name: name.trim() });
+      showToast(`Umbenannt in „${name.trim()}“.`, 'success');
+      if (filesState.mode === 'search') runSearch(); else refreshFiles();
+    } catch (err) { setFilesMsg(err.message, 'error'); }
+  }
+
+  function toClipboard(mode) {
+    filesState.clip = { mode, paths: [...filesState.selected.keys()] };
+    filesState.selected.clear();
+    renderFiles();
+    renderSelection();
+  }
+
+  async function pasteClipboard() {
+    const clip = filesState.clip;
+    if (!clip || !filesState.path) return;
+    try {
+      const job = await filesPost('/api/files/transfer', { paths: clip.paths, target: filesState.path, mode: clip.mode });
+      filesState.clip = null;
+      renderSelection();
+      trackJob(job, clip.mode === 'move' ? 'Verschieben' : 'Kopieren', () => refreshFiles());
+    } catch (err) { setFilesMsg(err.message, 'error'); }
+  }
+
+  // Progress row for background jobs (copy / move / duplicates)
+  function trackJob(job, label, onDone) {
+    const box = $('files-uploads');
+    box.hidden = false;
+    const row = document.createElement('div');
+    row.className = 'upload-row job-row';
+    row.innerHTML = '<span class="upload-name"></span><span class="upload-bar"><span class="upload-fill"></span></span><span class="upload-state">…</span>';
+    row.querySelector('.upload-name').textContent = label;
+    const cancel = document.createElement('button');
+    cancel.className = 'text-btn';
+    cancel.textContent = 'Abbrechen';
+    cancel.addEventListener('click', () => filesPost(`/api/files/jobs/${job.id}/cancel`).catch(() => {}));
+    row.appendChild(cancel);
+    box.appendChild(row);
+    const timer = setInterval(async () => {
+      let j;
+      try { j = await (await fetch(`/api/files/jobs/${job.id}`)).json(); } catch (e) { return; }
+      const pct = j.total ? Math.min(100, j.done / j.total * 100) : (j.status === 'running' ? 5 : 100);
+      row.querySelector('.upload-fill').style.width = `${pct}%`;
+      const st = row.querySelector('.upload-state');
+      if (j.status === 'running') {
+        st.textContent = j.kind === 'duplicates' && j.phase === 'scan' ? `${(j.scanned || 0).toLocaleString(LOCALE)} Dateien` : `${Math.round(pct)} %`;
+        row.title = j.current || '';
+        return;
+      }
+      clearInterval(timer);
+      cancel.remove();
+      row.classList.add(j.status === 'ok' ? 'done' : 'failed');
+      st.textContent = j.status === 'ok' ? '✓' : j.error || 'Fehler';
+      if (onDone) onDone(j);
+      setTimeout(() => { row.remove(); if (!box.children.length) box.hidden = true; }, j.status === 'ok' ? 4000 : 10000);
+    }, 800);
+  }
+
+  async function trashSelected() {
+    const items = [...filesState.selected.values()];
+    let ok = 0;
+    for (const e of items) {
+      try { await filesPost('/api/files/delete', { path: e.path }); ok++; filesState.selected.delete(e.path); } catch (err) { setFilesMsg(`${e.name}: ${err.message}`, 'error'); }
+    }
+    if (ok) showToast(`${ok} ${ok === 1 ? 'Eintrag' : 'Einträge'} im Papierkorb.`, 'success');
+    if (filesState.mode === 'search') runSearch();
+    else if (filesState.mode === 'dupes') { dropFromDupes(items.map(e => e.path)); renderFiles(); }
+    else refreshFiles();
+    renderSelection();
+  }
+
+  async function downloadZip(paths) {
+    setFilesMsg('ZIP wird vorbereitet…');
+    try {
+      const r = await filesPost('/api/files/zip', { paths });
+      const a = document.createElement('a');
+      a.href = `/api/files/zip/${r.ticket}`;
+      a.download = r.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setFilesMsg(`${r.name}: ${r.count.toLocaleString(LOCALE)} Dateien, ${fmtSize(r.size)} – Download läuft.`, 'success');
+    } catch (err) { setFilesMsg(err.message, 'error'); }
+  }
+
+  async function runSearch(e) {
+    if (e) e.preventDefault();
+    const q = $('files-q').value.trim();
+    const params = new URLSearchParams({ path: filesState.searchRoot || filesState.path, q, kind: $('files-kind').value, min_size: $('files-minsize').value, days: $('files-days').value });
+    if (!q && !$('files-kind').value && $('files-minsize').value === '0' && $('files-days').value === '0') {
+      if (filesState.mode === 'search') openFilesPath(filesState.path);
+      return;
+    }
+    setFilesMsg('Suche…');
+    try {
+      const res = await fetch(`/api/files/search?${params}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `Fehler ${res.status}`);
+      filesState.searchRoot = data.path;
+      filesState.search = data;
+      filesState.mode = 'search';
+      filesState.selected.clear();
+      renderFiles();
+      renderSelection();
+      const n = data.results.length;
+      setFilesMsg(`${n}${data.truncated ? '+' : ''} ${n === 1 ? 'Treffer' : 'Treffer'} in ${data.path}${data.timed_out ? ' (nach 25 s abgebrochen)' : ''}`, n ? 'success' : '');
+    } catch (err) { setFilesMsg(err.message, 'error'); }
+  }
+
+  async function findDuplicates() {
+    try {
+      const job = await filesPost('/api/files/duplicates', { path: filesState.path });
+      setFilesMsg('Suche Duplikate (ab 1 MB)…');
+      trackJob(job, 'Duplikate', j => {
+        if (j.status !== 'ok') { setFilesMsg(j.error || 'Fehler', 'error'); return; }
+        filesState.dupes = j;
+        filesState.mode = 'dupes';
+        filesState.selected.clear();
+        renderFiles();
+        renderSelection();
+        setFilesMsg(j.groups.length ? `${j.groups.length} Gruppen · ${fmtSize(j.wasted)} doppelt belegt` : 'Keine Duplikate gefunden.', 'success');
+      });
+    } catch (err) { setFilesMsg(err.message, 'error'); }
+  }
+
+  function dropFromDupes(paths) {
+    const d = filesState.dupes;
+    if (!d) return;
+    d.groups.forEach(g => { g.files = g.files.filter(f => !paths.includes(f.path)); });
+    d.groups = d.groups.filter(g => g.files.length > 1);
+    d.groups.forEach(g => { g.wasted = g.size * (g.files.length - 1); });
+    d.wasted = d.groups.reduce((a, g) => a + g.wasted, 0);
+  }
+
+  function renderDupes(list) {
+    const d = filesState.dupes;
+    const canWrite = window.PiAuth ? window.PiAuth.can('files.write') : true;
+    if (!d.groups.length) { list.innerHTML = '<div class="files-empty">Keine Duplikate (mehr).</div>'; return; }
+    d.groups.forEach(g => {
+      const head = document.createElement('div');
+      head.className = 'dupe-head';
+      const label = document.createElement('span');
+      label.textContent = `${g.files.length}× ${fmtSize(g.size)} · ${fmtSize(g.wasted)} doppelt`;
+      head.appendChild(label);
+      if (canWrite) {
+        const b = document.createElement('button');
+        b.className = 'text-btn';
+        b.textContent = 'Nur die älteste behalten';
+        b.title = 'Alle anderen Kopien in den Papierkorb';
+        b.addEventListener('click', async () => {
+          if (!b.classList.contains('confirming')) {
+            b.classList.add('confirming');
+            b.textContent = `${g.files.length - 1} in den Papierkorb?`;
+            setTimeout(() => { b.classList.remove('confirming'); b.textContent = 'Nur die älteste behalten'; }, 4000);
+            return;
+          }
+          const drop = g.files.slice(1);
+          filesState.selected.clear();
+          drop.forEach(f => filesState.selected.set(f.path, { ...f, type: 'file' }));
+          await trashSelected();
+        });
+        head.appendChild(b);
+      }
+      list.appendChild(head);
+      g.files.forEach(f => list.appendChild(fileRow({ ...f, type: 'file', size: g.size, sub: f.dir }, 0)));
+    });
+  }
+
   // ---- Recycle bin ----
   async function openTrash() {
     setFilesMsg('Lade…');
@@ -921,6 +1120,7 @@
     tr.items.forEach(item => {
       const row = document.createElement('div');
       row.className = `file-row trash-row ${item.type}`;
+      row.appendChild(document.createElement('span'));
       row.appendChild(fileIcon(item.type === 'dir' ? 'dir' : 'file'));
       const nameCell = document.createElement('div');
       nameCell.style.minWidth = '0';
@@ -992,6 +1192,16 @@
   function renderFiles() {
     const list = $('files-list'), d = filesState.data;
     list.innerHTML = '';
+    if (filesState.mode === 'search') {
+      const r = filesState.search;
+      if (!r.results.length) list.innerHTML = '<div class="files-empty">Nichts gefunden.</div>';
+      r.results.forEach(f => list.appendChild(fileRow({ ...f, sub: f.dir }, 0)));
+      return;
+    }
+    if (filesState.mode === 'dupes') {
+      renderDupes(list);
+      return;
+    }
     if (filesState.mode === 'largest') {
       const files = filesState.largest.files;
       if (!files.length) list.innerHTML = '<div class="files-empty">Keine lesbaren Dateien gefunden.</div>';
@@ -1022,7 +1232,11 @@
       const data = await filesApi('list', path);
       const scroll = $('files-list').scrollTop;
       $('files-modal').classList.remove('trash-mode');
+      if (!keepScroll || data.path !== filesState.path) filesState.selected.clear();
+      else [...filesState.selected.keys()].forEach(p => { if (!data.entries.some(e => e.path === p)) filesState.selected.delete(p); });
       Object.assign(filesState, { path: data.path, data, sizes: keepScroll ? filesState.sizes : null, mode: 'list' });
+      $('files-q').value = '';
+      renderSelection();
       renderBreadcrumb(data.path, data.root);
       $('files-up').disabled = !data.parent;
       renderFiles();
@@ -1220,6 +1434,29 @@
       closePreview();
       window.PiEditor.open(path, { onSaved: () => refreshFiles() });
     });
+    $('files-search').addEventListener('submit', runSearch);
+    ['files-kind', 'files-minsize', 'files-days'].forEach(id => $(id).addEventListener('change', () => runSearch()));
+    $('files-q').addEventListener('search', () => { if (!$('files-q').value) runSearch(); });
+    $('files-sel-zip').addEventListener('click', () => downloadZip([...filesState.selected.keys()]));
+    $('files-sel-cut').addEventListener('click', () => toClipboard('move'));
+    $('files-sel-copy').addEventListener('click', () => toClipboard('copy'));
+    $('files-sel-trash').addEventListener('click', () => {
+      const b = $('files-sel-trash');
+      if (!b.classList.contains('confirming')) {
+        b.classList.add('confirming');
+        b.textContent = 'Wirklich?';
+        setTimeout(() => { b.classList.remove('confirming'); b.textContent = 'In den Papierkorb'; }, 4000);
+        return;
+      }
+      b.classList.remove('confirming');
+      b.textContent = 'In den Papierkorb';
+      trashSelected();
+    });
+    $('files-sel-clear').addEventListener('click', () => { filesState.selected.clear(); renderFiles(); renderSelection(); });
+    $('files-paste').addEventListener('click', pasteClipboard);
+    $('files-clip-clear').addEventListener('click', () => { filesState.clip = null; renderSelection(); });
+    $('files-zip').addEventListener('click', () => filesState.path && downloadZip([filesState.path]));
+    $('files-dupes').addEventListener('click', findDuplicates);
     $('files-new-file').addEventListener('click', () => newEntry('file'));
     $('files-new-folder').addEventListener('click', () => newEntry('folder'));
     $('files-trash').addEventListener('click', openTrash);

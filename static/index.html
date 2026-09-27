@@ -1080,8 +1080,49 @@
         <button data-perm="files.write" class="btn-secondary files-list-only" id="files-new-folder">+ Ordner</button>
         <button data-perm="files.write" class="btn-secondary files-list-only" id="files-trash">Papierkorb</button>
         <button data-perm="files.write" class="btn-danger files-trash-only" id="files-trash-empty" hidden>Papierkorb leeren</button>
+        <button class="btn-secondary files-list-only" id="files-zip" title="Ganzen Ordner als ZIP herunterladen">Als ZIP</button>
+        <button class="btn-secondary files-list-only" id="files-dupes" title="Gleiche Dateien in diesem Ordner finden">Duplikate</button>
         <input type="file" id="files-upload-input" multiple hidden>
-        <span class="form-msg" id="files-msg" role="status"></span>
+      </div>
+      <form class="files-search files-list-only" id="files-search" role="search">
+        <input type="search" id="files-q" placeholder="In diesem Ordner suchen – auch *.jpg" autocomplete="off" spellcheck="false" aria-label="Dateien suchen">
+        <select id="files-kind" aria-label="Typ">
+          <option value="">Alle Typen</option>
+          <option value="dir">Ordner</option>
+          <option value="image">Bilder</option>
+          <option value="video">Videos</option>
+          <option value="audio">Audio</option>
+          <option value="document">Dokumente</option>
+          <option value="archive">Archive</option>
+          <option value="code">Code &amp; Konfiguration</option>
+        </select>
+        <select id="files-minsize" aria-label="Größe">
+          <option value="0">Jede Größe</option>
+          <option value="1048576">ab 1 MB</option>
+          <option value="104857600">ab 100 MB</option>
+          <option value="1073741824">ab 1 GB</option>
+        </select>
+        <select id="files-days" aria-label="Geändert">
+          <option value="0">Jederzeit</option>
+          <option value="1">letzte 24 Std.</option>
+          <option value="7">letzte 7 Tage</option>
+          <option value="30">letzte 30 Tage</option>
+        </select>
+        <button type="submit" class="btn-secondary">Suchen</button>
+      </form>
+      <p class="form-msg files-msg" id="files-msg" role="status"></p>
+      <div class="files-selbar" id="files-selbar" hidden>
+        <span class="files-selcount" id="files-selcount"></span>
+        <button class="btn-secondary" id="files-sel-zip">Als ZIP</button>
+        <button data-perm="files.write" class="btn-secondary" id="files-sel-cut">Ausschneiden</button>
+        <button data-perm="files.write" class="btn-secondary" id="files-sel-copy">Kopieren</button>
+        <button data-perm="files.write" class="btn-danger" id="files-sel-trash">In den Papierkorb</button>
+        <button class="text-btn" id="files-sel-clear">Auswahl aufheben</button>
+      </div>
+      <div class="files-clipbar" id="files-clipbar" hidden>
+        <span id="files-cliptext"></span>
+        <button data-perm="files.write" class="btn-primary" id="files-paste">Hier einfügen</button>
+        <button class="text-btn" id="files-clip-clear">Abbrechen</button>
       </div>
       <div class="files-uploads" id="files-uploads" hidden></div>
       <div class="files-list" id="files-list"></div>
