@@ -7,6 +7,7 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 import asyncio
 import platform
 import re
+import hmac
 import secrets
 import contextlib
 from html import escape as html_escape
@@ -48,6 +49,11 @@ import boards
 import exchange
 import search
 import fleet
+import mcp_server
+import webhooks
+import attachments
+import wiki
+import costs
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -85,7 +91,10 @@ async def lifespan(app: FastAPI):
     history_task = asyncio.create_task(history.background_sampler())
     health_task = asyncio.create_task(healthchecks.background_checker())
     autoupdate_task = asyncio.create_task(autoupdate.background_runner())
+    if not AGENT:
+        await mcp_server.reload()
     yield
+    await mcp_server.shutdown()
     autoupdate_task.cancel()
     # Shutdown
     poller_task.cancel()
@@ -94,6 +103,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
+# In-process API calls (MCP tools -> the dashboard's own API, with its permissions and activity log)
+INTERNAL_HEADER = "x-picore-internal"
+INTERNAL_USER_HEADER = "x-picore-mcp-user"
+INTERNAL_KEY = secrets.token_hex(32)
 AGENT = agent.enabled()
 auth.AGENT_MODE = AGENT
 _proxy_client: Optional[httpx.AsyncClient] = None
@@ -213,10 +226,16 @@ async def require_login(request: Request, call_next):
             return await call_next(request)
         return HTMLResponse(agent.landing_html())
     user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
+    # In-process calls from the MCP server: the key only exists in this process's memory
+    internal = request.headers.get(INTERNAL_HEADER)
+    if internal and hmac.compare_digest(internal, INTERNAL_KEY):
+        user = auth.active_user(request.headers.get(INTERNAL_USER_HEADER, ""))
+        request.state.via_mcp = True
+        request.state.audit_user = f"{user} (MCP)" if user else ""
     request.state.user = user
 
     # Share and exchange links are public on purpose (token, expiry and limits are checked in their routes)
-    if path.startswith(("/static/", "/s/", "/x/", "/api/x/")) or path in PUBLIC_PATHS:
+    if path.startswith(("/static/", "/s/", "/x/", "/api/x/", "/hook/")) or path in PUBLIC_PATHS:
         return await call_next(request)
     # The GitHub webhook authenticates itself via HMAC - but only if a secret is configured
     if path == "/api/webhook/github" and updater.WEBHOOK_SECRET:
@@ -1511,6 +1530,90 @@ class TerminalTicketRequest(BaseModel):
     container: str = ""      # shell inside this Docker container instead of on the Pi
 
 
+async def internal_call(user: str, method: str, path: str, params: Optional[dict] = None, json_body: Any = None,
+                        host: str = "", timeout: float = 120) -> Any:
+    """Call this dashboard's own API in-process as `user` (permissions, activity log and remote-Pi
+    forwarding apply as for a browser). host = remote Pi id, '' = this Pi."""
+    transport = httpx.ASGITransport(app=app)
+    headers = {INTERNAL_HEADER: INTERNAL_KEY, INTERNAL_USER_HEADER: user}
+    cookies = {remotes.COOKIE: host} if host else None
+    async with httpx.AsyncClient(transport=transport, base_url="http://picore.internal", timeout=timeout, cookies=cookies) as client:
+        res = await client.request(method, path, params={k: v for k, v in (params or {}).items() if v is not None},
+                                   json=json_body, headers=headers)
+    try:
+        data = res.json()
+    except ValueError:
+        data = {"text": res.text[:60000]}
+    if res.status_code >= 400:
+        detail = data.get("detail") if isinstance(data, dict) else None
+        raise InternalCallError(res.status_code, str(detail or f"Fehler {res.status_code}"))
+    return data
+
+
+class InternalCallError(Exception):
+    def __init__(self, status: int, detail: str):
+        super().__init__(detail)
+        self.status = status
+
+
+mcp_server.setup(internal_call)
+
+
+class WebhookRequest(BaseModel):
+    name: str
+    level: str = "auto"
+
+
+@app.get("/api/settings/webhooks")
+async def api_webhooks():
+    return await asyncio.to_thread(webhooks.overview)
+
+
+@app.post("/api/settings/webhooks")
+async def api_webhooks_create(req: WebhookRequest, request: Request):
+    request.state.audit_detail = req.name[:120]
+    try:
+        return await asyncio.to_thread(webhooks.create, req.name, req.level, request.state.user or "")
+    except webhooks.WebhookError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/webhooks/{hook_id}/delete")
+async def api_webhooks_delete(hook_id: str):
+    return await asyncio.to_thread(webhooks.delete, hook_id)
+
+
+@app.api_route("/hook/{token}", methods=["POST", "PUT"])
+async def public_webhook(token: str, request: Request):
+    """Public webhook receiver (token in the path): the message becomes an event."""
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > webhooks.MAX_BODY:
+            break
+    ip = request.client.host if request.client else ""
+    try:
+        return await asyncio.to_thread(webhooks.receive, token, body, request.headers.get("content-type", ""),
+                                       {k.lower(): v for k, v in request.headers.items()}, ip)
+    except webhooks.WebhookError as e:
+        return JSONResponse({"detail": str(e)}, status_code=404 if "Unbekannt" in str(e) else 429)
+
+
+@app.get("/api/settings/mcp")
+async def api_settings_mcp():
+    return mcp_server.public()
+
+
+@app.post("/api/settings/mcp")
+async def api_settings_mcp_save(payload: dict, request: Request):
+    request.state.audit_detail = f"{'an' if payload.get('enabled') else 'aus'} · {payload.get('base_url', '')}"[:250]
+    try:
+        await asyncio.to_thread(mcp_server.save, payload)
+    except mcp_server.McpConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return await mcp_server.reload()
+
+
 @app.post("/api/terminal/ticket")
 async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     """Re-check the password before handing out a one-time terminal ticket.
@@ -2593,7 +2696,119 @@ async def api_docs_inventory_update(item_id: str, payload: dict):
 
 @app.post("/api/docs/inventory/{item_id}/delete")
 async def api_docs_inventory_delete(item_id: str):
-    return await asyncio.to_thread(_docs_call, docs.inventory_delete, item_id)
+    result = await asyncio.to_thread(_docs_call, docs.inventory_delete, item_id)
+    await asyncio.to_thread(attachments.delete_all, "inventory", item_id)
+    return result
+
+
+@app.get("/api/docs/attachments/{kind}")
+async def api_attachment_counts(kind: str):
+    return {"counts": await asyncio.to_thread(attachments.counts, kind)}
+
+
+@app.get("/api/docs/attachments/{kind}/{item_id}")
+async def api_attachments(kind: str, item_id: str):
+    try:
+        return {"files": await asyncio.to_thread(attachments.list_files, kind, item_id)}
+    except attachments.AttachmentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/docs/attachments/{kind}/{item_id}")
+async def api_attachment_upload(kind: str, item_id: str, name: str, request: Request):
+    length = request.headers.get("content-length")
+    try:
+        target = await asyncio.to_thread(attachments.target, kind, item_id, name, int(length) if length and length.isdigit() else None)
+    except attachments.AttachmentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    request.state.audit_detail = f"{kind}/{item_id}: {os.path.basename(target)}"[:250]
+    tmp = f"{target}.upload-{secrets.token_hex(4)}"
+    written = 0
+    try:
+        with open(tmp, "xb") as f:
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > attachments.MAX_FILE:
+                    raise HTTPException(status_code=413, detail="Datei zu groß (höchstens 25 MB).")
+                await asyncio.to_thread(f.write, chunk)
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+    return {"files": await asyncio.to_thread(attachments.list_files, kind, item_id)}
+
+
+@app.get("/api/docs/attachments/{kind}/{item_id}/file")
+async def api_attachment_file(kind: str, item_id: str, name: str, download: bool = False):
+    try:
+        f = await asyncio.to_thread(attachments.file_path, kind, item_id, name)
+    except attachments.AttachmentError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    inline = f["inline"] and not download
+    return FileResponse(f["path"], media_type=f["media"], filename=name, content_disposition_type="inline" if inline else "attachment",
+                        headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
+                                 "Cache-Control": "private, max-age=300"})
+
+
+@app.post("/api/docs/attachments/{kind}/{item_id}/delete")
+async def api_attachment_delete(kind: str, item_id: str, name: str, request: Request):
+    request.state.audit_detail = f"{kind}/{item_id}: {name}"[:250]
+    try:
+        return {"files": await asyncio.to_thread(attachments.delete, kind, item_id, name)}
+    except attachments.AttachmentError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/costs")
+async def api_costs():
+    return await asyncio.to_thread(costs.overview)
+
+
+@app.get("/wissen")
+async def get_wiki_page():
+    return _serve_page("wiki.html")
+
+
+def _wiki_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except wiki.WikiError as e:
+        raise HTTPException(status_code=404 if "nicht gefunden" in str(e) else 400, detail=str(e))
+
+
+@app.get("/api/wiki")
+async def api_wiki_pages():
+    return await asyncio.to_thread(wiki.pages)
+
+
+@app.get("/api/wiki/{page_id}")
+async def api_wiki_page(page_id: str):
+    return await asyncio.to_thread(_wiki_call, wiki.page, page_id)
+
+
+@app.get("/api/wiki/{page_id}/version")
+async def api_wiki_version(page_id: str, ts: int):
+    return await asyncio.to_thread(_wiki_call, wiki.version, page_id, ts)
+
+
+@app.post("/api/wiki")
+async def api_wiki_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:120]
+    return await asyncio.to_thread(_wiki_call, wiki.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/wiki/{page_id}")
+async def api_wiki_update(page_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:120]
+    return await asyncio.to_thread(_wiki_call, wiki.save, page_id, payload, request.state.user or "", payload.get("base"))
+
+
+@app.post("/api/wiki/{page_id}/delete")
+async def api_wiki_delete(page_id: str):
+    result = await asyncio.to_thread(_wiki_call, wiki.delete, page_id)
+    await asyncio.to_thread(attachments.delete_all, "wiki", page_id)
+    return result
 
 
 @app.get("/api/docs/contracts")
@@ -2614,7 +2829,9 @@ async def api_docs_contract_update(contract_id: str, payload: dict):
 
 @app.post("/api/docs/contracts/{contract_id}/delete")
 async def api_docs_contract_delete(contract_id: str):
-    return await asyncio.to_thread(_docs_call, docs.contract_delete, contract_id)
+    result = await asyncio.to_thread(_docs_call, docs.contract_delete, contract_id)
+    await asyncio.to_thread(attachments.delete_all, "contracts", contract_id)
+    return result
 
 
 @app.get("/api/docs/snippets")
@@ -3079,3 +3296,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket Client disconnected.")
     except Exception as e:
         logger.warning(f"WebSocket connection error: {e}")
+
+
+# Outermost layer: the MCP server's own paths (/mcp, OAuth) bypass the dashboard's login
+app.add_middleware(mcp_server.McpDispatch)

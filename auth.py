@@ -479,6 +479,15 @@ def make_session(username: str, remember: bool) -> tuple:
     return f"{payload}|{_sign(cfg['secret'], payload)}", ttl
 
 
+def active_user(username: str) -> Optional[str]:
+    """The stored spelling of an existing, enabled, not expired user - else None."""
+    cfg = load_config()
+    if not cfg or not username:
+        return None
+    key = _find(cfg, username)
+    return key if key and _usable(cfg["users"].get(key)) else None
+
+
 def user_from_token(token: Optional[str]) -> Optional[str]:
     cfg = load_config()
     if not token or not cfg or not cfg.get("secret"):

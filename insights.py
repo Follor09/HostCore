@@ -316,6 +316,13 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Events (maintenance): {e}")
 
+    try:
+        import webhooks
+        for e in webhooks.events_since(since):
+            out.append(_ev(e["ts"], e["level"], "webhook", f"{e['source']}: {e['title']}", e.get("detail", ""), "/settings#webhooks"))
+    except Exception as e:
+        logger.warning(f"Events (webhooks): {e}")
+
     devices = list((settings_store.get("lan_devices", {}) or {}).values())
     if devices:
         first_scan = min(d.get("first_seen", now) for d in devices)

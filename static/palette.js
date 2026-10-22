@@ -97,6 +97,7 @@
     page('page:settings', 'Einstellungen', '/settings', 'settings konfiguration');
     page('page:docs', 'Dokumentation', '/doku', 'doku inventar tagebuch runbook steckbrief anleitung');
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
+    page('page:wiki', 'Wissensdatenbank', '/wissen', 'wiki wissen seiten markdown notizen anleitung');
     page('page:fleet', 'Flotte', '/flotte', 'alle pis remote übersicht updates fleet');
     page('page:tools', 'IT-Toolbox', '/werkzeuge', 'base64 json hash md5 sha jwt passwort uuid cron zeitstempel subnetz cidr ipv6 rechner');
     [['subnetz', 'Netzwerk-Rechner', 'subnetz cidr netzmaske ipv4 ipv6 teilnetz'], ['base64', 'Base64', 'kodieren dekodieren'], ['json', 'JSON formatieren', 'json prüfen'],
@@ -371,7 +372,8 @@
         location.hash = url.hash;  // board.js switches on hashchange
       } else if (url.pathname === location.pathname && url.hash) {
         history.replaceState(null, '', url.hash);
-        document.querySelector(url.hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try { document.querySelector(url.hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* not a selector, e.g. a wiki page id */ }
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
       } else {
         location.assign(c.href);
       }

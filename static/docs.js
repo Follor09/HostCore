@@ -113,6 +113,90 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Attachments (invoices, manuals, photos …) for inventory, contracts and service docs
+  // ---------------------------------------------------------------------------
+  const attCounts = { inventory: {}, contracts: {}, servicedocs: {} };
+  const attKey = id => String(id).replace(/:/g, '_');
+  const fmtSize = b => (b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(b / 1024))} KB`);
+
+  async function loadAttCounts() {
+    await Promise.all(Object.keys(attCounts).map(async k => {
+      try { attCounts[k] = (await api(`/api/docs/attachments/${k}`)).counts || {}; } catch (e) { /* ignore */ }
+    }));
+  }
+
+  function attButton(kind, id, panelHost) {
+    const n = attCounts[kind][attKey(id)] || 0;
+    return button(n ? `Anhänge (${n})` : 'Anhänge', 'text-btn', () => toggleAttachments(kind, id, panelHost()));
+  }
+
+  async function toggleAttachments(kind, id, host) {
+    const existing = host.querySelector('.att-panel');
+    if (existing) { existing.remove(); return; }
+    const panel = el('div', 'att-panel');
+    host.appendChild(panel);
+    const base = `/api/docs/attachments/${kind}/${encodeURIComponent(id)}`;
+    const draw = files => {
+      panel.innerHTML = '';
+      attCounts[kind][attKey(id)] = files.length;
+      if (!files.length) panel.appendChild(el('p', 'field-hint', t('Noch keine Anhänge.')));
+      files.forEach(f => {
+        const row = el('div', 'att-row');
+        const a = raw('a', 'att-name', f.name);
+        a.href = `${base}/file?name=${encodeURIComponent(f.name)}`;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        row.append(a, el('span', 'att-meta', `${fmtSize(f.size)} · ${fmtTs(f.mtime)}`));
+        const dl = el('a', 'text-btn', t('Herunterladen'));
+        dl.href = `${base}/file?name=${encodeURIComponent(f.name)}&download=1`;
+        row.appendChild(dl);
+        row.appendChild(confirmButton('Löschen', 'text-btn danger', async () => {
+          try { draw((await api(`${base}/delete?name=${encodeURIComponent(f.name)}`, {})).files); } catch (err) { toast(err.message, 'error'); }
+        }, 'notes.edit'));
+        panel.appendChild(row);
+      });
+      if (can('notes.edit')) {
+        const label = el('label', 'att-upload');
+        const input = el('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.hidden = true;
+        label.append(input, el('span', 'btn-secondary', t('Dateien anhängen')), el('span', 'field-hint', t('PDF, Bilder, Text, ZIP – höchstens 25 MB')));
+        input.addEventListener('change', async () => {
+          for (const file of input.files) {
+            try {
+              const res = await fetch(`${base}?name=${encodeURIComponent(file.name)}`, { method: 'PUT', body: file });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.detail || `Fehler ${res.status}`);
+              draw(data.files);
+            } catch (err) { toast(`${file.name}: ${err.message}`, 'error'); }
+          }
+          input.value = '';
+        });
+        panel.appendChild(label);
+      }
+    };
+    try { draw((await api(base)).files); } catch (err) { panel.appendChild(el('p', 'field-hint', err.message)); }
+  }
+
+  // Table rows get the panel in an extra row below them
+  function rowPanelHost(row, cols) {
+    return () => {
+      let next = row.nextElementSibling;
+      if (!next || !next.classList.contains('att-host')) {
+        next = document.createElement('tr');
+        next.className = 'att-host';
+        const c = next.insertCell();
+        c.colSpan = cols;
+        row.after(next);
+      }
+      const cell = next.cells[0];
+      setTimeout(() => { if (!cell.querySelector('.att-panel')) next.remove(); }, 0);
+      return cell;
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Inventory
   // ---------------------------------------------------------------------------
   const WARRANTY = { ok: 'good', soon: 'warning', expired: '' };
@@ -159,7 +243,7 @@
       } else net.textContent = '–';
       const act = el('div', 'docs-row-actions');
       row.insertCell().appendChild(act);
-      act.append(button('Bearbeiten', 'text-btn', () => openInvForm(i), 'notes.edit'),
+      act.append(attButton('inventory', i.id, rowPanelHost(row, 7)), button('Bearbeiten', 'text-btn', () => openInvForm(i), 'notes.edit'),
         confirmButton('Löschen', 'text-btn danger', async () => {
           try { state.inv = await api(`/api/docs/inventory/${i.id}/delete`, {}); renderInventory(); } catch (err) { toast(err.message, 'error'); }
         }, 'notes.edit'));
@@ -452,7 +536,7 @@
       card.appendChild(dl);
       if (doc.updated) card.appendChild(el('div', 'field-hint', `${t('Stand')} ${fmtTs(doc.updated)}${doc.updated_by ? ` · ${doc.updated_by}` : ''}`));
       const act = el('div', 'runbook-actions');
-      act.append(button('Bearbeiten', 'btn-secondary', () => openSdForm(doc.target, doc), 'notes.edit'),
+      act.append(attButton('servicedocs', doc.target, () => card), button('Bearbeiten', 'btn-secondary', () => openSdForm(doc.target, doc), 'notes.edit'),
         confirmButton('Löschen', 'btn-danger', async () => {
           try { state.sd = await api('/api/docs/services/delete', { target: doc.target }); renderServiceDocs(); } catch (err) { toast(err.message, 'error'); }
         }, 'notes.edit'));
@@ -536,7 +620,7 @@
       } else cancel.appendChild(label ? el('span', `health-tag ${cls}`, t(label)) : el('span', '', '–'));
       const act = el('div', 'docs-row-actions');
       row.insertCell().appendChild(act);
-      act.append(button('Bearbeiten', 'text-btn', () => openCtForm(c), 'notes.edit'),
+      act.append(attButton('contracts', c.id, rowPanelHost(row, 5)), button('Bearbeiten', 'text-btn', () => openCtForm(c), 'notes.edit'),
         confirmButton('Löschen', 'text-btn danger', async () => {
           try { state.ct = await api(`/api/docs/contracts/${c.id}/delete`, {}); renderContracts(); } catch (err) { toast(err.message, 'error'); }
         }, 'notes.edit'));
@@ -661,6 +745,74 @@
     $('sn-form-wrap').innerHTML = '';
   }
 
+  // ---------------------------------------------------------------------------
+  // Homelab costs
+  // ---------------------------------------------------------------------------
+  function renderCosts(d) {
+    const tiles = $('cost-tiles');
+    tiles.innerHTML = '';
+    const tile = (label, value, sub) => {
+      const box = el('div', 'nb-stat');
+      box.append(el('span', 'nb-stat-value', value), el('span', 'nb-stat-label', t(label)));
+      if (sub) box.appendChild(el('span', 'nb-stat-label', sub));
+      tiles.appendChild(box);
+    };
+    tile('Gesamt pro Monat', fmtMoney(d.total.monthly), `${fmtMoney(d.total.yearly)} ${t('pro Jahr')}`);
+    tile('Strom pro Monat', d.power.available ? fmtMoney(d.power.month) : '–',
+      d.power.available ? `${t('hochgerechnet')} · Ø ${String(d.power.avg_w).replace('.', LOCALE.startsWith('de') ? ',' : '.')} W` : t('nur mit Messung (Pi 5)'));
+    tile('Verträge & Abos', fmtMoney(d.contracts.monthly), `${d.contracts.count} ${t('aktiv')} · ${fmtMoney(d.contracts.yearly)} ${t('pro Jahr')}`);
+    tile('Hardware pro Monat', fmtMoney(d.hardware.monthly_depreciation), t('auf 3 Jahre verteilt'));
+    tile('Hardware gesamt', fmtMoney(d.hardware.total), `${fmtMoney(d.hardware.this_year)} ${t('dieses Jahr')}`);
+
+    const chart = $('cost-chart');
+    chart.innerHTML = '';
+    const max = Math.max(1, ...d.history.map(h => h.power + h.contracts + h.hardware));
+    d.history.forEach(h => {
+      const col = el('div', 'cost-col');
+      const total = h.power + h.contracts + h.hardware;
+      col.title = `${h.month}: ${fmtMoney(total)}\n${t('Strom')} ${fmtMoney(h.power)} · ${t('Verträge')} ${fmtMoney(h.contracts)} · ${t('Hardware')} ${fmtMoney(h.hardware)}`;
+      const stack = el('div', 'cost-stack');
+      [['hardware', h.hardware], ['contracts', h.contracts], ['power', h.power]].forEach(([k, v]) => {
+        if (!v) return;
+        const seg = el('div', `cost-seg c-${k}`);
+        seg.style.height = `${(v / max) * 100}%`;
+        stack.appendChild(seg);
+      });
+      const [y, m] = h.month.split('-');
+      col.append(el('span', 'cost-total', total ? fmtMoney(total).replace(/,00\s?€|\.00/, '') : ''), stack,
+        el('span', 'cost-month', new Date(+y, +m - 1, 1).toLocaleDateString(LOCALE, { month: 'short' })));
+      chart.appendChild(col);
+    });
+
+    const det = $('cost-details');
+    det.innerHTML = '';
+    const table = el('table', 'data-table');
+    const head = table.createTHead().insertRow();
+    ['Posten', 'pro Monat', 'pro Jahr'].forEach(x => head.appendChild(el('th', '', t(x))));
+    const body = table.createTBody();
+    const row = (label, m, raw) => {
+      const r = body.insertRow();
+      const c = r.insertCell();
+      c.textContent = raw ? label : t(label);
+      if (raw) c.setAttribute('data-no-i18n', '');
+      r.insertCell().textContent = m == null ? '–' : fmtMoney(m);
+      r.insertCell().textContent = m == null ? '–' : fmtMoney(m * 12);
+    };
+    row('Strom', d.power.available ? d.power.month : null);
+    Object.entries(d.contracts.by_category).forEach(([cat, v]) => row(`${t('Verträge')}: ${t(cat)}`, v, true));
+    row('Hardware (abgeschrieben)', d.hardware.monthly_depreciation);
+    const sum = body.insertRow();
+    sum.className = 'cost-sum';
+    sum.insertCell().textContent = t('Gesamt');
+    sum.insertCell().textContent = fmtMoney(d.total.monthly);
+    sum.insertCell().textContent = fmtMoney(d.total.yearly);
+    const wrap = el('div', 'table-scroll');
+    wrap.appendChild(table);
+    det.appendChild(wrap);
+    const years = Object.entries(d.hardware.by_year);
+    if (years.length) det.appendChild(el('p', 'field-hint', `${t('Hardware-Käufe')}: ${years.map(([y, v]) => `${y} ${fmtMoney(v)}`).join(' · ')}`));
+  }
+
   // #steckbrief=stack:jellyfin from the containers page: show it, or start one
   function followHash() {
     const m = location.hash.match(/^#steckbrief=(.+)$/);
@@ -729,14 +881,16 @@
     }), { rootMargin: '-30% 0px -60% 0px' });
     document.querySelectorAll('.settings-section').forEach(s => observer.observe(s));
 
+    await loadAttCounts();
     try { state.inv = await api('/api/docs/inventory'); renderInventory(); } catch (err) { toast(err.message, 'error'); }
     loadJournal();
     loadRunbooks();
     try { state.sd = await api('/api/docs/services'); renderServiceDocs(); followHash(); } catch (err) { toast(err.message, 'error'); }
     try { state.ct = await api('/api/docs/contracts'); renderContracts(); } catch (err) { toast(err.message, 'error'); }
     try { state.sn = await api('/api/docs/snippets'); renderSnippets(); } catch (err) { toast(err.message, 'error'); }
+    try { renderCosts(await api('/api/costs')); } catch (err) { toast(err.message, 'error'); }
     // Deep links from the search (#vertraege, #befehle) arrive before these sections are filled
-    if (/^#(vertraege|befehle)$/.test(location.hash)) document.querySelector(location.hash)?.scrollIntoView();
+    if (/^#(vertraege|befehle|kosten)$/.test(location.hash)) document.querySelector(location.hash)?.scrollIntoView();
   }
 
   init();

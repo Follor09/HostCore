@@ -60,6 +60,12 @@ def search(query: str) -> Dict[str, Any]:
     rem = settings_store.get("reminders", {}) or {}
     for r in (rem.get("items", []) if isinstance(rem, dict) else []):
         check("Erinnerung", r.get("title", ""), [], "/#do=reminders")
+    try:
+        import wiki
+        for p in wiki.all_pages():
+            check("Wissen", p.get("title", ""), [p.get("folder", ""), p.get("content", "")], f"/wissen#{p['id']}")
+    except Exception:
+        pass
     boards = settings_store.get("boards", {}) or {}
     for b in (boards.get("boards", []) if isinstance(boards, dict) else []):
         for s in b.get("sections", []):

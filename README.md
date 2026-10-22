@@ -172,10 +172,16 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 - **Betriebstagebuch:** eigene Einträge („Was wurde wann geändert und warum“) mit Kategorie (Änderung, Wartung, Störung, Installation, Notiz), Zeitpunkt und Bezug. Durchsuchbar; Einträge erscheinen in den Ereignissen und im Wochenbericht.
 - **Runbooks:** Schritt-für-Schritt-Anleitungen (ein Schritt pro Zeile). Ein Durchlauf wird als Checkliste abgehakt – wer welchen Schritt wann erledigt hat, wird gespeichert, auch über mehrere Geräte. Beim Abschluss landet ein Eintrag im Betriebstagebuch (mit übersprungenen Schritten und Notiz); die letzten 30 Durchläufe bleiben sichtbar.
 - **Verträge & Abos:** Domains, Server, Lizenzen, Abos mit Anbieter, Kosten, Zahlungsrhythmus, Laufzeitende, Kündigungsfrist und Link zum Kundenkonto. Das Dashboard rechnet aus, bis wann gekündigt werden muss (bei automatisch verlängernden Verträgen für die nächste Verlängerung), markiert Fristen in den nächsten 30 Tagen und verpasste Fristen und zeigt die Kosten pro Monat und Jahr. Fristen und Verlängerungen erscheinen im Kalender-Widget.
+- **Kosten:** Strom (vom Pi gemessen, hochgerechnet), Verträge & Abos und Hardware-Käufe aus dem Inventar – pro Monat und Jahr, Hardware zusätzlich auf drei Jahre verteilt, dazu ein Diagramm der letzten 12 Monate.
+- **Anhänge:** PDFs, Bilder, Text- und ZIP-Dateien (bis 25 MB) an Inventar, Verträge, Steckbriefe und Wiki-Seiten hängen – Rechnungen, Handbücher, Fotos. Gespeichert unter `attachments/` auf dem Pi; Bilder und PDFs öffnen sich in einer abgeschotteten Vorschau.
 - **Befehle:** oft gebrauchte Befehle mit Titel, Beschreibung und Tags – mit einem Klick kopiert; im Web-Terminal fügt der Knopf „Befehle“ sie an der Eingabe ein (ohne sie abzuschicken).
 - **Steckbriefe:** pro Dienst, Web-Dienst oder Compose-Stack (oder als eigener Eintrag) Zweck, Adresse, Ports, Speicherort der Daten, Sicherung, Doku-Link, Zuständige und Notizen. Auf der Container-Seite öffnet „Steckbrief“ den passenden Eintrag oder legt ihn an.
 
 Ansehen darf jeder angemeldete Benutzer, Ändern braucht „Notizen & Doku bearbeiten“. Gespeichert in `settings.json`, für alle Geräte gleich.
+
+### 📖 Wissensdatenbank (`/wissen`)
+
+Freie Markdown-Seiten in Ordnern für alles, was nicht in Runbooks oder Steckbriefe passt: Überschriften, Listen, Aufgaben, Tabellen, Code-Blöcke, Zitate; `[[Seitentitel]]` verlinkt auf eine andere Seite. Editor mit Vorschau (Strg+S speichert), Anhänge pro Seite, **Verlauf** mit den letzten 20 Versionen (ansehen, wiederherstellen) und Schutz vor gleichzeitigem Überschreiben. Die Seiten liegen in `wiki.json` und sind über die Volltextsuche (Strg+K) und den MCP erreichbar.
 
 ### 🛠️ Wartungsfenster & Gastzugänge
 
@@ -185,6 +191,8 @@ Ansehen darf jeder angemeldete Benutzer, Ändern braucht „Notizen & Doku bearb
 ### 📁 Dateien
 
 Im Datei-Browser (Laufwerk → „Öffnen“): **Hochladen** per Button oder Drag & Drop (nur wo dein Benutzer schreiben darf, max. 4 GB, bestehende Dateien werden nur nach Rückfrage überschrieben), **Vorschau** für Text/Logs/Configs (mit Suche) und Bilder, **Teilen** als Download-Link für 1 Std., 24 Std. oder 7 Tage – funktioniert ohne Anmeldung für alle, die den Pi erreichen. Aktive Links unter Einstellungen → Freigaben.
+
+**Webhooks** (Einstellungen → Webhooks): eigene Adressen `/hook/<token>`, an die Uptime Kuma, Watchtower/Shoutrrr, GitHub oder Skripte (`curl -d "Backup fertig" …`) Meldungen schicken. Sie erscheinen in den Ereignissen und im Wochenbericht; die Stufe wird aus der Meldung erkannt (z.B. Uptime-Kuma „down“ = kritisch) oder fest vorgegeben. Höchstens 60 Meldungen pro Minute und Webhook.
 
 **Austausch-Links** (Einstellungen → Freigaben): ein öffentlicher Link für einen ganzen Ordner – **nur hochladen** (z.B. Logs oder Fotos von anderen einsammeln), **nur herunterladen** (alle Dateien direkt im Ordner) oder **beides**. Gültig 1 Std. bis 30 Tage, mit Größenlimit für Uploads und optionalem Hinweis für Besucher. Die Seite `/x/…` braucht keine Anmeldung; hochgeladene Dateien überschreiben nie etwas („Name (2)“), Dateinamen werden bereinigt, Unterordner und versteckte Dateien werden nie gezeigt. Jeder Up- und Download steht im Aktivitätsprotokoll. Erstellen braucht „Dateien teilen“, Upload-Links zusätzlich „Dateien hochladen“. Gesperrte Dateien (Login, Tokens, SSH-Schlüssel, Aktivitätsprotokoll) lassen sich weder ansehen noch teilen.
 
@@ -198,7 +206,7 @@ Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → D
 
 ### 🧭 Seitenleiste
 
-Links auf jeder Seite: **Boards**, alle **Seiten** mit Namen (System-Werkzeuge, Container, Flotte, Dokumentation, Wochenbericht, IT-Toolbox, Terminal, Einstellungen) – die Bereiche der aktuellen Seite (z.B. „Firewall“, „Logs“) stehen direkt darunter und zeigen, wo man gerade ist –, deine **eigenen Links** und die **Aktionen** (Suchen & Befehle, Verlauf abspielen, Board bearbeiten, Vollbild, Design). Der Pfeil oben klappt sie auf reine Symbole ein (gemerkt pro Browser); auf dem Handy öffnet sie das Menü-Symbol oben links.
+Links auf jeder Seite: **Boards**, alle **Seiten** mit Namen (System-Werkzeuge, Container, Flotte, Dokumentation, Wissen, Wochenbericht, IT-Toolbox, Terminal, Einstellungen) – die Bereiche der aktuellen Seite (z.B. „Firewall“, „Logs“) stehen direkt darunter und zeigen, wo man gerade ist –, deine **eigenen Links** und die **Aktionen** (Suchen & Befehle, Verlauf abspielen, Board bearbeiten, Vollbild, Design). Der Pfeil oben klappt sie auf reine Symbole ein (gemerkt pro Browser); auf dem Handy öffnet sie das Menü-Symbol oben links.
 
 ### 🧩 Boards (Startseite im Homarr-Stil)
 
@@ -218,6 +226,24 @@ Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und de
 - Auf schmalen Bildschirmen (Handy, Tablet) stehen die Apps als Kachelraster oben, die Karten darunter untereinander.
 - **Verlauf** (Board-Einstellungen → „Verlauf“): jede gespeicherte Änderung wird als Version aufbewahrt (die letzten 60; schnelle Änderungen hintereinander zählen als eine), mit Zeit, Benutzer und Umfang. „Wiederherstellen“ macht einen früheren Stand wieder aktuell – als neue Version, es geht also nichts verloren.
 - Beim ersten Start entsteht ein Standard-Board: Suchleiste, deine eigenen Links als Apps und alle Karten in der Kategorie „System“. „Alle Boards zurücksetzen“ in den Board-Einstellungen stellt es wieder her.
+
+### 🤖 MCP-Server (Claude)
+
+Das Dashboard ist zugleich ein **MCP-Server** (Streamable HTTP unter `/mcp`), mit dem Claude (claude.ai, Claude Desktop, Claude Code) es bedienen kann – über 60 Werkzeuge:
+
+| Bereich | Werkzeuge |
+| --- | --- |
+| Überblick | `get_overview` (guter Einstieg), `list_hosts`, `fleet_overview`, `get_metrics_history`, `get_events`, `weekly_report`, `search_content` |
+| Logs & Diagnose | `get_logs`, `get_error_digest`, `service_journal`, `container_logs`, `list_processes`, `get_storage`, `get_network`, `get_security`, `dns_lookup`, `port_test` |
+| Dienste & Container | `list_services`, `service_action`, `list_containers`, `container_action`, `stack_action`, `kube_restart`, `kube_scale` |
+| Updates & System | `apt_status`, `apt_run`, `fleet_apt`, `packages`, `system_power`, `list_quick_actions`, `run_quick_action` |
+| Netzwerk | `list_lan_devices`, `scan_lan`, `netbox_comparison`, `wake_on_lan`, `firewall`, `web_services`, `maintenance_window` |
+| Doku & Planung | Notizen, Aufgaben, Erinnerungen, Betriebstagebuch, Runbooks, Steckbriefe, Inventar, Verträge, Befehle, Wissensdatenbank, Kosten, Boards (`add_app_to_board`) |
+| Dateien | `list_directory`, `read_file`, `write_file` (mit Konfliktschutz), `search_files`, `move_to_trash` |
+
+Fast alle Werkzeuge nehmen `host` – den Namen eines Remote-Pis –, sonst gilt der Haupt-Pi. **Anmeldung per OAuth über Pocket ID** (FastMCP OIDCProxy, wie bei eigenen *-no-kari-Servern); jede Pocket-ID-Identität (E-Mail, Benutzername oder Subject) wird unter **Einstellungen → MCP-Server** einem Dashboard-Benutzer zugeordnet. Jedes Werkzeug ruft intern die Dashboard-API als dieser Benutzer auf: es gelten genau dessen **Berechtigungen**, alles steht mit „(MCP)“ im **Aktivitätsprotokoll**, und Remote-Pis werden wie im Browser über ihren Agent erreicht.
+
+Einrichtung: in Pocket ID einen OIDC-Client mit der angezeigten Callback-URL (`https://<domain>/auth/callback`) anlegen, eine eigene https-Domain per Cloudflare Tunnel auf `http://<Pi>:8000` zeigen lassen, Adresse, Pocket-ID-URL, Client-ID/-Secret und die Zuordnung eintragen, „Speichern & neu starten“. Unter dieser Domain liefert das Dashboard **nur** den MCP und die OAuth-Endpunkte aus, die Oberfläche bleibt im Heimnetz. In Claude: Connector mit `https://<domain>/mcp`; Claude Code: `claude mcp add --transport http picore https://<domain>/mcp`.
 
 ### 🛰️ Flotte (`/flotte`)
 
@@ -326,5 +352,5 @@ Der Token wird geprüft und in `.git/github-credentials` gespeichert (nur für d
 ## 📄 Lizenz & Sicherheit
 
 - Lizenz: [MIT](LICENSE) – frei nutzbar, veränderbar und weitergebbar, solange der Copyright-Hinweis erhalten bleibt.
-- Mitgelieferte Fremdsoftware: xterm.js (MIT, `static/vendor/xterm`); gridstack.js (MIT, `static/vendor/gridstack`); App-Icons aus Dashboard Icons von homarr-labs (über jsDelivr, werden erst bei Bedarf geladen); Wetterdaten von Open-Meteo (CC BY 4.0); Länder-Datenbank von DB-IP (CC BY 4.0, wird erst bei Bedarf geladen); App-Katalog von LinuxServer.io (über deren öffentliche API).
+- Mitgelieferte Fremdsoftware: xterm.js (MIT, `static/vendor/xterm`); FastMCP (Apache-2.0, als Python-Paket); gridstack.js (MIT, `static/vendor/gridstack`); App-Icons aus Dashboard Icons von homarr-labs (über jsDelivr, werden erst bei Bedarf geladen); Wetterdaten von Open-Meteo (CC BY 4.0); Länder-Datenbank von DB-IP (CC BY 4.0, wird erst bei Bedarf geladen); App-Katalog von LinuxServer.io (über deren öffentliche API).
 - Sicherheitsmodell und wie man eine Lücke meldet: [SECURITY.md](SECURITY.md). Das Dashboard ist für das Heimnetz bzw. ein VPN gedacht, nicht für den direkten Betrieb im Internet.

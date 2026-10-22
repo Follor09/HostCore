@@ -18,6 +18,9 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/containers$", "system.view"),
     ("GET", r"^/report$", "system.view"),
     ("GET", r"^/doku$", "login"),
+    ("GET", r"^/wissen$", "login"),
+    ("GET", r"^/api/wiki(/.*)?$", "login"),
+    ("POST", r"^/api/wiki(/.*)?$", "notes.edit"),
     ("GET", r"^/flotte$", "system.view"),
     ("GET", r"^/werkzeuge$", "login"),
     ("GET", r"^/api/fleet$", "system.view"),
@@ -50,6 +53,10 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/api/netbox/(status|data)$", "system.view"),
     ("POST", r"^/api/netbox/ip$", "netbox.write"),
     ("POST", r"^/api/settings/netbox(/test|/delete)?$", "settings.manage"),
+
+    # --- MCP server (OAuth via Pocket ID; the connection settings are admin-only)
+    ("*", r"^/api/settings/mcp$", "users.manage"),
+    ("*", r"^/api/settings/webhooks(/.*)?$", "settings.manage"),
 
     # --- Remote Pis: switching is for everyone logged in, managing them for admins
     ("GET", r"^/api/remotes/current$", "login"),
@@ -88,6 +95,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/notes$", "notes.edit"),
     ("POST", r"^/api/(kanban|reminders)(/.*)?$", "notes.edit"),
     ("POST", r"^/api/docs/.*$", "notes.edit"),
+    ("PUT", r"^/api/docs/attachments/[^/]+/[^/]+$", "notes.edit"),
     ("GET", r"^/api/docs/.*$", "login"),
     ("POST", r"^/api/maintenance(/.*)?$", "settings.manage"),
     ("GET", r"^/api/maintenance$", "login"),
