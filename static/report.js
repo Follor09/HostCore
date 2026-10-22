@@ -160,6 +160,16 @@
     }
     root.appendChild(c);
 
+    if ((r.journal && r.journal.length) || (r.maintenance && r.maintenance.length)) {
+      const j = section('Betriebstagebuch & Wartung', 'Eigene Einträge und Wartungsfenster der Woche.');
+      const rows = [
+        ...(r.maintenance || []).map(w => [w.start, 'Wartung', `${w.title} · bis ${fmtDate(w.end)}`]),
+        ...(r.journal || []).map(e => [e.ts, e.category, [e.title, e.text, e.user].filter(Boolean).join(' · ')])
+      ].sort((a, b) => b[0] - a[0]).map(([ts, ...rest]) => [fmtDate(ts), ...rest]);
+      j.appendChild(table(['Zeit', 'Art', 'Eintrag'], rows, [2]));
+      root.appendChild(j);
+    }
+
     root.appendChild(el('p', 'field-hint report-foot', `Erstellt ${new Date().toLocaleString(LOCALE)} · Daten: letzte 7 Tage (Messwerte werden 7 Tage aufbewahrt).`));
   }
 

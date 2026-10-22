@@ -57,6 +57,7 @@
       <a href="#wake-on-lan" data-perm="settings.manage">Wake-on-LAN</a>
       <a href="#web-dienste" data-perm="settings.manage">Web-Dienste</a>
       <a href="#statusseite" data-perm="settings.manage">Statusseite</a>
+      <a href="#wartung" data-perm="settings.manage">Wartungsfenster</a>
       <a href="#links" data-perm="settings.manage">Eigene Links</a>
       <a href="#freigaben" data-perm="files.share">Freigaben</a>
       <a href="#auto-update" data-perm="settings.manage">Auto-Update</a>
@@ -144,9 +145,23 @@
             <span>Gruppe</span>
             <select id="new-user-group"></select>
           </label>
+          <label class="login-field">
+            <span>Zugang</span>
+            <select id="new-user-expiry">
+              <option value="">Dauerhaft</option>
+              <option value="1">Gast · 1 Tag</option>
+              <option value="7">Gast · 7 Tage</option>
+              <option value="30">Gast · 30 Tage</option>
+              <option value="date">Gast · bis Datum …</option>
+            </select>
+          </label>
+          <label class="login-field" id="new-user-until-wrap" hidden>
+            <span>Gültig bis</span>
+            <input type="date" id="new-user-until">
+          </label>
           <button type="submit" class="btn-primary">Anlegen</button>
         </form>
-        <p class="field-hint">Das Passwort teilst du der Person selbst mit – sie kann es danach unter „Konto“ ändern.</p>
+        <p class="field-hint">Das Passwort teilst du der Person selbst mit – sie kann es danach unter „Konto“ ändern. Gastzugänge enden automatisch am Ende des Ablauftags (bei „1 Tag“ nach 24 Stunden); danach ist keine Anmeldung mehr möglich und laufende Sitzungen enden. Gäste können keine Administratoren sein.</p>
       </section>
 
       <!-- Berechtigungen (Admin) -->
@@ -330,6 +345,42 @@
         </form>
       </section>
 
+      <!-- Wartungsfenster -->
+      <section class="glass-card settings-section" id="wartung" data-perm="settings.manage">
+        <h2>Wartungsfenster</h2>
+        <p class="section-desc">Geplante Arbeiten an allen oder einzelnen Diensten. Während eines Wartungsfensters zählen Ausfälle der betroffenen Dienste nicht gegen die Verfügbarkeit, die Statusleiste zeigt nur einen Hinweis und die öffentliche Statusseite „Wartung“. Geplante Fenster der nächsten 14 Tage kündigt die Statusseite an.</p>
+        <form class="settings-form" id="mw-form" autocomplete="off">
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Titel</span>
+              <input type="text" id="mw-title" maxlength="100" placeholder="z. B. Kernel-Update und Neustart" required>
+            </label>
+            <label class="login-field">
+              <span>Notiz (optional)</span>
+              <input type="text" id="mw-note" maxlength="500">
+            </label>
+            <label class="login-field">
+              <span>Beginn</span>
+              <input type="datetime-local" id="mw-start" required>
+            </label>
+            <label class="login-field">
+              <span>Ende</span>
+              <input type="datetime-local" id="mw-end" required>
+            </label>
+          </div>
+          <div class="segmented" id="mw-scope-mode" role="radiogroup" aria-label="Betroffen">
+            <button type="button" data-mode="all" class="active">Alle Dienste</button>
+            <button type="button" data-mode="some">Ausgewählte</button>
+          </div>
+          <div class="sp-items mw-scope" id="mw-scope" hidden></div>
+          <div class="inline-form">
+            <button type="submit" class="btn-primary">Planen</button>
+            <button type="button" class="btn-secondary" id="mw-now">Jetzt starten (1 Std.)</button>
+          </div>
+        </form>
+        <div class="mw-list" id="mw-list"></div>
+      </section>
+
       <!-- Eigene Links -->
       <section class="glass-card settings-section" id="links" data-perm="settings.manage">
         <h2>Eigene Links</h2>
@@ -392,6 +443,7 @@
   <script src="/static/hosts.js"></script>
   <script src="/static/settings.js"></script>
   <script src="/static/statuspage-settings.js"></script>
+  <script src="/static/maintenance-settings.js"></script>
   <script src="/static/users.js"></script>
   <script src="/static/remotes-ui.js"></script>
   <script src="/static/links.js"></script>

@@ -15,9 +15,9 @@ from contextlib import asynccontextmanager
 import logging
 import os
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Header
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -60,6 +60,8 @@ import statuspage
 import kanban
 import reminders
 import briefing
+import maintenance
+import docs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -1165,6 +1167,7 @@ class UserCreateRequest(BaseModel):
     username: str
     password: str
     group: str
+    expires: Optional[int] = None    # guest account until (epoch seconds)
 
 
 class UserUpdateRequest(BaseModel):
@@ -1172,6 +1175,7 @@ class UserUpdateRequest(BaseModel):
     disabled: Optional[bool] = None
     password: Optional[str] = None
     logout: bool = False
+    expires: Optional[int] = None    # 0 = no expiry
 
 
 class GroupRequest(BaseModel):
@@ -1200,19 +1204,19 @@ async def api_users(request: Request):
 
 @app.post("/api/users")
 async def api_users_create(req: UserCreateRequest, request: Request):
-    request.state.audit_detail = f"{req.username[:32]} · {req.group[:32]}"
-    user = await asyncio.to_thread(_auth_call, auth.create_user, req.username, req.password, req.group)
+    request.state.audit_detail = f"{req.username[:32]} · {req.group[:32]}" + (f" · Gast bis {time.strftime('%d.%m.%Y', time.localtime(req.expires))}" if req.expires else "")
+    user = await asyncio.to_thread(_auth_call, auth.create_user, req.username, req.password, req.group, req.expires)
     return {"user": user, "users": auth.list_users(), "groups": auth.list_groups()}
 
 
 @app.post("/api/users/{username}/update")
 async def api_users_update(username: str, req: UserUpdateRequest, request: Request):
-    changes = [k for k in ("group", "disabled", "password") if getattr(req, k) is not None] + (["logout"] if req.logout else [])
+    changes = [k for k in ("group", "disabled", "password", "expires") if getattr(req, k) is not None] + (["logout"] if req.logout else [])
     request.state.audit_detail = f"{username[:32]}: {', '.join(changes)}" + (f" → {req.group}" if req.group else "")
     if username.casefold() == (request.state.user or "").casefold() and (req.disabled or (req.group and req.group != "admin")):
         raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst deaktivieren oder deine Admin-Rechte entfernen.")
     await asyncio.to_thread(_auth_call, auth.update_user, username, group=req.group, disabled=req.disabled,
-                            password=req.password, logout=req.logout)
+                            password=req.password, logout=req.logout, expires=req.expires)
     response = JSONResponse({"users": auth.list_users(), "groups": auth.list_groups()})
     if username.casefold() == (request.state.user or "").casefold() and (req.password or req.logout):
         _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
@@ -1689,24 +1693,6 @@ async def api_power():
     return await asyncio.to_thread(power.overview)
 
 
-class EnergyBudgetRequest(BaseModel):
-    kwh: float
-
-
-@app.get("/api/power/budget")
-async def api_power_budget_status():
-    return await asyncio.to_thread(power.budget_status)
-
-
-@app.post("/api/power/budget")
-async def api_power_budget(req: EnergyBudgetRequest, request: Request):
-    request.state.audit_detail = f"{req.kwh} kWh"
-    try:
-        return await asyncio.to_thread(power.save_budget, req.kwh)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 @app.post("/api/power/settings")
 async def api_power_settings(req: PowerSettingsRequest):
     try:
@@ -1968,6 +1954,24 @@ async def api_appstore():
     return await asyncio.to_thread(appstore.catalog)
 
 
+@app.post("/api/appstore/refresh")
+async def api_appstore_refresh():
+    await asyncio.to_thread(appstore.refresh)
+    return await asyncio.to_thread(appstore.catalog)
+
+
+@app.get("/api/appstore/logo/{app_id}")
+async def api_appstore_logo(app_id: str):
+    found = await asyncio.to_thread(appstore.logo, app_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Kein Logo.")
+    body, ctype = found
+    # SVGs may carry scripts: never run them in the dashboard's origin
+    return Response(body, media_type=ctype, headers={"Cache-Control": "public, max-age=604800",
+                                                     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                                                     "X-Content-Type-Options": "nosniff"})
+
+
 @app.get("/api/appstore/{app_id}/form")
 async def api_appstore_form(app_id: str):
     return await asyncio.to_thread(_appstore_call, appstore.form, app_id)
@@ -2106,6 +2110,142 @@ async def api_reminders_snooze(item_id: str, days: int = 1):
 @app.post("/api/reminders/{item_id}/delete")
 async def api_reminders_delete(item_id: str):
     return await asyncio.to_thread(_reminder_call, reminders.delete, item_id)
+
+
+# ---------------------------------------------------------------------------
+# Maintenance windows
+# ---------------------------------------------------------------------------
+class MaintenanceRequest(BaseModel):
+    title: str
+    start: int
+    end: int
+    scope: Any = "all"
+    note: str = ""
+
+
+def _maintenance_call(fn, *args):
+    try:
+        return fn(*args)
+    except maintenance.MaintenanceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/maintenance")
+async def api_maintenance():
+    return await asyncio.to_thread(maintenance.overview)
+
+
+@app.post("/api/maintenance")
+async def api_maintenance_create(req: MaintenanceRequest, request: Request):
+    request.state.audit_detail = f"{req.title[:60]} · {time.strftime('%d.%m. %H:%M', time.localtime(req.start))}–{time.strftime('%d.%m. %H:%M', time.localtime(req.end))}"
+    return await asyncio.to_thread(_maintenance_call, maintenance.create, req.title, req.start, req.end, req.scope, req.note,
+                                   request.state.user or "")
+
+
+@app.post("/api/maintenance/{window_id}/end")
+async def api_maintenance_end(window_id: str):
+    return await asyncio.to_thread(_maintenance_call, maintenance.end_now, window_id)
+
+
+@app.post("/api/maintenance/{window_id}/delete")
+async def api_maintenance_delete(window_id: str):
+    return await asyncio.to_thread(_maintenance_call, maintenance.delete, window_id)
+
+
+# ---------------------------------------------------------------------------
+# Documentation: inventory, journal, runbooks, service docs
+# ---------------------------------------------------------------------------
+def _docs_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except docs.DocsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/doku")
+async def get_docs_page():
+    return _serve_page("docs.html")
+
+
+@app.get("/api/docs/inventory")
+async def api_docs_inventory():
+    return await asyncio.to_thread(docs.inventory)
+
+
+@app.post("/api/docs/inventory")
+async def api_docs_inventory_create(payload: dict):
+    return await asyncio.to_thread(_docs_call, docs.inventory_save, None, payload)
+
+
+@app.post("/api/docs/inventory/{item_id}")
+async def api_docs_inventory_update(item_id: str, payload: dict):
+    return await asyncio.to_thread(_docs_call, docs.inventory_save, item_id, payload)
+
+
+@app.post("/api/docs/inventory/{item_id}/delete")
+async def api_docs_inventory_delete(item_id: str):
+    return await asyncio.to_thread(_docs_call, docs.inventory_delete, item_id)
+
+
+@app.get("/api/docs/journal")
+async def api_docs_journal(q: str = "", category: str = "", limit: int = 200):
+    return docs.journal(q[:100], category, limit)
+
+
+@app.post("/api/docs/journal")
+async def api_docs_journal_create(payload: dict, request: Request):
+    return await asyncio.to_thread(_docs_call, docs.journal_save, None, payload, request.state.user or "")
+
+
+@app.post("/api/docs/journal/{entry_id}")
+async def api_docs_journal_update(entry_id: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_docs_call, docs.journal_save, entry_id, payload, request.state.user or "")
+
+
+@app.post("/api/docs/journal/{entry_id}/delete")
+async def api_docs_journal_delete(entry_id: str):
+    return await asyncio.to_thread(_docs_call, docs.journal_delete, entry_id)
+
+
+@app.get("/api/docs/runbooks")
+async def api_docs_runbooks():
+    return docs.runbooks()
+
+
+@app.post("/api/docs/runbooks")
+async def api_docs_runbook_create(payload: dict, request: Request):
+    return await asyncio.to_thread(_docs_call, docs.runbook_save, None, payload, request.state.user or "")
+
+
+@app.post("/api/docs/runbooks/{runbook_id}")
+async def api_docs_runbook_update(runbook_id: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_docs_call, docs.runbook_save, runbook_id, payload, request.state.user or "")
+
+
+@app.post("/api/docs/runbooks/{runbook_id}/delete")
+async def api_docs_runbook_delete(runbook_id: str):
+    return await asyncio.to_thread(_docs_call, docs.runbook_delete, runbook_id)
+
+
+@app.post("/api/docs/runbooks/{runbook_id}/run")
+async def api_docs_runbook_run(runbook_id: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_docs_call, docs.run_action, runbook_id, str(payload.get("action", "")), request.state.user or "",
+                                   str(payload.get("step", "")), bool(payload.get("checked", True)), str(payload.get("note", "")))
+
+
+@app.get("/api/docs/services")
+async def api_docs_services():
+    return await asyncio.to_thread(docs.servicedocs)
+
+
+@app.post("/api/docs/services")
+async def api_docs_services_save(payload: dict, request: Request):
+    return await asyncio.to_thread(_docs_call, docs.servicedoc_save, str(payload.get("target", "")), payload, request.state.user or "")
+
+
+@app.post("/api/docs/services/delete")
+async def api_docs_services_delete(payload: dict):
+    return await asyncio.to_thread(_docs_call, docs.servicedoc_delete, str(payload.get("target", "")))
 
 
 @app.get("/api/briefing")

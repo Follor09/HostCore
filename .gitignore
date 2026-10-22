@@ -12,3 +12,6 @@ geoip.db
 geoip.db.tmp
 agent.json
 agent.json.tmp
+appstore_cache.json
+appstore_cache.json.tmp
+appstore_logos/

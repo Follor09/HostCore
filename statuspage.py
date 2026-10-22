@@ -76,7 +76,8 @@ def _midnights(days: int) -> List[int]:
     return [int(time.mktime((y, m, d - k, 0, 0, 0, 0, 0, -1))) for k in range(days - 1, -1, -1)]
 
 
-def _service_bars(periods: List[Dict[str, Any]], days: List[int], now: int) -> List[Optional[float]]:
+def _service_bars(periods: List[Dict[str, Any]], days: List[int], now: int, spans=()) -> List[Optional[float]]:
+    import maintenance
     bars = []
     for i, start in enumerate(days):
         end = days[i + 1] if i + 1 < len(days) else now
@@ -84,19 +85,23 @@ def _service_bars(periods: List[Dict[str, Any]], days: List[int], now: int) -> L
         for p in periods:
             a, b = max(p["start"], start), min(p["end"], end)
             if b > a:
-                total += b - a
                 if p["status"] == "active":
                     up += b - a
+                    total += b - a
+                else:
+                    total += b - a - maintenance.overlap(list(spans), a, b)
         bars.append(round(up / total, 4) if total else None)
     return bars
 
 
-def _health_bars(check_id: str, days: List[int]) -> List[Optional[float]]:
+def _health_bars(check_id: str, days: List[int], spans=()) -> List[Optional[float]]:
     import healthchecks
     with healthchecks._conn() as conn:
         rows = conn.execute("SELECT ts, ok FROM health_results WHERE check_id = ? AND ts >= ?", (check_id, days[0])).fetchall()
     sums: Dict[int, List[int]] = {}
     for ts, ok in rows:
+        if not ok and any(a <= ts < b for a, b in spans):
+            continue    # planned maintenance
         idx = max(i for i, d in enumerate(days) if d <= ts)
         sums.setdefault(idx, []).append(ok)
     return [round(sum(sums[i]) / len(sums[i]), 4) if i in sums else None for i in range(len(days))]
@@ -110,6 +115,7 @@ def _uptime(bars: List[Optional[float]]) -> Optional[float]:
 def _build() -> Dict[str, Any]:
     import containers
     import healthchecks
+    import maintenance
     import monitor
     import services_manager
     cfg = config()
@@ -122,6 +128,8 @@ def _build() -> Dict[str, Any]:
     items = []
     for it in cfg["items"]:
         state, bars = "unknown", []
+        target = f"{it['kind']}:{it['id']}"
+        spans = maintenance.intervals(target, days[0], now)
         if it["kind"] == "service":
             s = services.get(it["id"])
             if s:
@@ -130,23 +138,30 @@ def _build() -> Dict[str, Any]:
                 if uptime is None:
                     uptime = {u["id"]: u for u in monitor.service_uptime(HISTORY_DAYS)["services"]}
                 u = uptime.get(it["id"])
-                bars = _service_bars(u["periods"], days, now) if u else []
+                bars = _service_bars(u["periods"], days, now, spans) if u else []
         elif it["kind"] == "health":
             c = checks.get(it["id"])
             if c and c.get("last"):
                 state = "up" if c["last"]["ok"] else "down"
             if cfg["show_history"]:
-                bars = _health_bars(it["id"], days)
+                bars = _health_bars(it["id"], days, spans)
         elif it["kind"] == "stack":
             if stacks is None:
                 stacks = {s["name"]: s for s in containers.stacks()}
             s = stacks.get(it["id"])
             if s:
                 state = {"active": "up", "warning": "degraded"}.get(s["level"], "down")
-        items.append({"label": it["label"], "state": state, "bars": bars, "uptime": _uptime(bars)})
+        until = None
+        windows = maintenance.active(target)
+        if windows:
+            state = "maintenance"
+            until = max(w["end"] for w in windows)
+        items.append({"label": it["label"], "state": state, "bars": bars, "uptime": _uptime(bars), "maintenance_until": until})
 
-    states = [i["state"] for i in items if i["state"] != "unknown"]
-    if not states:
+    states = [i["state"] for i in items if i["state"] not in ("unknown", "maintenance")]
+    if any(i["state"] == "maintenance" for i in items) and all(s == "up" for s in states):
+        overall = "maintenance"
+    elif not states:
         overall = "unknown"
     elif all(s == "up" for s in states):
         overall = "up"
@@ -154,7 +169,10 @@ def _build() -> Dict[str, Any]:
         overall = "down"
     else:
         overall = "partial"
-    return {"title": cfg["title"], "description": cfg["description"], "overall": overall, "items": items,
+    shown = {f"{i['kind']}:{i['id']}" for i in cfg["items"]}
+    planned = [{"title": w["title"], "start": w["start"], "end": w["end"]} for w in maintenance.upcoming(14)
+               if w["scope"] == "all" or shown & set(w["scope"])]
+    return {"title": cfg["title"], "description": cfg["description"], "overall": overall, "items": items, "planned": planned,
             "show_history": cfg["show_history"], "days": [time.strftime("%Y-%m-%d", time.localtime(d)) for d in days],
             "updated": now}
 

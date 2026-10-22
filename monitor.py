@@ -139,6 +139,8 @@ def _sample_services(conn, now: int) -> None:
 
 
 def service_uptime(days: int = 7) -> Dict[str, Any]:
+    """Uptime per service; time inside maintenance windows is left out of the measurement."""
+    import maintenance
     now = int(time.time())
     since = now - days * 86400
     names = {s["id"]: s["name"] for s in services_manager.get_services_status()}
@@ -156,12 +158,16 @@ def service_uptime(days: int = 7) -> Dict[str, Any]:
     result = []
     for sid, name in names.items():
         svc = services.get(sid, {"id": sid, "name": name, "periods": [], "seconds": {}})
-        measured = sum(svc["seconds"].values())
+        spans = maintenance.intervals(f"service:{sid}", since, now)
+        in_maint = sum(maintenance.overlap(spans, p["start"], p["end"]) for p in svc["periods"] if p["status"] != "active")
+        measured = sum(svc["seconds"].values()) - in_maint
         up = svc["seconds"].get("active", 0)
-        # Outages: every non-active period, newest first
-        outages = [p for p in svc["periods"] if p["status"] != "active"]
+        # Outages: every non-active period, newest first (fully inside maintenance: not an outage)
+        outages = [{**p, "maintenance": maintenance.overlap(spans, p["start"], p["end"]) > 0}
+                   for p in svc["periods"] if p["status"] != "active"
+                   and maintenance.overlap(spans, p["start"], p["end"]) < p["end"] - p["start"]]
         result.append({
-            "id": sid, "name": name, "measured": measured,
+            "id": sid, "name": name, "measured": measured, "maintenance_seconds": int(in_maint),
             "uptime": round(up / measured * 100, 2) if measured else None,
             "periods": svc["periods"][-500:],
             "outages": [{**p, "duration": p["end"] - p["start"]} for p in reversed(outages)][:20],

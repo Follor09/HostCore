@@ -67,7 +67,7 @@
     'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools', 'sec:/system#firewall-traffic': 'security.view',
     'sec:/system#verbindungen': 'security.view', 'sec:/system#fehler': 'logs.view',
     'sec:/settings#wetter': 'settings.manage', 'sec:/settings#dienste': 'settings.manage', 'sec:/settings#wake-on-lan': 'settings.manage',
-    'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#statusseite': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
+    'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#statusseite': 'settings.manage', 'sec:/settings#wartung': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
     'sec:/settings#verlauf': 'settings.manage', 'sec:/settings#freigaben': 'files.share',
     'sec:/settings#benutzer': 'users.manage', 'sec:/settings#berechtigungen': 'users.manage',
     'dash:files': 'files.read', 'dash:diagnostics': 'system.view', 'dash:weather': 'settings.manage'
@@ -93,6 +93,7 @@
     page('page:system', 'System-Werkzeuge', '/system', 'tools');
     page('page:containers', 'Container', '/containers', 'docker kubernetes k3s pods compose stacks images');
     page('page:settings', 'Einstellungen', '/settings', 'settings konfiguration');
+    page('page:docs', 'Dokumentation', '/doku', 'doku inventar tagebuch runbook steckbrief anleitung');
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
 
     const section = (path, prefix, list) => list.forEach(([hash, label, keywords]) =>
@@ -117,11 +118,15 @@
     section('/system', 'System-Werkzeuge', [['firewall-traffic', 'Firewall-Traffic', 'blockiert traffic ufw log länder country'],
       ['verbindungen', 'Verbindungen', 'connections netstat ss offen programm socket'], ['fehler', 'Fehler-Übersicht', 'errors log journal fehler häufig'],
       ['pakete', 'Paketverwaltung', 'apt install paket programm installieren entfernen'], ['strom', 'Stromverbrauch', 'strom kosten watt kwh energie power']]);
+    section('/doku', 'Dokumentation', [
+      ['inventar', 'Inventar', 'hardware geräte garantie seriennummer kaufdatum'], ['tagebuch', 'Betriebstagebuch', 'journal log änderung protokoll'],
+      ['runbooks', 'Runbooks', 'anleitung checkliste schritte prozedur'], ['steckbriefe', 'Steckbriefe', 'dienst doku container beschreibung']
+    ]);
     section('/settings', 'Einstellungen', [
       ['konto', 'Konto', 'passwort sitzung account'], ['benutzer', 'Benutzer', 'users user accounts konten anlegen'],
       ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],
       ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
-      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['statusseite', 'Öffentliche Statusseite', 'status page öffentlich familie freunde'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
+      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['statusseite', 'Öffentliche Statusseite', 'status page öffentlich familie freunde'], ['wartung', 'Wartungsfenster', 'wartung maintenance geplant downtime'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
       ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
     ]);
 

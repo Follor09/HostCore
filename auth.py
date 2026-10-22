@@ -55,7 +55,7 @@ PERMISSIONS = [
     ("files.read", "Dateien ansehen", "Datei-Browser, Vorschau, Herunterladen", "Dateien"),
     ("files.write", "Dateien hochladen", "Dateien in Ordner hochladen, in die der Pi-Benutzer schreiben darf", "Dateien"),
     ("files.share", "Dateien teilen", "Freigabe-Links erstellen und beenden", "Dateien"),
-    ("notes.edit", "Notizen bearbeiten", "Die Notizen-Karte ändern", "Dashboard"),
+    ("notes.edit", "Notizen & Doku bearbeiten", "Notizen, Aufgaben, Erinnerungen und die Dokumentation (Inventar, Betriebstagebuch, Runbooks, Steckbriefe) ändern", "Dashboard"),
     ("actions.run", "Schnellaktionen ausführen", "Eigene Skripte starten und stoppen", "Dashboard"),
     ("services.control", "Dienste & Container steuern", "Starten, stoppen, neu starten", "System"),
     ("apps.install", "Apps installieren", "Docker-Apps aus dem App-Store einrichten (Ports, Ordner)", "System"),
@@ -183,6 +183,31 @@ def _scrypt(password: str, salt: bytes) -> bytes:
                           maxmem=64 * 1024 * 1024, dklen=32)
 
 
+MAX_GUEST_DAYS = 365
+
+
+def _expired(user: Optional[Dict[str, Any]]) -> bool:
+    """Guest accounts end at "expires" (epoch seconds); normal accounts have none."""
+    return bool(user and user.get("expires") and user["expires"] <= time.time())
+
+
+def _usable(user: Optional[Dict[str, Any]]) -> bool:
+    return bool(user) and not user.get("disabled") and not _expired(user)
+
+
+def _check_expires(expires: Optional[int], group: str) -> Optional[int]:
+    if not expires:
+        return None
+    expires = int(expires)
+    if expires <= time.time():
+        raise AuthError("Das Ablaufdatum muss in der Zukunft liegen.")
+    if expires > time.time() + MAX_GUEST_DAYS * 86400:
+        raise AuthError(f"Gastzugänge laufen höchstens {MAX_GUEST_DAYS} Tage.")
+    if group == "admin":
+        raise AuthError("Gastzugänge können keine Administratoren sein.")
+    return expires
+
+
 def _find(cfg: Dict[str, Any], username: str) -> Optional[str]:
     """Stored spelling of a username (case-insensitive lookup)."""
     want = (username or "").strip().casefold()
@@ -199,7 +224,7 @@ def verify_login(username: str, password: str) -> Optional[str]:
     user = cfg["users"].get(name) if name else None
     salt = bytes.fromhex(user["salt"]) if user else b"\x00" * 16
     actual = _scrypt(password, salt)
-    if not user or user.get("disabled"):
+    if not _usable(user):
         return None
     return name if hmac.compare_digest(actual, bytes.fromhex(user["password_hash"])) else None
 
@@ -210,7 +235,7 @@ def _check_password(password: str) -> None:
 
 
 def _active_admins(cfg: Dict[str, Any], without: Optional[str] = None) -> List[str]:
-    return [u for u, d in cfg["users"].items() if d.get("group") == "admin" and not d.get("disabled") and u != without]
+    return [u for u, d in cfg["users"].items() if d.get("group") == "admin" and _usable(d) and u != without]
 
 
 def set_password(username: str, password: str) -> None:
@@ -233,7 +258,7 @@ def set_password(username: str, password: str) -> None:
         _save_config(cfg)
 
 
-def create_user(username: str, password: str, group: str) -> Dict[str, Any]:
+def create_user(username: str, password: str, group: str, expires: Optional[int] = None) -> Dict[str, Any]:
     username = (username or "").strip()
     if not USERNAME_RE.match(username):
         raise AuthError("Benutzername: 1–32 Zeichen, nur Buchstaben, Ziffern und . _ -")
@@ -246,15 +271,19 @@ def create_user(username: str, password: str, group: str) -> Dict[str, Any]:
             raise AuthError("Unbekannte Gruppe.")
         if len(cfg["users"]) >= MAX_USERS:
             raise AuthError(f"Höchstens {MAX_USERS} Benutzer.")
+        expires = _check_expires(expires, group)
         salt = secrets.token_bytes(16)
         cfg["users"][username] = {"salt": salt.hex(), "password_hash": _scrypt(password, salt).hex(), "group": group,
                                   "created": int(time.time()), "changed": int(time.time()), "disabled": False, "sv": 1}
+        if expires:
+            cfg["users"][username]["expires"] = expires
         _save_config(cfg)
     return user_info(username)
 
 
 def update_user(username: str, *, group: Optional[str] = None, disabled: Optional[bool] = None,
-                password: Optional[str] = None, logout: bool = False) -> Dict[str, Any]:
+                password: Optional[str] = None, logout: bool = False, expires: Optional[int] = None) -> Dict[str, Any]:
+    """expires: None = unchanged, 0 = no expiry (normal account), epoch = guest until then."""
     with _lock:
         cfg = _cfg_for_write()
         name = _find(cfg, username)
@@ -266,7 +295,15 @@ def update_user(username: str, *, group: Optional[str] = None, disabled: Optiona
                 raise AuthError("Unbekannte Gruppe.")
             if u["group"] == "admin" and not _active_admins(cfg, without=name):
                 raise AuthError("Das ist der letzte Administrator – erst einen anderen Administrator anlegen.")
+            if group == "admin" and u.get("expires") and not _expired(u) and expires is None:
+                raise AuthError("Gastzugänge können keine Administratoren sein.")
             u["group"] = group
+        if expires is not None:
+            if expires == 0:
+                u.pop("expires", None)
+            else:
+                u["expires"] = _check_expires(expires, u["group"])
+                u["sv"] = u.get("sv", 1) + 1      # sessions get the new end
         if disabled is not None and bool(disabled) != bool(u.get("disabled")):
             if disabled and u["group"] == "admin" and not _active_admins(cfg, without=name):
                 raise AuthError("Der letzte Administrator kann nicht deaktiviert werden.")
@@ -302,7 +339,8 @@ def user_info(username: str) -> Optional[Dict[str, Any]]:
         return None
     u = cfg["users"][name]
     return {"username": name, "group": u["group"], "disabled": bool(u.get("disabled")),
-            "created": u.get("created"), "changed": u.get("changed")}
+            "created": u.get("created"), "changed": u.get("changed"),
+            "expires": u.get("expires"), "expired": _expired(u)}
 
 
 def list_users() -> List[Dict[str, Any]]:
@@ -405,7 +443,7 @@ def permissions(username: Optional[str]) -> Set[str]:
         return set()
     cfg = load_config()
     name = _find(cfg, username)
-    if not name or cfg["users"][name].get("disabled"):
+    if not name or not _usable(cfg["users"][name]):
         return set()
     group = all_groups(cfg).get(cfg["users"][name]["group"])
     return set(group["perms"]) if group else set()
@@ -432,6 +470,9 @@ def make_session(username: str, remember: bool) -> tuple:
     name = _find(cfg, username) or username
     sv = cfg["users"].get(name, {}).get("sv", 1)
     ttl = REMEMBER_TTL if remember else SESSION_TTL
+    expires = cfg["users"].get(name, {}).get("expires")
+    if expires:
+        ttl = max(60, min(ttl, int(expires - time.time())))
     payload = f"{name}|{int(time.time()) + ttl}|{sv}"
     return f"{payload}|{_sign(cfg['secret'], payload)}", ttl
 
@@ -448,7 +489,7 @@ def user_from_token(token: Optional[str]) -> Optional[str]:
     if not hmac.compare_digest(sig, _sign(cfg["secret"], f"{username}|{expiry}|{sv}")):
         return None
     user = cfg.get("users", {}).get(username)
-    if expiry_ts < time.time() or not user or user.get("disabled") or user.get("sv", 1) != sv_num:
+    if expiry_ts < time.time() or not _usable(user) or user.get("sv", 1) != sv_num:
         return None
     return username
 

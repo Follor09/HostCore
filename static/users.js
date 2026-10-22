@@ -76,6 +76,24 @@
   // ---------------------------------------------------------------------------
   // Users
   // ---------------------------------------------------------------------------
+  const fmtUntil = ts => new Date(ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  // Guest end: "1 Tag" = 24 h from now, otherwise the end of the chosen day
+  function expiryFromForm() {
+    const v = $('new-user-expiry').value;
+    if (!v) return null;
+    if (v === 'date') {
+      const d = $('new-user-until').value;
+      if (!d) throw new Error(t('Bitte ein Ablaufdatum wählen.'));
+      return Math.round(new Date(`${d}T23:59:59`).getTime() / 1000);
+    }
+    if (v === '1') return Math.round(Date.now() / 1000 + 86400);
+    const end = new Date();
+    end.setDate(end.getDate() + Number(v));
+    end.setHours(23, 59, 59, 0);
+    return Math.round(end.getTime() / 1000);
+  }
+
   function renderUsers() {
     const table = $('users-table');
     table.innerHTML = '';
@@ -107,7 +125,14 @@
         run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { group: select.value }), `${u.username}: ${groupName(select.value)}`));
       groupCell.appendChild(select);
 
-      row.insertCell().appendChild(el('span', `health-tag ${u.disabled ? 'critical' : 'good'}`, u.disabled ? 'Deaktiviert' : 'Aktiv'));
+      const status = row.insertCell();
+      if (u.disabled) status.appendChild(el('span', 'health-tag critical', 'Deaktiviert'));
+      else if (u.expired) status.appendChild(el('span', 'health-tag critical', 'Abgelaufen'));
+      else status.appendChild(el('span', 'health-tag good', 'Aktiv'));
+      if (u.expires) {
+        const until = el('span', `user-expiry${u.expired ? ' expired' : ''}`, `${t('Gast bis')} ${fmtUntil(u.expires)}`);
+        status.append(' ', until);
+      }
       row.insertCell().textContent = u.created ? new Date(u.created * 1000).toLocaleDateString(LOCALE) : '–';
 
       const actions = row.insertCell();
@@ -115,6 +140,13 @@
       actions.appendChild(button('Passwort', 'btn-secondary', () => openPasswordRow(row, u)));
       actions.appendChild(button('Abmelden', 'btn-secondary', () =>
         run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { logout: true }), `${u.username} wurde auf allen Geräten abgemeldet.`)));
+      if (u.expires) {
+        actions.appendChild(button('+7 Tage', 'btn-secondary', () => {
+          const from = Math.max(Date.now() / 1000, u.expires);
+          return run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { expires: Math.round(from + 7 * 86400) }),
+            `${u.username}: ${t('verlängert bis')} ${fmtUntil(from + 7 * 86400)}`);
+        }));
+      }
       if (!self) {
         actions.appendChild(button(u.disabled ? 'Aktivieren' : 'Deaktivieren', 'btn-secondary', () =>
           run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { disabled: !u.disabled }),
@@ -266,11 +298,19 @@
       toast(err.message, 'error');
       return;
     }
+    $('new-user-expiry').addEventListener('change', () => {
+      const guest = !!$('new-user-expiry').value;
+      $('new-user-until-wrap').hidden = $('new-user-expiry').value !== 'date';
+      // Guests start as viewers
+      if (guest && $('new-user-group').value === 'admin') $('new-user-group').value = 'viewer';
+    });
     $('user-form').addEventListener('submit', async e => {
       e.preventDefault();
-      const ok = await run(api('/api/users', { username: $('new-user-name').value.trim(), password: $('new-user-password').value, group: $('new-user-group').value }),
+      let expires;
+      try { expires = expiryFromForm(); } catch (err) { toast(err.message, 'error'); return; }
+      const ok = await run(api('/api/users', { username: $('new-user-name').value.trim(), password: $('new-user-password').value, group: $('new-user-group').value, expires }),
         `${$('new-user-name').value.trim()} angelegt.`);
-      if (ok) { $('new-user-name').value = ''; $('new-user-password').value = ''; }
+      if (ok) { $('new-user-name').value = ''; $('new-user-password').value = ''; $('new-user-expiry').value = ''; $('new-user-until-wrap').hidden = true; }
     });
     $('group-form').addEventListener('submit', async e => {
       e.preventDefault();

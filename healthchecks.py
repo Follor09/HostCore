@@ -133,6 +133,8 @@ async def background_checker() -> None:
 
 
 def status(hours: int = 24) -> Dict[str, Any]:
+    """Results per check; failures inside a maintenance window don't lower the uptime."""
+    import maintenance
     now = int(time.time())
     since = now - hours * 3600
     bucket = 1800
@@ -145,6 +147,9 @@ def status(hours: int = 24) -> Dict[str, Any]:
             last = rows[-1] if rows else conn.execute(
                 "SELECT ts, ok, status, ms, error FROM health_results WHERE check_id = ? ORDER BY ts DESC LIMIT 1", (c["id"],)).fetchone()
             last_fail = next((r for r in reversed(rows) if not r[1]), None)
+            spans = maintenance.intervals(f"health:{c['id']}", since, now)
+            if spans:
+                rows = [r for r in rows if r[1] or not any(a <= r[0] < b for a, b in spans)]
             per_bucket: Dict[int, List[int]] = {}
             for ts, ok, *_ in rows:
                 per_bucket.setdefault((ts // bucket) * bucket, []).append(ok)

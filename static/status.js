@@ -8,8 +8,9 @@
   const $ = id => document.getElementById(id);
   const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
-  const BANNER = { up: 'Alle Systeme laufen', partial: 'Teilweise Störung', down: 'Störung', unknown: 'Status unbekannt' };
-  const STATE = { up: 'Läuft', degraded: 'Eingeschränkt', down: 'Ausgefallen', unknown: 'Unbekannt' };
+  const BANNER = { up: 'Alle Systeme laufen', partial: 'Teilweise Störung', down: 'Störung', unknown: 'Status unbekannt', maintenance: 'Wartungsarbeiten' };
+  const STATE = { up: 'Läuft', degraded: 'Eingeschränkt', down: 'Ausgefallen', unknown: 'Unbekannt', maintenance: 'Wartung' };
+  const fmtWhen = ts => new Date(ts * 1000).toLocaleString(LOCALE, { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -39,7 +40,9 @@
       name.setAttribute('data-no-i18n', '');
       head.append(el('span', `status-dot ${i.state}`), name);
       if (i.uptime != null) head.appendChild(el('span', 'status-state', fmtPct(i.uptime)));
-      head.appendChild(el('span', 'status-state', t(STATE[i.state] || STATE.unknown)));
+      head.appendChild(el('span', 'status-state', i.state === 'maintenance' && i.maintenance_until
+        ? `${t('Wartung bis')} ${new Date(i.maintenance_until * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}`
+        : t(STATE[i.state] || STATE.unknown)));
       item.appendChild(head);
       if (d.show_history && i.bars.length) {
         const bars = el('div', 'status-bars');
@@ -53,6 +56,16 @@
         item.append(bars, legend);
       }
       list.appendChild(item);
+    });
+    const planned = $('sp-planned');
+    planned.innerHTML = '';
+    planned.hidden = !(d.planned && d.planned.length);
+    (d.planned || []).forEach(p => {
+      const row = el('div', 'status-planned-item');
+      const title = el('b', '', p.title);
+      title.setAttribute('data-no-i18n', '');
+      row.append(el('span', 'status-planned-kicker', t('Geplante Wartung')), title, el('span', '', `${fmtWhen(p.start)} – ${fmtWhen(p.end)}`));
+      planned.appendChild(row);
     });
     $('sp-foot').textContent = `${t('Aktualisiert')} ${new Date(d.updated * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })} · ${t('wird jede Minute neu geladen')}`;
   }

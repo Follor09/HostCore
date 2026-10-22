@@ -71,13 +71,31 @@
         <div class="section-head">
           <h2>App-Store</h2>
           <div class="head-tools">
-            <span class="field-hint" id="app-dir" data-no-i18n></span>
+            <span class="field-hint" id="app-catalog-state"></span>
+            <button data-perm="apps.install" class="mini-icon-btn" id="app-refresh" title="Katalog neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
           </div>
         </div>
-        <p class="section-desc">Beliebte Self-Hosted-Apps mit wenigen Klicks installieren. Jede App bekommt einen eigenen Ordner mit docker-compose.yml und läuft danach als normaler Compose-Stack – Aktualisieren, Stoppen und Entfernen gehen unten bei den Stacks.</p>
+        <p class="section-desc">Empfohlene Apps und der Katalog von <a href="https://www.linuxserver.io" target="_blank" rel="noopener">LinuxServer.io</a> – nur Images, die es für diesen Pi gibt. Jede App bekommt einen eigenen Ordner mit docker-compose.yml und läuft danach als normaler Compose-Stack (Aktualisieren, Stoppen und Entfernen unten bei den Stacks).</p>
+        <form class="log-filters app-toolbar" id="app-toolbar" autocomplete="off">
+          <input type="search" id="app-q" placeholder="App suchen – Name, Beschreibung, Kategorie …" spellcheck="false" aria-label="App suchen">
+          <select id="app-source" aria-label="Quelle">
+            <option value="">Alle Quellen</option>
+            <option value="curated">Empfohlen</option>
+            <option value="lsio">LinuxServer.io</option>
+            <option value="installed">Installiert</option>
+          </select>
+          <select id="app-sort" aria-label="Sortierung">
+            <option value="popular">Beliebteste zuerst</option>
+            <option value="name">Name A–Z</option>
+            <option value="updated">Zuletzt aktualisiert</option>
+          </select>
+        </form>
         <div class="segmented app-filters" id="app-filters" role="tablist" aria-label="Kategorie"></div>
+        <p class="field-hint" id="app-count"></p>
         <div class="app-grid" id="app-grid"></div>
+        <div class="app-more"><button type="button" class="btn-secondary" id="app-more" hidden>Mehr anzeigen</button></div>
         <p class="field-hint" id="app-hint"></p>
+        <p class="field-hint" id="app-dir" data-no-i18n></p>
       </section>
 
       <!-- Kubernetes -->

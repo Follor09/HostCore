@@ -206,6 +206,7 @@ def _ev(ts, level, category, title, detail="", link="") -> Dict[str, Any]:
 def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
     import audit
     import healthchecks
+    import maintenance
     import monitor
     now = time.time()
     since = now - days * 86400
@@ -228,9 +229,11 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
                 continue  # never running here: not installed / off on purpose
             for prev, cur in zip(periods, periods[1:]):
                 if prev["status"] == "active" and cur["status"] != "active":
-                    level = "critical" if cur["status"] == "error" else "warning"
+                    planned = maintenance.covers(f"service:{svc['id']}", cur["start"])
+                    level = "info" if planned else "critical" if cur["status"] == "error" else "warning"
                     out.append(_ev(cur["start"], level, "services", f"{svc['name']} ausgefallen",
-                                   "Fehler" if cur["status"] == "error" else "Inaktiv", "/system#verfuegbarkeit"))
+                                   ("Fehler" if cur["status"] == "error" else "Inaktiv") + (" · Wartung" if planned else ""),
+                                   "/system#verfuegbarkeit"))
                 elif prev["status"] != "active" and cur["status"] == "active":
                     out.append(_ev(cur["start"], "good", "services", f"{svc['name']} wieder aktiv",
                                    f"nach {fmt_duration(cur['start'] - prev['start'])}", "/system#verfuegbarkeit"))
@@ -253,7 +256,8 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
         last: Dict[str, int] = {}
         for ts, cid, ok, error in rows:
             if cid in names and cid in last and last[cid] != ok and ts >= since:
-                out.append(_ev(ts, "good" if ok else "warning", "services",
+                planned = not ok and maintenance.covers(f"health:{cid}", ts)
+                out.append(_ev(ts, "good" if ok else "info" if planned else "warning", "services",
                                f"{names[cid]} wieder erreichbar" if ok else f"{names[cid]} nicht erreichbar",
                                "" if ok else (error or ""), "/settings#web-dienste"))
             last[cid] = ok
@@ -287,6 +291,21 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Events (ssh): {e}")
 
+    try:
+        import docs
+        for e in docs.journal_between(since, now):
+            out.append(_ev(e["ts"], "info", "journal", e["title"], f"{e['category']} · {e.get('user', '')}".strip(" ·"), "/doku#tagebuch"))
+    except Exception as e:
+        logger.warning(f"Events (journal): {e}")
+
+    try:
+        for w in maintenance.overview()["windows"]:
+            if since <= w["start"] <= now:
+                out.append(_ev(w["start"], "info", "maintenance", f"Wartung: {w['title']}",
+                               f"bis {time.strftime('%d.%m. %H:%M', time.localtime(w['end']))}", "/settings#wartung"))
+    except Exception as e:
+        logger.warning(f"Events (maintenance): {e}")
+
     devices = list((settings_store.get("lan_devices", {}) or {}).values())
     if devices:
         first_scan = min(d.get("first_seen", now) for d in devices)
@@ -317,12 +336,21 @@ def status_summary() -> Dict[str, Any]:
     def add(level, text, link=""):
         items.append({"level": level, "text": text, "link": link})
 
+    import maintenance
     for s in services_manager.get_services_status():
-        if s["status"] == "error":
+        if s["status"] == "error" and not maintenance.active(f"service:{s['id']}"):
             add("critical", f"{s['name']}: Fehler", "#service:" + s["id"])
     for c in healthchecks.status(24)["checks"]:
-        if c["last"] and not c["last"]["ok"]:
+        if c["last"] and not c["last"]["ok"] and not maintenance.active(f"health:{c['id']}"):
             add("warning", f"{c['name']} nicht erreichbar", "/settings#web-dienste")
+    for w in maintenance.active():
+        add("info", f"Wartung: {w['title']} (bis {time.strftime('%H:%M', time.localtime(w['end']))})", "/settings#wartung")
+    try:
+        import docs
+        for it in docs.warranty_alerts(30):
+            add("info", f"Garantie von {it['name']} endet in {it['warranty_days']} Tagen", "/doku#inventar")
+    except Exception as e:
+        logger.warning(f"Status (warranty): {e}")
 
     for disk in storage.overview()["disks"]:
         for p in disk["partitions"]:
@@ -451,4 +479,13 @@ def weekly_report() -> Dict[str, Any]:
     rep["updates"] = [e for e in ev["events"] if e["title"] == "Dashboard aktualisiert"]
     rep["disk"] = disk_forecast()
     rep["status"] = status_summary()
+    try:
+        import docs
+        import maintenance
+        rep["journal"] = sorted(docs.journal_between(since, now), key=lambda e: e["ts"], reverse=True)
+        rep["maintenance"] = [{"title": w["title"], "start": w["start"], "end": w["end"]}
+                              for w in maintenance.overview()["windows"] if w["end"] >= since and w["start"] <= now]
+    except Exception as e:
+        logger.warning(f"Report (journal/maintenance): {e}")
+        rep["journal"], rep["maintenance"] = [], []
     return rep

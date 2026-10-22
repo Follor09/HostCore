@@ -527,6 +527,9 @@
       if (s.files.length && window.PiEditor) {
         actions.appendChild(button('Compose-Datei', 'btn-secondary', () => window.PiEditor.open(s.files[0], { composeHint: false, onSaved: () => toast(t('Gespeichert – mit „Aktualisieren“ oder „Starten“ übernehmen.'), 'success') }), 'files.read'));
       }
+      const doc = el('a', 'btn-secondary', t('Steckbrief'));
+      doc.href = `/doku#steckbrief=${encodeURIComponent(`stack:${s.name}`)}`;
+      actions.appendChild(doc);
       card.appendChild(actions);
 
       const job = Object.values(state.jobs).filter(j => j.stack === s.name).sort((a, b) => b.started - a.started)[0];
