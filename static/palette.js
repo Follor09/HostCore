@@ -100,7 +100,7 @@
       cmds.push({ id: `sec:${path}#${hash}`, label: `${t(prefix)} › ${t(label)}`, raw: true, group: 'Bereiche', keywords, href: `${path}#${hash}` }));
     section('/system', 'System-Werkzeuge', [
       ['ereignisse', 'Ereignisse', 'events timeline ausfall feed'], ['netzwerk', 'Netzwerk', 'ip wlan gateway dns interfaces'], ['datenverbrauch', 'Datenverbrauch', 'traffic monat tag daten usage'],
-      ['dns', 'DNS & Traceroute', 'nslookup dig mx txt route hops'], ['geraete', 'Geräte im Netzwerk', 'lan scan netzwerk geräte mac'],
+      ['dns', 'DNS & Traceroute', 'nslookup dig mx txt route hops'], ['geraete', 'Geräte im Netzwerk', 'lan scan netzwerk geräte mac'], ['netbox', 'NetBox', 'ipam präfix ip-adressen dokumentation abgleich frei'],
       ['port-check', 'Port-Check', 'ports offen erreichbar test'], ['firewall', 'Firewall', 'ufw regeln port blockieren'],
       ['ssh', 'SSH-Anmeldungen', 'login fail2ban angriffe gesperrt'], ['hardware', 'Hardware', 'modell seriennummer bootloader pcie usb'],
       ['speicherprognose', 'Speicherprognose', 'disk voll forecast ordner wachstum'], ['sensoren', 'Sensoren', 'temperatur spannung pmic rp1 volt'], ['ressourcen', 'Ressourcen-Verbrauch', 'prozesse cpu ram programme hogs'],
@@ -127,7 +127,7 @@
       ['konto', 'Konto', 'passwort sitzung account'], ['benutzer', 'Benutzer', 'users user accounts konten anlegen'],
       ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],
       ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
-      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['statusseite', 'Öffentliche Statusseite', 'status page öffentlich familie freunde'], ['wartung', 'Wartungsfenster', 'wartung maintenance geplant downtime'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
+      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['netbox', 'NetBox verbinden', 'netbox ipam api token'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['statusseite', 'Öffentliche Statusseite', 'status page öffentlich familie freunde'], ['wartung', 'Wartungsfenster', 'wartung maintenance geplant downtime'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
       ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
     ]);
 

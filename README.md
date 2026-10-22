@@ -35,6 +35,7 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
 - **Dienste steuern:** Klick auf eine Dienst-Kachel öffnet Start / Stopp / Neustart (mit Bestätigung) und das Journal des Dienstes. `install.sh` erlaubt per sudo genau diese Units – sonst nichts. Beim Auto-Updater: „Update jetzt ausführen“.
 - **Container-Steuerung:** Docker-Container starten, stoppen, neu starten (mit Bestätigung) und Logs ansehen.
 - **Wake-on-LAN:** PCs, NAS & Co. per Klick wecken; Geräte unter *Einstellungen → Wake-on-LAN* verwalten.
+- **NetBox:** Unter *Einstellungen → NetBox* Adresse und API-Token eintragen (NetBox 3.x/4.x, auch `nbt_`-Tokens ab 4.5). *System-Werkzeuge → NetBox* zeigt Präfixe mit Auslastung, IP-Adressen, Geräte und VMs und gleicht sie mit dem Geräte-Scan ab: nicht dokumentierte Geräte, abweichende IP oder MAC, reservierte Adressen in Benutzung, dokumentierte Adressen ohne Antwort. Dazu Adressen, die in NetBox *und* im Netz frei sind (ohne IP-Bereiche wie den DHCP-Pool). Mit der Berechtigung „NetBox bearbeiten“ und einem Token mit Schreibrechten lassen sich Geräte und freie Adressen direkt in NetBox eintragen. Der Token bleibt auf dem Pi.
 - **Server-Dienste & Homelab-Ports:**
   - Automatische Überwachung von: **SSH** (:22), **Docker**, **Webserver** (:80), **NetBird VPN** (wt0), **Kubernetes** (k3s / k8s / microk8s, :6443) und dem **Auto-Updater** – jeweils mit Status *Aktiv*, *Inaktiv* oder *Fehler*.
 - **Laufwerke & Speicher-Explorer:**

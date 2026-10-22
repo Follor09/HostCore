@@ -48,6 +48,7 @@
       <a href="#datenverbrauch">Datenverbrauch</a>
       <a data-perm="network.tools" href="#dns">DNS &amp; Traceroute</a>
       <a href="#geraete">Geräte im Netzwerk</a>
+      <a href="#netbox">NetBox</a>
       <a href="#port-check">Port-Check</a>
       <a data-perm="security.view" href="#verbindungen">Verbindungen</a>
       <a data-perm="security.view" href="#firewall">Firewall</a>
@@ -203,6 +204,52 @@
         </div>
         <div class="table-scroll tall">
           <table class="data-table" id="lan-devices"></table>
+        </div>
+      </section>
+
+      <!-- NetBox -->
+      <section class="glass-card settings-section" id="netbox">
+        <div class="section-head">
+          <h2>NetBox</h2>
+          <div class="head-tools">
+            <a class="btn-secondary" id="nb-open" href="#" target="_blank" rel="noopener noreferrer" hidden>In NetBox öffnen</a>
+            <button class="btn-secondary" id="nb-refresh" hidden>Neu laden</button>
+          </div>
+        </div>
+        <p class="section-desc">Präfixe, IP-Adressen, Geräte und VMs aus deiner NetBox – abgeglichen mit dem Geräte-Scan dieses Pi: was im Netz läuft, aber nicht dokumentiert ist, wo IP oder MAC abweichen und welche Adressen wirklich frei sind.</p>
+        <div id="nb-setup" hidden>
+          <p class="field-hint">NetBox ist noch nicht verbunden.</p>
+          <a class="btn-secondary" href="/settings#netbox" data-perm="settings.manage">Jetzt verbinden</a>
+        </div>
+        <div id="nb-main" hidden>
+          <p class="field-hint" id="nb-status"></p>
+          <div class="nb-stats" id="nb-summary"></div>
+          <div class="nb-toolbar">
+            <div class="segmented" id="nb-tabs" role="tablist" aria-label="Ansicht">
+              <button class="active" data-tab="compare">Abgleich</button>
+              <button data-tab="free">Freie Adressen</button>
+              <button data-tab="prefixes">Präfixe</button>
+              <button data-tab="ips">IP-Adressen</button>
+              <button data-tab="objects">Geräte &amp; VMs</button>
+            </div>
+            <form class="log-filters nb-filters" id="nb-filters">
+              <input type="search" id="nb-q" placeholder="Filtern: Name, IP, MAC, Beschreibung…" autocomplete="off" spellcheck="false" aria-label="NetBox filtern">
+              <select id="nb-kind" aria-label="Art">
+                <option value="">Alle Abweichungen</option>
+                <option value="ip_mismatch">IP weicht ab</option>
+                <option value="mac_mismatch">Anderes Gerät auf der IP</option>
+                <option value="status">Reserviert, aber belegt</option>
+                <option value="ip_missing">IP nicht eingetragen</option>
+                <option value="undocumented">Nicht dokumentiert</option>
+                <option value="offline">Dokumentiert, nicht erreichbar</option>
+              </select>
+            </form>
+          </div>
+          <p class="field-hint" id="nb-hint"></p>
+          <div id="nb-free" hidden></div>
+          <div class="table-scroll tall" id="nb-table-wrap">
+            <table class="data-table" id="nb-table"></table>
+          </div>
         </div>
       </section>
 
@@ -794,6 +841,7 @@
   <script src="/static/hosts.js"></script>
   <script src="/static/overview.js"></script>
   <script src="/static/system.js"></script>
+  <script src="/static/netbox.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

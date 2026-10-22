@@ -38,6 +38,11 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/weather/location$", "settings.manage"),
     ("*", r"^/api/settings/status-page$", "settings.manage"),
 
+    # --- NetBox: reading for system viewers, writing IP addresses with its own permission
+    ("GET", r"^/api/netbox/(status|data)$", "system.view"),
+    ("POST", r"^/api/netbox/ip$", "netbox.write"),
+    ("POST", r"^/api/settings/netbox(/test|/delete)?$", "settings.manage"),
+
     # --- Remote Pis: switching is for everyone logged in, managing them for admins
     ("GET", r"^/api/remotes/current$", "login"),
     ("POST", r"^/api/remotes/select$", "login"),

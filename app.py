@@ -43,6 +43,7 @@ import packages
 import logdigest
 import agent
 import remotes
+import netbox
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -1892,6 +1893,69 @@ async def api_remotes_delete(remote_id: str, request: Request):
     request.state.audit_detail = r["name"] if r else remote_id
     remotes.remove(remote_id)
     return {"remotes": await remotes.refresh_status()}
+
+
+class NetBoxSettingsRequest(BaseModel):
+    url: str = ""
+    token: str = ""
+    verify: bool = True
+
+
+class NetBoxIpRequest(BaseModel):
+    ip: str
+    status: str = "active"
+    dns_name: str = ""
+    description: str = ""
+
+
+@app.get("/api/netbox/status")
+async def api_netbox_status():
+    return netbox.public()
+
+
+@app.get("/api/netbox/data")
+async def api_netbox_data(refresh: bool = False):
+    try:
+        return await netbox.data(refresh)
+    except netbox.NetBoxError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/netbox/ip")
+async def api_netbox_ip(req: NetBoxIpRequest, request: Request):
+    request.state.audit_detail = f"{req.ip} {req.dns_name}".strip()[:250]
+    try:
+        return await netbox.create_ip(req.ip, req.status, req.dns_name, req.description)
+    except netbox.NetBoxError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/netbox")
+async def api_settings_netbox(req: NetBoxSettingsRequest, request: Request):
+    request.state.audit_detail = req.url[:250]
+    try:
+        return await netbox.save(req.url, req.token, req.verify)
+    except netbox.NetBoxError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/netbox/test")
+async def api_settings_netbox_test(req: NetBoxSettingsRequest):
+    try:
+        url = netbox.normalize_url(req.url)
+        token = req.token.strip()
+        cur = netbox._cfg()
+        if not token and cur and cur["url"] == url:
+            token = cur["token"]
+        return await netbox.probe(url, token, req.verify)
+    except netbox.NetBoxError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/netbox/delete")
+async def api_settings_netbox_delete():
+    netbox.remove()
+    return netbox.public()
 
 
 @app.get("/containers")

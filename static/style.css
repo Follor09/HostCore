@@ -9886,3 +9886,107 @@ body.replaying #btn-replay {
 .stack-limit-row b { min-width: 90px; font-family: var(--font-mono); font-size: 0.8rem; }
 .stack-limit-row input { width: 100px; }
 .hd-dot { fill: var(--accent-cyan); }
+
+/* ==========================================================================
+   NetBox (system page + settings)
+   ========================================================================== */
+.nb-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 6px;
+}
+
+.nb-filters { flex: 1 1 280px; margin: 0; }
+
+.nb-link {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  font-size: 0.78rem;
+}
+
+.nb-link:hover { text-decoration: underline; }
+
+.nb-util { min-width: 160px; }
+.nb-util .progress-bar-bg { margin-bottom: 4px; }
+
+.nb-form-row td { background: rgba(var(--ink-rgb), 0.03); }
+
+.nb-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 6px 0;
+  max-width: 740px;
+  position: sticky;
+  left: 12px;
+  white-space: normal;
+}
+
+.nb-form input,
+.nb-form select {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-main);
+  background: rgba(var(--shade-rgb), 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.nb-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  grid-column: 1 / -1;
+}
+
+.nb-free-net + .nb-free-net { margin-top: 18px; }
+
+.nb-free-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.remote-form .nb-insecure { grid-column: 1 / -1; }
+.remote-form .nb-insecure input { width: auto; }
+
+.nb-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+
+.nb-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: rgba(var(--ink-rgb), 0.03);
+}
+
+.nb-stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.nb-stat-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.data-table td.nb-detail { min-width: 300px; }
+#nb-table .lan-sub + .lan-sub { margin-top: 2px; }
+#nb-table td:first-child .lan-sub { margin-top: 4px; }

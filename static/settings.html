@@ -50,6 +50,7 @@
       <a href="#benutzer" data-perm="users.manage">Benutzer</a>
       <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
       <a href="#remote" data-perm="users.manage">Remote-Pis</a>
+      <a href="#netbox" data-perm="settings.manage">NetBox</a>
       <a href="#sprache">Sprache</a>
       <a href="#darstellung">Darstellung</a>
       <a href="#wetter" data-perm="settings.manage">Wetter</a>
@@ -211,6 +212,32 @@
             <li>Am Ende stehen Adresse und Token im Terminal – beides hier eintragen. Später zeigt <code>./agent.sh token</code> den Token wieder.</li>
             <li>Der Agent hat keine eigene Oberfläche und kein Login, aktualisiert sich aber wie dieses Dashboard automatisch von GitHub.</li>
             <li>Der Token wird im Klartext übertragen: Remote-Pis am besten nur im Heimnetz oder über das VPN (NetBird) ansprechen. Neuer Token: <code>./agent.sh rotate</code>.</li>
+          </ol>
+        </details>
+      </section>
+
+      <section class="glass-card settings-section" id="netbox" data-perm="settings.manage">
+        <h2>NetBox</h2>
+        <p class="section-desc">Verbindet das Dashboard mit deiner NetBox. Unter System-Werkzeuge → NetBox erscheinen dann Präfixe, IP-Adressen, Geräte und VMs, abgeglichen mit dem Geräte-Scan dieses Pi.</p>
+        <p class="field-hint" id="nb-current"></p>
+        <form class="remote-form" id="nb-form" autocomplete="off">
+          <label class="fw-field"><span>Adresse</span><input type="text" id="nb-url" placeholder="https://netbox.home.arpa" spellcheck="false" required></label>
+          <label class="fw-field remote-token"><span>API-Token</span><input type="password" id="nb-token" placeholder="NetBox → Profil → API-Tokens" spellcheck="false"></label>
+          <label class="toggle-label nb-insecure"><input type="checkbox" id="nb-insecure"> Zertifikat nicht prüfen (selbst signiert)</label>
+          <div class="remote-form-actions">
+            <button type="button" class="btn-secondary" id="nb-test">Verbindung testen</button>
+            <button type="button" class="btn-danger" id="nb-remove" hidden>Trennen</button>
+            <button type="submit" class="btn-primary">Speichern</button>
+          </div>
+        </form>
+        <p class="form-msg" id="nb-msg" role="status"></p>
+        <details class="remote-howto">
+          <summary>Welcher Token?</summary>
+          <ol>
+            <li>In NetBox oben rechts Profil → API-Tokens → Token hinzufügen. NetBox 4.5+ zeigt den Token einmalig als <code>nbt_…</code>, ältere Versionen als 40 Zeichen langen Schlüssel – beides funktioniert.</li>
+            <li>Zum Ansehen reicht ein Token ohne Schreibrechte. Wer Geräte aus dem Abgleich direkt in NetBox eintragen will, braucht Schreibrechte für IP-Adressen – und im Dashboard die Berechtigung „NetBox bearbeiten“.</li>
+            <li>Der Token bleibt auf dem Pi und wird nie an den Browser zurückgegeben. Ohne neuen Token bleibt der gespeicherte erhalten, aber nur für dieselbe Adresse.</li>
+            <li>Die Abfrage läuft vom Pi aus: NetBox muss vom Pi erreichbar sein (Heimnetz oder VPN).</li>
           </ol>
         </details>
       </section>
@@ -494,6 +521,7 @@
   <script src="/static/maintenance-settings.js"></script>
   <script src="/static/users.js"></script>
   <script src="/static/remotes-ui.js"></script>
+  <script src="/static/netbox-settings.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>
