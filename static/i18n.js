@@ -1846,7 +1846,7 @@
     'Reserviert': 'Reserved', 'Veraltet': 'Deprecated', 'Bereitgestellt': 'Staged',
     'Fehlerhaft': 'Failed', 'Wird stillgelegt': 'Decommissioning',
     // --- Boards
-    'Textblock': 'Text block', 'Linkliste': 'Link list', 'RSS-Feed': 'RSS feed', 'Kalender': 'Calendar', 'Erkannt': 'Discovered',
+    'gestern': 'yesterday', 'Textblock': 'Text block', 'Linkliste': 'Link list', 'RSS-Feed': 'RSS feed', 'Kalender': 'Calendar', 'Erkannt': 'Discovered',
     'Leerer Textblock – im Bearbeiten-Modus mit dem Stift füllen.': 'Empty text block – fill it with the pen in edit mode.',
     'Feed nicht lesbar.': 'Feed not readable.',     'Vorheriger Monat': 'Previous month', 'Nächster Monat': 'Next month', 'Demnächst': 'Coming up', 'Keine Termine.': 'No dates.',
     'Aufgabe': 'Task', 'Der Kalender ist nur nach Anmeldung sichtbar.': 'The calendar is only visible after logging in.',
