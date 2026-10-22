@@ -17,6 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/gridstack/gridstack.min.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="theme-cyber">
@@ -82,7 +83,7 @@
       <button class="icon-button" id="btn-replay" title="Verlauf abspielen" aria-label="Verlauf abspielen">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 8v4l3 2"></path></svg>
       </button>
-      <button class="icon-button" id="btn-customize" title="Dashboard anpassen" aria-label="Dashboard anpassen" aria-pressed="false">
+      <button class="icon-button" data-perm="board.edit" id="btn-customize" title="Board bearbeiten" aria-label="Board bearbeiten" aria-pressed="false">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
       </button>
       <a data-perm="system.view" class="icon-button" href="/system" title="System-Werkzeuge" aria-label="System-Werkzeuge">
@@ -132,16 +133,20 @@
   <!-- Main Content Dashboard Container -->
   <div class="status-bar" id="status-bar" role="status" aria-live="polite" hidden></div>
 
-  <nav class="dash-tabs" id="dash-tabs" aria-label="Dashboard-Seiten" hidden></nav>
+  <nav class="dash-tabs" id="dash-tabs" aria-label="Boards" hidden></nav>
   <div class="dash-empty glass-card" id="dash-empty" hidden>
-    <p>Diese Seite ist noch leer.</p>
-    <button class="btn-primary" id="dash-empty-edit">Karten auswählen</button>
+    <p>Dieses Board ist noch leer.</p>
+    <button class="btn-primary" id="dash-empty-edit" data-perm="board.edit">Apps &amp; Widgets hinzufügen</button>
   </div>
 
-  <main class="dashboard-container" data-widget-group="main">
+  <main class="dashboard-container board" id="board" aria-label="Board"></main>
+  <div class="board-bg" id="board-bg" aria-hidden="true"></div>
+
+  <!-- Card pool: the dashboard's cards live here until a board places them -->
+  <div class="card-pool" id="card-pool" hidden>
 
     <!-- Top Widgets Row: Clock, Weather, Server Services -->
-    <section class="top-widgets-row" data-widget-group="top" data-widget="top">
+    
       <!-- 1. Clock & Uptime Card -->
       <div class="glass-card widget-clock-card" data-widget="clock">
         <div class="widget-header">
@@ -239,10 +244,10 @@
           <!-- Dynamically populated services -->
         </div>
       </div>
-    </section>
+    
 
     <!-- Main System Monitoring Center -->
-    <section class="metrics-grid" data-widget-group="metrics" data-widget="metrics">
+    
 
       <!-- Metric 1: CPU Auslastung -->
       <div class="glass-card metric-card" data-widget="cpu" data-replay>
@@ -711,7 +716,7 @@
           <span id="pi3d-watt" hidden>-- W</span>
         </div>
       </div>
-    </section>
+    
 
     <!-- Metrics History (24h / 7 Tage) -->
     <section class="glass-card history-card" data-widget="history" id="history-card">
@@ -797,7 +802,7 @@
     </section>
 
     <!-- Lower Section: Storage Explorer & System Journal Logs + Diagnostics/Processes -->
-    <section class="bottom-tools-grid" data-widget-group="bottom" data-widget="bottom">
+    
 
       <!-- Drives & Storage Explorer (Replaces 40-Pin Header) -->
       <div class="glass-card storage-explorer-card" data-widget="storage">
@@ -985,9 +990,9 @@
         </div>
 
       </div>
-    </section>
+    
 
-  </main>
+  </div>
 
   <!-- Confirm Modal for Reboot / Shutdown -->
   <div class="modal-backdrop" id="action-modal">
@@ -1356,15 +1361,33 @@
 
   <div class="toast-container" id="toast-container"></div>
   <!-- Customize mode: floating bar -->
-  <div class="customize-bar" id="customize-bar" role="region" aria-label="Dashboard anpassen" hidden>
+  <div class="customize-bar board-edit-bar" id="customize-bar" role="region" aria-label="Board bearbeiten" hidden>
     <div class="customize-text">
-      <strong>Dashboard anpassen</strong>
-      <span>Pfeile oder Ziehen ändern die Reihenfolge, das Auge blendet auf dieser Seite aus. Oben lassen sich weitere Seiten anlegen. <em id="customize-count"></em></span>
+      <strong>Board bearbeiten</strong>
+      <span>Elemente ziehen und an der Ecke unten rechts in der Größe ändern. Änderungen werden sofort gespeichert. <em id="customize-count"></em></span>
     </div>
     <div class="customize-actions">
-      <button class="btn-secondary" id="customize-reset">Zurücksetzen</button>
+      <button class="btn-secondary" id="board-add">+ Hinzufügen</button>
+      <button class="btn-secondary" id="board-settings">Board-Einstellungen</button>
       <button class="btn-primary" id="customize-done">Fertig</button>
     </div>
+  </div>
+
+  <!-- Board dialogs (add, item settings, board settings) -->
+  <div class="modal-backdrop" id="board-modal" aria-hidden="true">
+    <div class="modal-card sheet-card board-sheet" role="dialog" aria-modal="true" aria-labelledby="board-modal-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="board-modal-title"></h3>
+          <p class="card-subtitle" id="board-modal-sub"></p>
+        </div>
+        <button class="mini-icon-btn" id="board-modal-close" title="Schließen (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="board-modal-body" id="board-modal-body"></div>
+    </div>
+  </div>
   </div>
 
   <script src="/static/i18n.js"></script>
@@ -1380,7 +1403,8 @@
   <script src="/static/notes.js"></script>
   <script src="/static/widgets.js"></script>
   <script src="/static/overview.js"></script>
-  <script src="/static/customize.js"></script>
+  <script src="/static/vendor/gridstack/gridstack-all.js"></script>
+  <script src="/static/board.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

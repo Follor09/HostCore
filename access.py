@@ -38,6 +38,9 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/weather/location$", "settings.manage"),
     ("*", r"^/api/settings/status-page$", "settings.manage"),
 
+    # --- Boards (start page): everyone who sees the dashboard sees them, editing needs its own permission
+    ("POST", r"^/api/boards(/reset)?$", "board.edit"),
+
     # --- NetBox: reading for system viewers, writing IP addresses with its own permission
     ("GET", r"^/api/netbox/(status|data)$", "system.view"),
     ("POST", r"^/api/netbox/ip$", "netbox.write"),
@@ -116,7 +119,7 @@ _COMPILED = [(m, re.compile(rx), perm) for m, rx, perm in RULES]
 PUBLIC_READ_PREFIXES = ("/api/stats", "/api/system", "/api/processes", "/api/services", "/api/drives", "/api/weather",
                         "/api/history", "/api/homelab", "/api/updates", "/api/nvme", "/api/status-summary", "/api/health",
                         "/api/wol", "/api/workloads", "/api/diagnostics", "/api/about", "/api/capabilities",
-                        "/api/replay")
+                        "/api/replay", "/api/boards")
 
 
 def required_permission(method: str, path: str) -> Optional[str]:

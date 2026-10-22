@@ -123,7 +123,7 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 | **Benutzer** | System-Werkzeuge ansehen, Dateien ansehen, Notizen |
 | **Betrachter** | nur das Dashboard |
 
-- **Eigene Gruppen** anlegen (Rechte von einer bestehenden übernehmen) und in einer Matrix ankreuzen – 19 Einzelrechte von „Logs lesen“ bis „Web-Terminal“. Änderungen gelten sofort, ohne neue Anmeldung. Eingebaute Gruppen lassen sich anpassen und auf Standard zurücksetzen.
+- **Eigene Gruppen** anlegen (Rechte von einer bestehenden übernehmen) und in einer Matrix ankreuzen – 21 Einzelrechte von „Logs lesen“ bis „Web-Terminal“. Änderungen gelten sofort, ohne neue Anmeldung. Eingebaute Gruppen lassen sich anpassen und auf Standard zurücksetzen.
 - Pro Benutzer: Gruppe wechseln, Passwort setzen, auf allen Geräten abmelden, deaktivieren (sofort abgemeldet), löschen. Es bleibt immer mindestens ein aktiver Administrator; die eigenen Admin-Rechte kann man sich nicht selbst nehmen.
 - Der Server prüft **jede** Anfrage gegen eine zentrale Rechte-Tabelle (`access.py`); neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren. Die Oberfläche blendet nicht erlaubte Knöpfe und Bereiche aus.
 - Passwörter als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed). Eine alte `auth.json` mit einem Benutzer wird automatisch übernommen – dieser wird Administrator.
@@ -190,13 +190,19 @@ Im Datei-Browser (Laufwerk → „Öffnen“): **Hochladen** per Button oder Dra
 
 ### 🎨 Personalisieren
 
-Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → Darstellung; Kartenbreite im Anpassen-Modus (Messwert-Karten breit, Verlauf/Container halb); eigene Links (Home Assistant, Router …) unter Einstellungen → Eigene Links – erscheinen oben unter dem Link-Symbol und in der Suche.
+Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → Darstellung; Größe und Platz jeder Karte im Board-Bearbeiten-Modus; eigene Links (Home Assistant, Router …) unter Einstellungen → Eigene Links – erscheinen oben unter dem Link-Symbol und in der Suche.
 
-### 🧩 Dashboard anpassen
+### 🧩 Boards (Startseite im Homarr-Stil)
 
-Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil oder Ziehen umsortieren (innerhalb ihres Bereichs – obere Reihe, Messwerte, untere Reihe – und ganze Bereiche wie „Verlauf“ nach oben/unten) und per Auge ausblenden. Gespeichert pro Browser, „Zurücksetzen“ stellt das Standard-Layout wieder her.
+Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und den **Karten** des Dashboards, gegliedert in **Kategorien** – und es kann mehrere **Boards** geben (z.B. „Übersicht“, „Medien“, „Netzwerk“). Gespeichert wird auf dem Pi, alle Geräte sehen dasselbe.
 
-**Mehrere Seiten:** Im Anpassen-Modus legt „+ Neue Seite“ weitere Dashboard-Seiten an (z.B. „Server“, „Zuhause“, „Medien“). Eine neue Seite startet leer, das Auge blendet Karten auf der jeweiligen Seite ein oder aus – Reihenfolge und Breite gelten für alle Seiten. Seiten lassen sich umbenennen (✎), verschieben (‹ ›) und löschen (×). Umschalten per Klick, **Alt+1…9**, Befehlspalette („Seite: …“) oder Link (`/#tab-medien`). Gespeichert wird pro Browser.
+- **Apps:** Kachel mit Icon, Name und optionaler Beschreibung, die deinen Dienst öffnet. Icons kommen aus der Sammlung [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) (Suche nach Name, passendes Icon wird automatisch vorgeschlagen) oder von einer eigenen Bild-Adresse; der Pi lädt sie einmal und hält sie im Cache (`icon_cache/`). Ein Punkt oben rechts zeigt, ob die App erreichbar ist – der Pi prüft jede Minute, auf Wunsch über eine eigene Status-Adresse.
+- **Widgets:** Suchleiste (DuckDuckGo, Google, Startpage, Bing, Ecosia oder eigene Adresse; findet auch deine Apps) und eingebettete Webseite (z.B. ein Grafana-Dashboard).
+- **Karten:** alle bisherigen Karten (CPU, Temperatur, Verlauf, Container, Notizen, Aufgaben …), jede einmal pro Board.
+- **Bearbeiten** (Raster-Symbol oben rechts, Berechtigung „Dashboard gestalten“, ab 1100 Pixel Fensterbreite): Elemente ziehen, an der Ecke unten rechts in der Größe ändern, auch zwischen Kategorien verschieben; „+ Hinzufügen“ für Apps, Widgets, Karten und Kategorien; Board-Einstellungen mit Name, Spaltenzahl, Hintergrundbild und Abdunkeln. Änderungen werden sofort gespeichert; wurde das Board inzwischen auf einem anderen Gerät geändert, lädt das Dashboard den neuen Stand, statt ihn zu überschreiben.
+- Boards wechseln per Klick, **Alt+1…9**, Befehlspalette oder Link (`/#board-medien`). Apps aller Boards lassen sich auch über die Befehlspalette (Strg+K) öffnen. Kategorien lassen sich zuklappen (pro Browser).
+- Auf schmalen Bildschirmen (Handy, Tablet) stehen die Apps als Kachelraster oben, die Karten darunter untereinander.
+- Beim ersten Start entsteht ein Standard-Board: Suchleiste, deine eigenen Links als Apps und alle Karten in der Kategorie „System“. „Alle Boards zurücksetzen“ in den Board-Einstellungen stellt es wieder her.
 
 ### 🧰 System-Werkzeuge (`/system`, Schraubenschlüssel oben rechts)
 
@@ -297,5 +303,5 @@ Der Token wird geprüft und in `.git/github-credentials` gespeichert (nur für d
 ## 📄 Lizenz & Sicherheit
 
 - Lizenz: [MIT](LICENSE) – frei nutzbar, veränderbar und weitergebbar, solange der Copyright-Hinweis erhalten bleibt.
-- Mitgelieferte Fremdsoftware: xterm.js (MIT, `static/vendor/xterm`); Wetterdaten von Open-Meteo (CC BY 4.0); Länder-Datenbank von DB-IP (CC BY 4.0, wird erst bei Bedarf geladen); App-Katalog von LinuxServer.io (über deren öffentliche API).
+- Mitgelieferte Fremdsoftware: xterm.js (MIT, `static/vendor/xterm`); gridstack.js (MIT, `static/vendor/gridstack`); App-Icons aus Dashboard Icons von homarr-labs (über jsDelivr, werden erst bei Bedarf geladen); Wetterdaten von Open-Meteo (CC BY 4.0); Länder-Datenbank von DB-IP (CC BY 4.0, wird erst bei Bedarf geladen); App-Katalog von LinuxServer.io (über deren öffentliche API).
 - Sicherheitsmodell und wie man eine Lücke meldet: [SECURITY.md](SECURITY.md). Das Dashboard ist für das Heimnetz bzw. ein VPN gedacht, nicht für den direkten Betrieb im Internet.

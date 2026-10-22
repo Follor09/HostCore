@@ -33,7 +33,8 @@
       scrollTo('[data-widget=processes]');
     }],
     weather: ['Wetter-Ort ändern', 'stadt city', () => { scrollTo('[data-widget=weather]'); click('#weather-city-btn')(); }],
-    customize: ['Dashboard anpassen', 'layout karten ausblenden reihenfolge', () => window.PiLayout && window.PiLayout.edit()],
+    customize: ['Board bearbeiten', 'layout karten apps widgets anordnen kategorie homarr', () => window.PiLayout && window.PiLayout.edit()],
+    boardAdd: ['Neues Board', 'board seite anlegen tab', () => window.PiLayout && window.PiLayout.addTab()],
     replay: ['Verlauf abspielen', 'replay wiedergabe verlauf abspielen gestern nacht', () => window.PiReplay && window.PiReplay.open()],
     kanban: ['Kanban-Board öffnen', 'kanban board todo aufgaben projekte ideen', () => window.PiPlanner && window.PiPlanner.openKanban()],
     reminders: ['Erinnerungen', 'erinnerung reminder termin wiederkehrend aufgabe', () => window.PiPlanner && window.PiPlanner.openReminders()],
@@ -70,7 +71,8 @@
     'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#statusseite': 'settings.manage', 'sec:/settings#wartung': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
     'sec:/settings#verlauf': 'settings.manage', 'sec:/settings#freigaben': 'files.share',
     'sec:/settings#benutzer': 'users.manage', 'sec:/settings#berechtigungen': 'users.manage',
-    'dash:files': 'files.read', 'dash:diagnostics': 'system.view', 'dash:weather': 'settings.manage'
+    'dash:files': 'files.read', 'dash:diagnostics': 'system.view', 'dash:weather': 'settings.manage',
+    'dash:customize': 'board.edit', 'dash:boardAdd': 'board.edit'
   };
   const allowed = c => {
     const auth = window.PiAuth;
@@ -136,8 +138,12 @@
       cmds.push({ ...dashboardCommand(`history-${metric}`, `${t('Verlauf')}: ${t(label)}`, 'Verlauf', 'diagramm chart 24h 7 tage'), raw: true }));
 
     const tabs = window.PiLayout && window.PiLayout.tabs ? window.PiLayout.tabs() : [];
-    if (tabs.length > 1) tabs.forEach(tb => cmds.push({ id: `tab:${tb.id}`, label: `${t('Seite')}: ${tb.name}`, raw: true, group: 'Seiten',
-      keywords: 'tab seite dashboard', run: () => window.PiLayout.switchTab(tb.id) }));
+    if (tabs.length > 1) tabs.forEach(tb => cmds.push({ id: `tab:${tb.id}`, label: `${t('Board')}: ${tb.name}`, raw: true, group: 'Seiten',
+      keywords: 'tab seite board dashboard', run: () => window.PiLayout.switchTab(tb.id) }));
+    // Apps of all boards: open them straight from the palette
+    ((window.PiLayout && window.PiLayout.apps && window.PiLayout.apps()) || []).forEach(a => cmds.push({
+      id: `app:${a.id}`, label: a.name, raw: true, group: 'Apps', keywords: `app ${a.url} ${a.description || ''}`,
+      run: () => (a.new_tab ? window.open(a.url, '_blank', 'noopener') : location.assign(a.url)) }));
     if (window.PiWhatsNew) cmds.push({ id: 'whatsnew', label: 'Was ist neu', group: 'Aktionen', keywords: 'changelog update version änderungen neu', run: () => window.PiWhatsNew.open() });
     const other = window.I18N && window.I18N.lang === 'en' ? 'de' : 'en';
     cmds.push({ id: 'lang', label: other === 'en' ? 'Sprache: English' : 'Language: Deutsch', raw: true, group: 'Aktionen',
@@ -214,7 +220,7 @@
   // UI
   // ---------------------------------------------------------------------------
   let root, input, list, commands = [], shown = [], active = 0, lastFocus = null;
-  const GROUP_ORDER = ['Zuletzt verwendet', 'Aktionen', 'Links', 'Seiten', 'Bereiche', 'Dienste', 'Wake-on-LAN', 'Verlauf'];
+  const GROUP_ORDER = ['Zuletzt verwendet', 'Apps', 'Aktionen', 'Links', 'Seiten', 'Bereiche', 'Dienste', 'Wake-on-LAN', 'Verlauf'];
 
   function build() {
     root = document.createElement('div');

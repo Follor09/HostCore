@@ -44,6 +44,7 @@ import logdigest
 import agent
 import remotes
 import netbox
+import boards
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -1893,6 +1894,61 @@ async def api_remotes_delete(remote_id: str, request: Request):
     request.state.audit_detail = r["name"] if r else remote_id
     remotes.remove(remote_id)
     return {"remotes": await remotes.refresh_status()}
+
+
+class BoardsRequest(BaseModel):
+    rev: int
+    boards: list
+
+
+@app.get("/api/boards")
+async def api_boards():
+    return {**(await boards.ensure()), "cards": boards.CARDS, "engines": boards.ENGINES}
+
+
+@app.post("/api/boards")
+async def api_boards_save(req: BoardsRequest):
+    try:
+        cfg = await asyncio.to_thread(boards.save, {"boards": req.boards}, req.rev)
+    except boards.BoardConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except boards.BoardError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return cfg
+
+
+@app.post("/api/boards/reset")
+async def api_boards_reset():
+    return await asyncio.to_thread(boards.reset)
+
+
+@app.get("/api/boards/status")
+async def api_boards_status(board: str):
+    try:
+        return await boards.status(board)
+    except boards.BoardError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/boards/icons")
+async def api_boards_icons(q: str = ""):
+    try:
+        return {"icons": await boards.search_icons(q)}
+    except boards.BoardError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/api/boards/icon/{file}")
+async def api_boards_icon(file: str):
+    path = await boards.icon(file)
+    if not path:
+        raise HTTPException(status_code=404, detail="Icon nicht gefunden.")
+    media = {"svg": "image/svg+xml", "png": "image/png", "webp": "image/webp"}[file.rsplit(".", 1)[1]]
+    # Never a document on this origin: an SVG opened directly could otherwise run scripts
+    return FileResponse(path, media_type=media, headers={
+        "Cache-Control": "public, max-age=604800",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "X-Content-Type-Options": "nosniff"})
 
 
 class NetBoxSettingsRequest(BaseModel):
