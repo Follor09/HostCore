@@ -93,3 +93,109 @@ def overview() -> Dict[str, Any]:
         "year": {"kwh": round(day_kwh * 365, 1), "cost": round(day_kwh * 365 * price, 2)},
         "days": days[-60:],
     }
+
+
+# ---------------------------------------------------------------------------
+# Power budget: a monthly budget in kWh, finished months are evaluated once
+# ---------------------------------------------------------------------------
+BUDGET_KEY = "power_budget"
+
+
+def save_budget(kwh: float) -> Dict[str, Any]:
+    kwh = round(float(kwh), 2)
+    if kwh and not 0.1 <= kwh <= 1000:
+        raise ValueError("Budget: 0,1–1000 kWh (0 = aus).")
+    cfg = settings_store.get(BUDGET_KEY, {}) or {}
+    if kwh and not cfg.get("since"):
+        cfg["since"] = time.strftime("%Y-%m")
+    cfg["budget_kwh"] = kwh
+    settings_store.set(BUDGET_KEY, cfg)
+    return budget_status()
+
+
+def _score_months(cfg: Dict[str, Any], days: list) -> Dict[str, Any]:
+    """Finished months since the budget was set get evaluated with the budget of that time."""
+    months = dict(cfg.get("months", {}))
+    this_month = time.strftime("%Y-%m")
+    totals: Dict[str, Dict[str, float]] = {}
+    for d in days:
+        m = totals.setdefault(d["day"][:7], {"kwh": 0.0, "days": 0})
+        m["kwh"] += d["kwh"]
+        m["days"] += 1
+    changed = False
+    for month, m in totals.items():
+        if month >= this_month or month < cfg.get("since", this_month) or month in months:
+            continue
+        months[month] = {"kwh": round(m["kwh"], 3), "budget": cfg["budget_kwh"], "ok": m["kwh"] <= cfg["budget_kwh"],
+                         "days": m["days"]}
+        changed = True
+    if changed:
+        cfg["months"] = months
+        settings_store.set(BUDGET_KEY, cfg)
+    return months
+
+
+def _tips(ov: Dict[str, Any]) -> list:
+    import containers
+    import systools
+    tips = []
+    try:
+        mode = systools.cpu_mode()
+        if mode.get("available") and mode.get("governor") in ("performance", "ondemand"):
+            tips.append({"text": "CPU-Modus „Sparsam“ oder „Sanft“ spart im Leerlauf spürbar Strom.", "link": "/system#cpu-modus"})
+    except Exception:
+        pass
+    try:
+        busy = sorted((i for i in containers.stats_summary()["items"] if i["fresh"] and i["cpu"] >= 3),
+                      key=lambda i: -i["cpu"])
+        if busy:
+            b = busy[0]
+            tips.append({"text": f"{b['name']} braucht gerade {b['cpu']:.0f} % CPU – läuft der Container unnötig?",
+                         "link": "/containers#statistik"})
+    except Exception:
+        pass
+    try:
+        import psutil
+        stats = psutil.net_if_stats()
+        eth_up = any(systools._iface_kind(n) == "ethernet" and s.isup for n, s in stats.items())
+        wlan_up = any(systools._iface_kind(n) == "wlan" and s.isup for n, s in stats.items())
+        if eth_up and wlan_up:
+            tips.append({"text": "LAN und WLAN sind beide an – ohne WLAN (dtoverlay=disable-wifi) spart der Pi etwas Strom.", "link": ""})
+    except Exception:
+        pass
+    tips.append({"text": "Ohne Monitor: HDMI bleibt aus, wenn beim Start kein Bildschirm steckt – Kabel ab spart ein paar Milliwatt.", "link": ""})
+    return tips[:3]
+
+
+def budget_status() -> Dict[str, Any]:
+    ov = overview()
+    cfg = settings_store.get(BUDGET_KEY, {}) or {}
+    budget = float(cfg.get("budget_kwh") or 0)
+    out: Dict[str, Any] = {"available": ov.get("available", False), "budget_kwh": budget}
+    if not ov.get("available"):
+        return out
+    import calendar
+    t = time.localtime()
+    days_in_month = calendar.monthrange(t.tm_year, t.tm_mon)[1]
+    elapsed = (t.tm_mday - 1) + (t.tm_hour * 60 + t.tm_min) / 1440
+    month = ov["month"]
+    out.update(month_kwh=month["kwh"], projected_kwh=month["projected_kwh"], avg_w=ov["avg_w"],
+               days_left=round(days_in_month - elapsed, 1), days_in_month=days_in_month,
+               suggested_kwh=round(max(0.5, month["projected_kwh"] * 0.9), 1), tips=_tips(ov),
+               month_cost=month["cost"], currency=ov["settings"]["currency"])
+    if not budget:
+        return out
+    months = _score_months(cfg, ov["days"])
+    streak = 0
+    for m in sorted(months, reverse=True):
+        if not months[m]["ok"]:
+            break
+        streak += 1
+    # Pace: the share of the budget that may be used by now
+    allowed_now = budget * elapsed / days_in_month
+    out.update(progress=round(month["kwh"] / budget, 3), pace=round(elapsed / days_in_month, 3),
+               on_track=month["projected_kwh"] <= budget, ahead_kwh=round(allowed_now - month["kwh"], 3),
+               per_day_left=round(max(0.0, budget - month["kwh"]) / max(0.5, days_in_month - elapsed), 3),
+               streak=streak, won=sum(1 for m in months.values() if m["ok"]),
+               history=[{"month": k, **v} for k, v in sorted(months.items())][-12:])
+    return out

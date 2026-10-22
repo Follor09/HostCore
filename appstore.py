@@ -48,7 +48,7 @@ def _tz() -> str:
 # ---------------------------------------------------------------------------
 CATALOG: List[Dict[str, Any]] = [
     {
-        "id": "jellyfin", "name": "Jellyfin", "icon": "🎬", "category": "Medien",
+        "id": "jellyfin", "name": "Jellyfin", "category": "Medien",
         "description": "Eigener Streaming-Server für Filme, Serien und Musik – wie Netflix, nur mit deinen Dateien.",
         "image": "jellyfin/jellyfin:latest", "ram": "≈ 300 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 8096, "default": 8096}],
@@ -59,7 +59,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web"},
     },
     {
-        "id": "pihole", "name": "Pi-hole", "icon": "🚫", "category": "Netzwerk",
+        "id": "pihole", "name": "Pi-hole", "category": "Netzwerk",
         "description": "Werbe- und Tracker-Blocker fürs ganze Heimnetz. Danach im Router den Pi als DNS-Server eintragen.",
         "image": "pihole/pihole:latest", "ram": "≈ 100 MB",
         "ports": [{"key": "dns", "label": "DNS (TCP+UDP)", "container": 53, "default": 53, "proto": "both"},
@@ -70,7 +70,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web", "path": "/admin"},
     },
     {
-        "id": "adguard", "name": "AdGuard Home", "icon": "🛡️", "category": "Netzwerk",
+        "id": "adguard", "name": "AdGuard Home", "category": "Netzwerk",
         "description": "Werbeblocker und DNS-Server mit moderner Oberfläche, DNS-over-HTTPS und Kindersicherung.",
         "image": "adguard/adguardhome:latest", "ram": "≈ 60 MB",
         "ports": [{"key": "dns", "label": "DNS (TCP+UDP)", "container": 53, "default": 53, "proto": "both"},
@@ -81,7 +81,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "setup"},
     },
     {
-        "id": "uptime-kuma", "name": "Uptime Kuma", "icon": "📈", "category": "Überwachung",
+        "id": "uptime-kuma", "name": "Uptime Kuma", "category": "Überwachung",
         "description": "Schicke Überwachung für Websites, Server und Dienste mit Benachrichtigungen (Telegram, Discord, E-Mail …).",
         "image": "louislam/uptime-kuma:1", "ram": "≈ 120 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 3001, "default": 3001}],
@@ -90,7 +90,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web"},
     },
     {
-        "id": "vaultwarden", "name": "Vaultwarden", "icon": "🔐", "category": "Sicherheit",
+        "id": "vaultwarden", "name": "Vaultwarden", "category": "Sicherheit",
         "description": "Passwort-Manager, kompatibel mit den Bitwarden-Apps. Die Weboberfläche braucht HTTPS (z. B. über einen Reverse-Proxy).",
         "image": "vaultwarden/server:latest", "ram": "≈ 30 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 80, "default": 8081}],
@@ -99,7 +99,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web"},
     },
     {
-        "id": "homeassistant", "name": "Home Assistant", "icon": "🏠", "category": "Smart Home",
+        "id": "homeassistant", "name": "Home Assistant", "category": "Smart Home",
         "description": "Die Zentrale fürs Smart Home: Lampen, Sensoren, Steckdosen und Automationen. Läuft im Host-Netzwerk (Port 8123).",
         "image": "ghcr.io/home-assistant/home-assistant:stable", "ram": "≈ 400 MB",
         "ports": [], "host_network": True,
@@ -108,7 +108,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": 8123},
     },
     {
-        "id": "nodered", "name": "Node-RED", "icon": "🧩", "category": "Smart Home",
+        "id": "nodered", "name": "Node-RED", "category": "Smart Home",
         "description": "Automationen per Drag & Drop zusammenklicken – verbindet MQTT, HTTP, Home Assistant und vieles mehr.",
         "image": "nodered/node-red:latest", "ram": "≈ 120 MB",
         "ports": [{"key": "web", "label": "Editor", "container": 1880, "default": 1880}],
@@ -117,7 +117,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web"},
     },
     {
-        "id": "grafana", "name": "Grafana", "icon": "📊", "category": "Überwachung",
+        "id": "grafana", "name": "Grafana", "category": "Überwachung",
         "description": "Dashboards und Diagramme für alles mit Zahlen – Prometheus, InfluxDB, Home Assistant …",
         "image": "grafana/grafana-oss:latest", "ram": "≈ 150 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 3000, "default": 3000}],
@@ -126,7 +126,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web"},
     },
     {
-        "id": "syncthing", "name": "Syncthing", "icon": "🔁", "category": "Dateien",
+        "id": "syncthing", "name": "Syncthing", "category": "Dateien",
         "description": "Ordner zwischen PC, Handy und Pi synchronisieren – ohne Cloud, direkt von Gerät zu Gerät.",
         "image": "syncthing/syncthing:latest", "ram": "≈ 80 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 8384, "default": 8384},
@@ -137,7 +137,7 @@ CATALOG: List[Dict[str, Any]] = [
         "open": {"port": "web"},
     },
     {
-        "id": "gitea", "name": "Gitea", "icon": "🍵", "category": "Entwicklung",
+        "id": "gitea", "name": "Gitea", "category": "Entwicklung",
         "description": "Eigener Git-Server wie GitHub: Repositories, Issues, Pull Requests – leicht genug für den Pi.",
         "image": "gitea/gitea:latest", "ram": "≈ 150 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 3000, "default": 3002},
@@ -210,7 +210,7 @@ def catalog() -> Dict[str, Any]:
         })
     apps = []
     for a in CATALOG:
-        apps.append({k: a[k] for k in ("id", "name", "icon", "category", "description", "image", "ram")}
+        apps.append({k: a[k] for k in ("id", "name", "category", "description", "image", "ram")}
                     | {"installed": by_app.get(a["id"], [])})
     import shutil
     return {"apps": apps, "dir": APPS_DIR, "docker": bool(shutil.which("docker")),
@@ -239,7 +239,7 @@ def form(app_id: str) -> Dict[str, Any]:
         ports.append({**p, "value": port, "in_use": used.get(p["default"]) if p["default"] in used else None})
     folders = [{**f, "value": f["default"] if f.get("user") else f"./{f['key']}"} for f in app["folders"]]
     env = [{**e, "value": e.get("default", "")} for e in app["env"] if not e.get("hidden")]
-    return {"app": {k: app[k] for k in ("id", "name", "icon", "description", "image")},
+    return {"app": {k: app[k] for k in ("id", "name", "description", "image")},
             "name": name, "ports": ports, "folders": folders, "env": env, "dir": APPS_DIR,
             "host_network": bool(app.get("host_network"))}
 

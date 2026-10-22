@@ -493,15 +493,6 @@
     document.querySelectorAll('#accent-switch button').forEach(b =>
       b.addEventListener('click', () => { window.PiTheme && window.PiTheme.setAccent(b.dataset.accent); syncAccent(); }));
     syncAccent();
-    const syncLook = () => document.querySelectorAll('#look-switch button').forEach(b => {
-      const on = window.PiTheme && b.dataset.look === window.PiTheme.look();
-      b.setAttribute('role', 'radio');
-      b.classList.toggle('active', on);
-      b.setAttribute('aria-checked', String(on));
-    });
-    document.querySelectorAll('#look-switch button').forEach(b =>
-      b.addEventListener('click', () => { window.PiTheme && window.PiTheme.setLook(b.dataset.look); syncLook(); syncTheme(); }));
-    syncLook();
     api('/api/health').then(renderHealthSettings).catch(() => {});
     $('wol-form').addEventListener('submit', async e => {
       e.preventDefault();

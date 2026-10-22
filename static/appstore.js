@@ -33,6 +33,16 @@
     return json;
   }
 
+  // Two-letter tile in a color derived from the name
+  function monogram(app) {
+    let h = 0;
+    for (const ch of app.name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    const m = raw('span', 'app-icon', app.name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase());
+    m.style.setProperty('--app-h', h);
+    m.setAttribute('aria-hidden', 'true');
+    return m;
+  }
+
   // Apps run on the Pi the dashboard shows (this one or the selected remote Pi)
   function appUrl(open) {
     if (!open || !open.port) return '';
@@ -64,8 +74,7 @@
     state.data.apps.filter(a => !state.category || a.category === state.category).forEach(a => {
       const card = el('div', 'app-card');
       const head = el('div', 'app-card-head');
-      const icon = raw('span', 'app-icon', a.icon);
-      icon.setAttribute('aria-hidden', 'true');
+      const icon = monogram(a);
       const title = el('div');
       title.append(raw('b', '', a.name), el('small', '', `${t(a.category)} · RAM ${a.ram}`));
       head.append(icon, title);
@@ -195,7 +204,7 @@
     try { f = await api(`/api/appstore/${appId}/form`); } catch (e) { toast(e.message, 'error'); return; }
     state.form = f;
     state.job = null;
-    $('app-modal-icon').textContent = f.app.icon;
+    $('app-modal-icon').replaceWith(Object.assign(monogram(f.app), { id: 'app-modal-icon' }));
     $('app-modal-title').textContent = f.app.name;
     $('app-modal-sub').textContent = f.app.image;
     $('app-compose').hidden = true;

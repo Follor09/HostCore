@@ -31,6 +31,8 @@
       document.getElementById('updates-card')?.click();
     } else if (link === '#nvme') {
       document.getElementById('nvme-history-btn')?.click();
+    } else if (link === '#reminders') {
+      window.PiPlanner && window.PiPlanner.openReminders();
     } else {
       location.href = link;
     }

@@ -377,6 +377,15 @@ def status_summary() -> Dict[str, Any]:
             add("info", "Neustart nach Updates nötig", "#updates")
     if updater.update_state.get("update_available"):
         add("info", "Dashboard-Update verfügbar", "/settings#auto-update")
+    try:
+        import reminders
+        due = reminders.due_items()
+        if len(due) == 1:
+            add("warning" if due[0]["days"] < 0 else "info", f"Erinnerung: {due[0]['title']}", "#reminders")
+        elif due:
+            add("warning" if any(d["days"] < 0 for d in due) else "info", f"{len(due)} Erinnerungen fällig", "#reminders")
+    except Exception as e:
+        logger.warning(f"Status (reminders): {e}")
 
     level = max((i["level"] for i in items), key=lambda l: LEVELS[l], default="good")
     items.sort(key=lambda i: -LEVELS[i["level"]])

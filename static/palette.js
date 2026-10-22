@@ -34,8 +34,10 @@
     }],
     weather: ['Wetter-Ort ändern', 'stadt city', () => { scrollTo('[data-widget=weather]'); click('#weather-city-btn')(); }],
     customize: ['Dashboard anpassen', 'layout karten ausblenden reihenfolge', () => window.PiLayout && window.PiLayout.edit()],
-    replay: ['Tages-Replay abspielen', 'replay zeitreise verlauf abspielen video gestern nacht', () => window.PiReplay && window.PiReplay.open()],
-    achievements: ['Erfolge & Trophäen', 'achievements badges trophäen erfolge punkte', () => window.PiAchievements && window.PiAchievements.open()],
+    replay: ['Verlauf abspielen', 'replay wiedergabe verlauf abspielen gestern nacht', () => window.PiReplay && window.PiReplay.open()],
+    kanban: ['Kanban-Board öffnen', 'kanban board todo aufgaben projekte ideen', () => window.PiPlanner && window.PiPlanner.openKanban()],
+    reminders: ['Erinnerungen', 'erinnerung reminder termin wiederkehrend aufgabe', () => window.PiPlanner && window.PiPlanner.openReminders()],
+    reminderAdd: ['Neue Erinnerung', 'erinnerung anlegen reminder neu', () => window.PiPlanner && window.PiPlanner.openReminders(true)],
     fullscreen: ['Vollbild', 'kiosk fullscreen', click('#btn-fullscreen')]
   };
   const HISTORY_METRICS = [['cpu', 'CPU'], ['temp', 'Temperatur'], ['ram', 'RAM'], ['net', 'Netzwerk'], ['fan', 'Lüfter'], ['power', 'Leistung'], ['nvme', 'NVMe']];
@@ -137,9 +139,6 @@
     [['auto', 'Design: Automatisch'], ['light', 'Design: Hell'], ['dark', 'Design: Dunkel']].forEach(([mode, label]) =>
       cmds.push({ id: `theme:${mode}`, label, group: 'Aktionen', keywords: 'theme design farbe hell dunkel light dark modus',
         run: () => window.PiTheme && window.PiTheme.set(mode) }));
-    [['standard', 'Stil: Standard'], ['retro', 'Stil: Retro-Terminal'], ['cyberpunk', 'Stil: Cyberpunk'], ['glass', 'Stil: Glas'], ['minimal', 'Stil: Minimal']].forEach(([look, label]) =>
-      cmds.push({ id: `look:${look}`, label, group: 'Aktionen', keywords: 'stil look theme design retro cyberpunk glas minimal',
-        run: () => window.PiTheme && window.PiTheme.setLook(look) }));
     cmds.push({ id: 'page:status', label: 'Öffentliche Statusseite', group: 'Seiten', keywords: 'status page öffentlich', href: '/status' });
     ((window.PiLinks && window.PiLinks.list()) || []).forEach(l => cmds.push({
       id: `link:${l.id}`, label: `${t('Link')}: ${l.name}`, raw: true, group: 'Links', keywords: `link ${l.url}`,

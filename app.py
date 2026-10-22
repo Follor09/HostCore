@@ -55,9 +55,11 @@ import healthchecks
 import storage
 import insights
 import access
-import achievements
 import appstore
 import statuspage
+import kanban
+import reminders
+import briefing
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -1687,6 +1689,24 @@ async def api_power():
     return await asyncio.to_thread(power.overview)
 
 
+class EnergyBudgetRequest(BaseModel):
+    kwh: float
+
+
+@app.get("/api/power/budget")
+async def api_power_budget_status():
+    return await asyncio.to_thread(power.budget_status)
+
+
+@app.post("/api/power/budget")
+async def api_power_budget(req: EnergyBudgetRequest, request: Request):
+    request.state.audit_detail = f"{req.kwh} kWh"
+    try:
+        return await asyncio.to_thread(power.save_budget, req.kwh)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/api/power/settings")
 async def api_power_settings(req: PowerSettingsRequest):
     try:
@@ -1996,9 +2016,101 @@ async def api_replay(start: int, end: int = 0):
     return await asyncio.to_thread(history.get_raw, start, end or start + 86400)
 
 
-@app.get("/api/achievements")
-async def api_achievements():
-    return await asyncio.to_thread(achievements.overview)
+class KanbanCardRequest(BaseModel):
+    title: Optional[str] = None
+    desc: Optional[str] = None
+    labels: Optional[list] = None
+    due: Optional[str] = None
+    column: Optional[str] = None
+    index: Optional[int] = None
+    top: bool = False
+
+    def fields(self) -> dict:
+        return {k: v for k, v in {"title": self.title, "desc": self.desc, "labels": self.labels, "due": self.due,
+                                  "column": self.column, "index": self.index, "top": self.top}.items() if v is not None}
+
+
+def _kanban_call(fn, *args):
+    try:
+        return fn(*args)
+    except kanban.KanbanError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/kanban")
+async def api_kanban():
+    return kanban.board()
+
+
+@app.post("/api/kanban/cards")
+async def api_kanban_create(req: KanbanCardRequest, request: Request):
+    return await asyncio.to_thread(_kanban_call, kanban.create, req.fields(), request.state.user or "")
+
+
+@app.post("/api/kanban/cards/{card_id}")
+async def api_kanban_update(card_id: str, req: KanbanCardRequest, request: Request):
+    return await asyncio.to_thread(_kanban_call, kanban.update, card_id, req.fields(), request.state.user or "")
+
+
+@app.post("/api/kanban/cards/{card_id}/delete")
+async def api_kanban_delete(card_id: str):
+    return await asyncio.to_thread(_kanban_call, kanban.delete, card_id)
+
+
+@app.post("/api/kanban/clear-done")
+async def api_kanban_clear_done():
+    return await asyncio.to_thread(_kanban_call, kanban.clear_done)
+
+
+class ReminderRequest(BaseModel):
+    title: str
+    due: str
+    repeat: str = "none"
+    every: int = 1
+
+
+def _reminder_call(fn, *args):
+    try:
+        return fn(*args)
+    except reminders.ReminderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/reminders")
+async def api_reminders():
+    return reminders.overview()
+
+
+@app.post("/api/reminders")
+async def api_reminders_create(req: ReminderRequest, request: Request):
+    return await asyncio.to_thread(_reminder_call, reminders.create, {"title": req.title, "due": req.due, "repeat": req.repeat,
+                                                                      "every": req.every}, request.state.user or "")
+
+
+@app.post("/api/reminders/{item_id}")
+async def api_reminders_update(item_id: str, req: ReminderRequest):
+    return await asyncio.to_thread(_reminder_call, reminders.update, item_id, {"title": req.title, "due": req.due,
+                                                                               "repeat": req.repeat, "every": req.every})
+
+
+@app.post("/api/reminders/{item_id}/done")
+async def api_reminders_done(item_id: str, request: Request):
+    return await asyncio.to_thread(_reminder_call, reminders.done, item_id, request.state.user or "")
+
+
+@app.post("/api/reminders/{item_id}/snooze")
+async def api_reminders_snooze(item_id: str, days: int = 1):
+    return await asyncio.to_thread(_reminder_call, reminders.snooze, item_id, days)
+
+
+@app.post("/api/reminders/{item_id}/delete")
+async def api_reminders_delete(item_id: str):
+    return await asyncio.to_thread(_reminder_call, reminders.delete, item_id)
+
+
+@app.get("/api/briefing")
+async def api_briefing():
+    return await asyncio.to_thread(briefing.briefing)
 
 
 @app.get("/api/history/interfaces")

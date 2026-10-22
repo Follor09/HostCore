@@ -1,6 +1,6 @@
 /**
- * PiCore Dashboard - day replay
- * Play back a stored day like a video: drag the time slider (or press play) and the CPU,
+ * PiCore Dashboard - history playback
+ * Play back a stored day: drag the time slider (or press play) and the CPU,
  * temperature, RAM, network, fan, power and 3D-Pi cards show the values of that minute.
  * Events of the day (service down, throttling, logins …) are marks on the slider and pop
  * up while playing. Live updates keep arriving in the background; closing goes back to them.
@@ -55,11 +55,10 @@
   function buildBar() {
     const bar = el('div', 'replay-bar');
     bar.setAttribute('role', 'region');
-    bar.setAttribute('aria-label', t('Tages-Replay'));
+    bar.setAttribute('aria-label', t('Verlaufs-Wiedergabe'));
 
     const top = el('div', 'replay-top');
-    const badge = el('span', 'replay-badge', 'REPLAY');
-    badge.setAttribute('data-no-i18n', '');
+    const badge = el('span', 'replay-badge', t('WIEDERGABE'));
     const when = el('div', 'replay-when');
     R.dayEl = el('span', 'replay-day');
     R.clockEl = el('span', 'replay-clock', '--:--');
@@ -97,7 +96,7 @@
     }
     R.daySelect.addEventListener('change', () => load(R.daySelect.value));
 
-    const close = iconButton('close', 'Replay beenden (Esc)', closeReplay, 'replay-close');
+    const close = iconButton('close', 'Wiedergabe beenden (Esc)', closeReplay, 'replay-close');
     top.append(badge, when, controls, speed, R.daySelect, close);
 
     const track = el('div', 'replay-track');
@@ -285,7 +284,7 @@
 
     if (val(s, 'cpu') != null) sys.cpu = { ...(base.cpu || {}), percent: round(val(s, 'cpu')), cores: undefined };
     else delete sys.cpu;
-    if (val(s, 'temp') != null) sys.temperature = { ...(base.temperature || {}), celsius: round(val(s, 'temp')), source: 'Replay', is_simulated: false };
+    if (val(s, 'temp') != null) sys.temperature = { ...(base.temperature || {}), celsius: round(val(s, 'temp')), source: 'Verlauf', is_simulated: false };
     else delete sys.temperature;
     if (val(s, 'ram') != null && base.memory) {
       const used = Math.round(base.memory.total_mb * val(s, 'ram') / 100);

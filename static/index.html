@@ -79,7 +79,7 @@
       <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
       </button>
-      <button class="icon-button" id="btn-replay" title="Tages-Replay" aria-label="Tages-Replay">
+      <button class="icon-button" id="btn-replay" title="Verlauf abspielen" aria-label="Verlauf abspielen">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 8v4l3 2"></path></svg>
       </button>
       <button class="icon-button" id="btn-customize" title="Dashboard anpassen" aria-label="Dashboard anpassen" aria-pressed="false">
@@ -240,6 +240,25 @@
 
     <!-- Main System Monitoring Center -->
     <section class="metrics-grid" data-widget-group="metrics" data-widget="metrics">
+
+      <!-- Nachtbericht -->
+      <div data-perm="system.view" class="glass-card metric-card briefing-card" data-widget="briefing" id="briefing-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-amber">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2"></path><path d="M5.6 5.6l1.4 1.4"></path><path d="M18.4 5.6L17 7"></path><path d="M3 13h2"></path><path d="M19 13h2"></path><path d="M7 17a5 5 0 0 1 10 0"></path><path d="M3 21h18"></path></svg>
+            </div>
+            <div>
+              <h3>Nachtbericht</h3>
+              <p class="card-subtitle" id="briefing-sub">22:00–07:00</p>
+            </div>
+          </div>
+          <span class="health-tag" id="briefing-level">–</span>
+        </div>
+        <p class="briefing-sentence" id="briefing-sentence">Lade…</p>
+        <ul class="briefing-list" id="briefing-list"></ul>
+        <p class="briefing-today" id="briefing-today" hidden></p>
+      </div>
 
       <!-- Metric 1: CPU Auslastung -->
       <div class="glass-card metric-card" data-widget="cpu" data-replay>
@@ -646,45 +665,62 @@
         <a data-perm="settings.manage" class="wol-manage" href="/settings#web-dienste">Dienste verwalten →</a>
       </div>
 
-      <!-- Live-3D-Pi -->
-      <div class="glass-card metric-card pi3d-card" data-widget="pi3d" id="pi3d-card" data-replay>
+      <!-- Erinnerungen -->
+      <div class="glass-card metric-card reminders-card" data-widget="reminders" id="reminders-card">
         <div class="card-header">
           <div class="card-title-group">
-            <div class="card-icon-pill icon-emerald">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path></svg>
+            <div class="card-icon-pill icon-violet">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
             </div>
             <div>
-              <h3>Live-3D-Pi</h3>
-              <p class="card-subtitle">Ziehen zum Drehen · Doppelklick zurück</p>
+              <h3>Erinnerungen</h3>
+              <p class="card-subtitle" id="reminders-sub">Wiederkehrende Aufgaben</p>
             </div>
           </div>
-          <div class="metric-highlight-value" id="pi3d-temp">--°C</div>
+          <div class="metric-highlight-value" id="reminders-count">–</div>
         </div>
-        <div class="pi3d-stage" id="pi3d-stage" tabindex="0" role="img" aria-label="3D-Modell des Raspberry Pi mit Live-Werten (Pfeiltasten drehen)"></div>
-        <div class="pi3d-chips">
-          <span id="pi3d-cpu">CPU --%</span>
-          <span id="pi3d-fan">--</span>
-          <span id="pi3d-watt" hidden>-- W</span>
+        <ul class="reminder-list" id="reminders-list"></ul>
+        <div class="card-foot-actions">
+          <button data-perm="notes.edit" class="text-btn" type="button" id="reminders-add">+ Erinnerung</button>
+          <button class="wol-manage text-btn" type="button" id="reminders-all">Alle →</button>
         </div>
       </div>
 
-      <!-- Erfolge -->
-      <div class="glass-card metric-card achievements-card" data-widget="achievements" id="achievements-card">
+      <!-- Kanban -->
+      <div class="glass-card metric-card kanban-card" data-widget="kanban" id="kanban-card">
         <div class="card-header">
           <div class="card-title-group">
-            <div class="card-icon-pill icon-amber">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"></path><path d="M17 5h3v2a3 3 0 0 1-3 3"></path><path d="M7 5H4v2a3 3 0 0 0 3 3"></path></svg>
+            <div class="card-icon-pill icon-cyan">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"></rect><rect x="10" y="4" width="5" height="10" rx="1"></rect><rect x="17" y="4" width="4" height="13" rx="1"></rect></svg>
             </div>
             <div>
-              <h3>Erfolge</h3>
-              <p class="card-subtitle" id="ach-sub">Lade…</p>
+              <h3>Aufgaben</h3>
+              <p class="card-subtitle" id="kanban-sub">Offen · In Arbeit · Erledigt</p>
             </div>
           </div>
-          <div class="metric-highlight-value" id="ach-score">–</div>
         </div>
-        <div class="ach-progress"><div class="ach-progress-fill" id="ach-fill"></div></div>
-        <div class="ach-recent" id="ach-recent"></div>
-        <button class="wol-manage ach-open" id="ach-open" type="button">Alle Trophäen →</button>
+        <div class="kanban-mini" id="kanban-mini"></div>
+        <form class="kanban-quick" id="kanban-quick" data-perm="notes.edit" autocomplete="off">
+          <input type="text" id="kanban-quick-input" maxlength="120" placeholder="Neue Aufgabe … (Enter)" aria-label="Neue Aufgabe">
+        </form>
+        <button class="wol-manage text-btn" type="button" id="kanban-open">Board öffnen →</button>
+      </div>
+
+      <!-- Strombudget -->
+      <div data-perm="system.view" class="glass-card metric-card energy-card" data-widget="energy" data-cap="pmic" id="energy-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <div class="card-icon-pill icon-emerald">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13c0-5 4-9 16-9 0 12-4 16-9 16z"></path><path d="M4 21c3-6 7-9 12-11"></path></svg>
+            </div>
+            <div>
+              <h3>Strombudget</h3>
+              <p class="card-subtitle" id="energy-sub">Verbrauch dieses Monats</p>
+            </div>
+          </div>
+          <span class="health-tag" id="energy-status" hidden></span>
+        </div>
+        <div id="energy-body"></div>
       </div>
     </section>
 
@@ -701,7 +737,7 @@
           </div>
         </div>
         <div class="history-controls">
-          <button class="btn-secondary history-replay-btn" id="history-replay" title="Den Tag wie ein Video abspielen">
+          <button class="btn-secondary history-replay-btn" id="history-replay" title="Gespeicherte Messwerte minutengenau wiedergeben">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
             Abspielen
           </button>
@@ -1245,19 +1281,61 @@
   </div>
 
   <!-- Toast Notification Container -->
-  <!-- Trophäen -->
-  <div class="modal-backdrop" id="achievements-modal" aria-hidden="true">
-    <div class="modal-card sheet-card ach-sheet" role="dialog" aria-modal="true" aria-labelledby="ach-sheet-title">
+  <!-- Kanban-Board -->
+  <div class="modal-backdrop" id="kanban-modal" aria-hidden="true">
+    <div class="modal-card sheet-card kanban-sheet" role="dialog" aria-modal="true" aria-labelledby="kanban-title">
       <div class="sheet-head">
         <div>
-          <h3 id="ach-sheet-title">Trophäen</h3>
-          <p class="card-subtitle" id="ach-sheet-sub"></p>
+          <h3 id="kanban-title">Aufgaben</h3>
+          <p class="card-subtitle" id="kanban-sheet-sub">Karten ziehen oder mit den Pfeilen verschieben</p>
         </div>
-        <button class="mini-icon-btn" id="ach-close" title="Schließen (Esc)">
+        <button class="mini-icon-btn" id="kanban-close" title="Schließen (Esc)">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
         </button>
       </div>
-      <div class="ach-grid" id="ach-grid"></div>
+      <div class="kanban-board" id="kanban-board"></div>
+    </div>
+  </div>
+
+  <!-- Erinnerungen -->
+  <div class="modal-backdrop" id="reminders-modal" aria-hidden="true">
+    <div class="modal-card sheet-card reminders-sheet" role="dialog" aria-modal="true" aria-labelledby="reminders-title">
+      <div class="sheet-head">
+        <div>
+          <h3 id="reminders-title">Erinnerungen</h3>
+          <p class="card-subtitle" id="reminders-sheet-sub"></p>
+        </div>
+        <button class="mini-icon-btn" id="reminders-close" title="Schließen (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form class="reminder-form" id="reminder-form" data-perm="notes.edit" autocomplete="off">
+        <label class="login-field grow">
+          <span>Was?</span>
+          <input type="text" id="reminder-title" maxlength="100" placeholder="z. B. Backup prüfen" required>
+        </label>
+        <label class="login-field">
+          <span>Fällig am</span>
+          <input type="date" id="reminder-due" required>
+        </label>
+        <label class="login-field">
+          <span>Wiederholen</span>
+          <select id="reminder-repeat">
+            <option value="none">Einmalig</option>
+            <option value="daily">Täglich</option>
+            <option value="weekly">Wöchentlich</option>
+            <option value="monthly" selected>Monatlich</option>
+            <option value="yearly">Jährlich</option>
+          </select>
+        </label>
+        <label class="login-field reminder-every">
+          <span>Alle</span>
+          <input type="number" id="reminder-every" min="1" max="365" value="1">
+        </label>
+        <button type="submit" class="btn-primary" id="reminder-submit">Hinzufügen</button>
+        <button type="button" class="btn-secondary" id="reminder-cancel" hidden>Abbrechen</button>
+      </form>
+      <ul class="reminder-list full" id="reminders-full"></ul>
     </div>
   </div>
 
@@ -1282,8 +1360,9 @@
   <script src="/static/editor.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/replay.js"></script>
-  <script src="/static/pi3d.js"></script>
-  <script src="/static/achievements.js"></script>
+  <script src="/static/planner.js"></script>
+  <script src="/static/briefing.js"></script>
+  <script src="/static/energy.js"></script>
   <script src="/static/notes.js"></script>
   <script src="/static/widgets.js"></script>
   <script src="/static/overview.js"></script>

@@ -82,6 +82,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/packages/run$", "system", "Paket installiert/entfernt"),
     ("POST", r"^/api/appstore/[^/]+/install$", "system", "App installiert"),
     ("POST", r"^/api/settings/status-page$", "settings", "Statusseite geändert"),
+    ("POST", r"^/api/power/budget$", "settings", "Strombudget geändert"),
     ("POST", r"^/api/remotes$", "settings", "Remote-Pi hinzugefügt"),
     ("POST", r"^/api/remotes/[^/]+/delete$", "settings", "Remote-Pi entfernt"),
     ("POST", r"^/api/remotes/select$", "settings", "Remote-Pi gewählt"),
@@ -102,7 +103,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("WS", r"^/ws/terminal$", "security", "Terminal-Sitzung"),
 ]
 # Frequent, harmless requests that would flood the log
-IGNORE = [r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$"]
+IGNORE = [r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$", r"^/api/kanban", r"^/api/reminders"]
 
 CATEGORIES = {"login": "Anmeldung", "settings": "Einstellungen", "system": "System",
               "security": "Sicherheit", "network": "Netzwerk", "files": "Dateien"}

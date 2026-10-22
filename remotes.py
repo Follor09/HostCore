@@ -19,7 +19,7 @@ _status: Dict[str, Dict[str, Any]] = {}
 
 # Never forwarded: logins, users/permissions, the remote list itself and things that
 # only make sense for the main dashboard
-LOCAL_ONLY = re.compile(r"^/api/(auth/|me$|users|groups|permissions|remotes|webhook/|about$|changelog$|links$|notes$|terminal/ticket$"
+LOCAL_ONLY = re.compile(r"^/api/(auth/|me$|users|groups|permissions|remotes|webhook/|about$|changelog$|links$|notes$|kanban|reminders|terminal/ticket$"
                         r"|settings/(public-view|logout-all|logout-others|account|links.*|language|status-page)$|files/shares?(/|$)|public/)")
 
 

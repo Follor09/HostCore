@@ -15,7 +15,7 @@
     clock: 'Uhrzeit & Betriebszeit', weather: 'Wetter', services: 'Server-Dienste',
     cpu: 'CPU-Auslastung', temp: 'CPU-Temperatur', ram: 'Arbeitsspeicher', disk: 'Speicher & NVMe',
     network: 'Netzwerk', fan: 'Lüfter', power: 'Stromversorgung', updates: 'System-Updates', wol: 'Wake-on-LAN',
-    notes: 'Notizen', events: 'Ereignisse', actions: 'Schnellaktionen', health: 'Web-Dienste', pi3d: 'Live-3D-Pi', achievements: 'Erfolge', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
+    notes: 'Notizen', events: 'Ereignisse', actions: 'Schnellaktionen', health: 'Web-Dienste', briefing: 'Nachtbericht', reminders: 'Erinnerungen', kanban: 'Aufgaben', energy: 'Strombudget', history: 'Verlauf', workloads: 'Docker & Kubernetes', storage: 'Laufwerke & Explorer', processes: 'Prozesse & Diagnose'
   };
 
   // The first page has no stored name until it's renamed: shown as "Übersicht" in the page language

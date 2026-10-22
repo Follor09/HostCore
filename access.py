@@ -70,6 +70,9 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
 
     # --- Dashboard cards
     ("POST", r"^/api/notes$", "notes.edit"),
+    ("POST", r"^/api/(kanban|reminders)(/.*)?$", "notes.edit"),
+    ("GET", r"^/api/(kanban|reminders)$", "login"),
+    ("GET", r"^/api/briefing$", "system.view"),
     ("GET", r"^/api/notes$", "login"),
     ("GET", r"^/api/actions(/.*)?$", "actions.run"),
     ("POST", r"^/api/actions/.*$", "actions.run"),
@@ -81,7 +84,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/containers/(kube/.+|stacks/[^/]+/[^/]+|images/check)$", "services.control"),
     ("GET", r"^/api/appstore$", "system.view"),
     ("*", r"^/api/appstore/[^/]+/(form|preview|install)$", "apps.install"),
-    ("POST", r"^/api/power/settings$", "settings.manage"),
+    ("POST", r"^/api/power/(settings|budget)$", "settings.manage"),
     ("POST", r"^/api/processes/\d+/signal$", "processes.kill"),
     ("POST", r"^/api/tools/(cpu-mode|fan-curve|fan-curve/reset|cleanup|benchmark)$", "system.config"),
     ("POST", r"^/api/(updates/apt|updates/apply|updates/check)$", "updates.install"),
