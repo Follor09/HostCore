@@ -34,7 +34,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/settings/public-view$", "users.manage"),   # decides who sees the dashboard at all
 
     # --- Dashboard settings
-    ("POST", r"^/api/settings/(services|history/clear|wol|wol/[^/]+/delete|health|health/[^/]+/(delete|run)|links|links/[^/]+/(delete|move))$", "settings.manage"),
+    ("POST", r"^/api/settings/(services|history/clear|wol|wol/[^/]+/delete|health|health/[^/]+/(delete|run|update)|links|links/[^/]+/(delete|move))$", "settings.manage"),
     ("POST", r"^/api/weather/location$", "settings.manage"),
     ("*", r"^/api/settings/status-page$", "settings.manage"),
 
@@ -50,6 +50,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/api/services/[^/]+/journal$", "logs.view"),
     ("GET", r"^/api/workloads/docker/[^/]+/logs$", "logs.view"),
     ("GET", r"^/api/containers/kube/logs$", "logs.view"),
+    ("GET", r"^/api/containers/logs/multi$", "logs.view"),
     ("GET", r"^/api/containers/.*$", "system.view"),
     ("GET", r"^/api/power$", "system.view"),
     ("GET", r"^/api/tools/(ssh|activity|firewall|firewall/traffic|geoip|geoblock|connections)$", "security.view"),
@@ -77,7 +78,6 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/maintenance(/.*)?$", "settings.manage"),
     ("GET", r"^/api/maintenance$", "login"),
     ("GET", r"^/api/(kanban|reminders)$", "login"),
-    ("GET", r"^/api/briefing$", "system.view"),
     ("GET", r"^/api/notes$", "login"),
     ("GET", r"^/api/actions(/.*)?$", "actions.run"),
     ("POST", r"^/api/actions/.*$", "actions.run"),
@@ -86,7 +86,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     # --- System control
     ("POST", r"^/api/services/[^/]+/[^/]+$", "services.control"),
     ("POST", r"^/api/workloads/docker/[^/]+/[^/]+$", "services.control"),
-    ("POST", r"^/api/containers/(kube/.+|stacks/[^/]+/[^/]+|images/check)$", "services.control"),
+    ("POST", r"^/api/containers/(kube/.+|stacks/[^/]+/[^/]+|images/check|autoupdate/[^/]+(/run)?)$", "services.control"),
     ("GET", r"^/api/appstore$", "system.view"),
     ("*", r"^/api/appstore/[^/]+/(form|preview|install)$", "apps.install"),
     ("POST", r"^/api/appstore/refresh$", "apps.install"),
@@ -98,7 +98,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/action/(reboot|shutdown)$", "system.power"),
 
     # --- Network
-    ("POST", r"^/api/tools/(lan/scan|lan/[^/]+/(rename|forget|wol)|port-test|dns|traceroute)$", "network.tools"),
+    ("POST", r"^/api/tools/(lan/scan|lan/[^/]+/(rename|forget|wol|monitor)|port-test|dns|traceroute)$", "network.tools"),
     ("POST", r"^/api/wol(/[^/]+/wake)?$", "network.tools"),
     ("POST", r"^/api/tools/(firewall|fail2ban/unban|geoblock|geoip/download|geoip/remove)$", "firewall.manage"),
 

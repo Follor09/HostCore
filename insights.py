@@ -292,6 +292,16 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
         logger.warning(f"Events (ssh): {e}")
 
     try:
+        import autoupdate
+        for e in autoupdate.events_since(since):
+            if e["status"] != "ok":
+                out.append(_ev(e["ts"], "warning", "changes", f"Automatisches Update von {e['stack']} fehlgeschlagen", e.get("summary", ""), "/containers#stacks"))
+            elif e.get("changed"):
+                out.append(_ev(e["ts"], "good", "changes", f"{e['stack']} automatisch aktualisiert", "", "/containers#stacks"))
+    except Exception as e:
+        logger.warning(f"Events (auto-update): {e}")
+
+    try:
         import docs
         for e in docs.journal_between(since, now):
             out.append(_ev(e["ts"], "info", "journal", e["title"], f"{e['category']} · {e.get('user', '')}".strip(" ·"), "/doku#tagebuch"))

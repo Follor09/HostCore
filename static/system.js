@@ -476,6 +476,22 @@
         else actions.append(' ', lanAction('Zu Wake-on-LAN', 'btn-secondary', () =>
           lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/wol`, { name: d.alias || shortHost(d.hostname) || d.ip })
             .then(() => toast('Zu Wake-on-LAN hinzugefügt.', 'success'))));
+        if (d.monitor) {
+          const m = d.monitor;
+          const label = m.ok == null ? 'Überwacht' : `${m.ok ? 'Erreichbar' : 'Nicht erreichbar'}${m.uptime != null ? ` · ${String(m.uptime).replace('.', LOCALE.startsWith('de') ? ',' : '.')} %` : ''}`;
+          const tag = el('span', `health-tag ${m.ok == null ? '' : m.ok ? 'good' : 'critical'}`, label);
+          tag.title = 'Wird alle 5 Minuten angepingt – Verlauf in der Web-Dienste-Karte des Dashboards.';
+          actions.append(' ', tag);
+        } else {
+          actions.append(' ', lanAction('Überwachen', 'btn-secondary', async () => {
+            try {
+              const r = await api(`/api/tools/lan/${encodeURIComponent(d.mac)}/monitor`, {});
+              toast(r.message, 'success');
+              cache.lan = await api('/api/tools/lan');
+              renderLan(cache.lan);
+            } catch (err) { toast(err.message, 'error'); }
+          }));
+        }
         const forget = el('button', 'btn-danger', 'Vergessen');
         forget.dataset.perm = 'network.tools';
         confirmClick(forget, 'Vergessen', 'Sicher?', () => lanPost(`/api/tools/lan/${encodeURIComponent(d.mac)}/forget`));

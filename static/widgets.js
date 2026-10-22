@@ -180,6 +180,112 @@
   // ---------------------------------------------------------------------------
   // Web services (health checks)
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Detail sheet: response time chart + incidents
+  // ---------------------------------------------------------------------------
+  const detail = { check: null, hours: 24 };
+  const fmtDur = s => s >= 86400 ? `${Math.floor(s / 86400)} T. ${Math.round((s % 86400) / 3600)} Std.` : s >= 3600 ? `${Math.floor(s / 3600)} Std. ${Math.round((s % 3600) / 60)} Min.` : `${Math.max(1, Math.round(s / 60))} Min.`;
+  const fmtWhen = ts => new Date(ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  function drawResponseChart(svg, series, hours) {
+    const box = svg.parentElement;
+    const W = Math.max(300, box.clientWidth), H = 180, P = { l: 44, r: 10, t: 10, b: 22 };
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = '';
+    const NS = 'http://www.w3.org/2000/svg';
+    const add = (tag, attrs, text) => { const n = document.createElementNS(NS, tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v)); if (text) n.textContent = text; svg.appendChild(n); return n; };
+    if (!series.length) { add('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', class: 'hd-empty' }, t('Noch keine Messwerte')); return; }
+    const t0 = Math.floor(Date.now() / 1000) - hours * 3600, t1 = Math.floor(Date.now() / 1000);
+    const vals = series.map(p => p.avg_ms).filter(v => v != null);
+    const top = Math.max(10, ...vals) * 1.15;
+    const x = ts => P.l + ((ts - t0) / (t1 - t0)) * (W - P.l - P.r);
+    const y = v => H - P.b - (v / top) * (H - P.t - P.b);
+    [0, 0.5, 1].forEach(f => {
+      const v = top * f;
+      add('line', { x1: P.l, x2: W - P.r, y1: y(v), y2: y(v), class: 'hd-grid' });
+      add('text', { x: P.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'hd-axis' }, `${Math.round(v)} ms`);
+    });
+    // failed buckets as red columns
+    const bw = Math.max(2, (W - P.l - P.r) / Math.max(1, (t1 - t0) / (series[1] ? series[1].ts - series[0].ts : 3600)));
+    series.filter(p => p.up < 1).forEach(p => add('rect', { x: x(p.ts), y: P.t, width: bw, height: H - P.t - P.b, class: p.up === 0 ? 'hd-down' : 'hd-partial' }));
+    let d = '';
+    series.forEach(p => { if (p.avg_ms == null) return; d += `${d ? 'L' : 'M'}${x(p.ts).toFixed(1)},${y(p.avg_ms).toFixed(1)}`; });
+    if (d) add('path', { d, class: 'hd-line' });
+    // Few values (fresh check, long interval): show them as dots too
+    if (vals.length <= 60) series.forEach(p => { if (p.avg_ms != null) add('circle', { cx: x(p.ts), cy: y(p.avg_ms), r: 2.5, class: 'hd-dot' }); });
+    [t0, (t0 + t1) / 2, t1].forEach((ts, i) => add('text', { x: x(ts), y: H - 6, 'text-anchor': ['start', 'middle', 'end'][i], class: 'hd-axis' },
+      new Date(ts * 1000).toLocaleString(LOCALE, hours > 48 ? { day: '2-digit', month: '2-digit' } : { hour: '2-digit', minute: '2-digit' })));
+  }
+
+  async function loadHealthDetail() {
+    let d;
+    try {
+      const res = await fetch(`/api/health/${encodeURIComponent(detail.check.id)}/history?hours=${detail.hours}`);
+      if (!res.ok) throw new Error();
+      d = await res.json();
+    } catch (e) { toast(t('Fehler beim Laden.'), 'error'); return; }
+    const st = d.stats;
+    const tiles = $('hd-stats');
+    tiles.innerHTML = '';
+    [['Verfügbarkeit', st.uptime != null ? `${st.uptime.toLocaleString(LOCALE)} %` : '–'], ['Ø Antwortzeit', st.avg_ms != null ? `${Math.round(st.avg_ms)} ms` : '–'],
+     ['Schnellste', st.min_ms != null ? `${Math.round(st.min_ms)} ms` : '–'], ['Langsamste', st.max_ms != null ? `${Math.round(st.max_ms)} ms` : '–'],
+     ['Vorfälle', String(d.incidents.length)]].forEach(([label, value]) => {
+      const tile = el('div', 'bench-value');
+      tile.append(el('span', 'label', t(label)), el('span', 'value', value));
+      tiles.appendChild(tile);
+    });
+    drawResponseChart($('hd-chart').querySelector('svg'), d.series, d.hours);
+    const table = $('hd-incidents');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Beginn', 'Dauer', 'Fehler', ''].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = table.createTBody();
+    if (!d.incidents.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 4;
+      c.textContent = t('Keine Vorfälle im Zeitraum.');
+    }
+    d.incidents.forEach(i => {
+      const row = body.insertRow();
+      row.insertCell().textContent = fmtWhen(i.start);
+      row.insertCell().textContent = i.ongoing ? `${t('seit')} ${fmtDur(i.duration)}` : fmtDur(i.duration);
+      const err = row.insertCell();
+      err.className = 'wrap';
+      err.textContent = i.error || '–';
+      const tags = row.insertCell();
+      if (i.ongoing) tags.appendChild(el('span', 'health-tag critical', t('Läuft noch')));
+      if (i.maintenance) tags.appendChild(el('span', 'health-tag', t('Wartung')));
+    });
+  }
+
+  function openHealthDetail(c) {
+    detail.check = c;
+    $('hd-title').textContent = c.name;
+    $('hd-sub').textContent = c.target || c.url || '';
+    const m = $('health-modal');
+    m.classList.add('open');
+    m.setAttribute('aria-hidden', 'false');
+    loadHealthDetail();
+  }
+
+  function closeHealthDetail() {
+    const m = $('health-modal');
+    m.classList.remove('open');
+    m.setAttribute('aria-hidden', 'true');
+  }
+
+  function initHealthDetail() {
+    if (!$('health-modal')) return;
+    document.querySelectorAll('#hd-range button').forEach(b => b.addEventListener('click', () => {
+      detail.hours = +b.dataset.hours;
+      document.querySelectorAll('#hd-range button').forEach(x => x.classList.toggle('active', x === b));
+      loadHealthDetail();
+    }));
+    $('hd-close').addEventListener('click', closeHealthDetail);
+    $('health-modal').addEventListener('click', e => { if (e.target.id === 'health-modal') closeHealthDetail(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('health-modal').classList.contains('open')) closeHealthDetail(); });
+  }
+
   function renderHealth(data) {
     const list = $('health-list');
     list.innerHTML = '';
@@ -190,12 +296,19 @@
     checks.forEach(c => {
       const row = el('div', 'health-row');
       const head = el('div', 'health-row-head');
-      const name = el('a', 'health-name', c.name);
-      name.href = c.url;
-      name.target = '_blank';
-      name.rel = 'noopener noreferrer';
-      name.title = c.url;
+      const name = el(c.url ? 'a' : 'span', 'health-name', c.name);
+      if (c.url) {
+        name.href = c.url;
+        name.target = '_blank';
+        name.rel = 'noopener noreferrer';
+      }
+      name.title = c.target || c.url || '';
       name.setAttribute('data-no-i18n', '');
+      row.classList.add('clickable');
+      row.tabIndex = 0;
+      row.title = t('Antwortzeiten & Vorfälle');
+      row.addEventListener('click', e => { if (!e.target.closest('a')) openHealthDetail(c); });
+      row.addEventListener('keydown', e => { if (e.key === 'Enter') openHealthDetail(c); });
       const ok = c.last && c.last.ok;
       const tag = el('span', `health-tag ${!c.last ? '' : ok ? 'good' : 'critical'}`,
         !c.last ? t('Noch nicht geprüft') : ok ? `${t('Erreichbar')}${c.last.ms != null ? ` · ${Math.round(c.last.ms)} ms` : ''}` : t('Fehler'));
@@ -235,4 +348,5 @@
 
   initActions();
   initHealth();
+  initHealthDetail();
 })();

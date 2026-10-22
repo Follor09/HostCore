@@ -290,16 +290,24 @@
       <!-- Web-Dienste -->
       <section class="glass-card settings-section" id="web-dienste" data-perm="settings.manage">
         <h2>Web-Dienste</h2>
-        <p class="section-desc">Eigene Dienste im Heimnetz oder VPN, deren Erreichbarkeit der Pi regelmäßig prüft (z.B. Home Assistant, NAS, Grafana). Jede Antwort unter HTTP 400 zählt als erreichbar – auch eine Login-Seite.</p>
+        <p class="section-desc">Eigene Dienste und Geräte im Heimnetz oder VPN, deren Erreichbarkeit der Pi regelmäßig prüft – Webseiten, Text auf einer Seite, JSON-Werte, TCP-Ports, Ping und DNS-Server. Antwortzeiten und Vorfälle zeigt ein Klick auf den Dienst in der Web-Dienste-Karte des Dashboards.</p>
         <div class="wol-settings-list" id="health-settings-list"></div>
-        <form class="inline-form wol-add" id="health-form" autocomplete="off">
-          <label class="login-field grow">
+        <h3 class="subhead" id="health-form-title">Prüfung hinzufügen</h3>
+        <form class="inline-grid health-form" id="health-form" autocomplete="off">
+          <label class="login-field">
             <span>Name</span>
             <input type="text" id="health-name" maxlength="40" placeholder="Home Assistant" required>
           </label>
-          <label class="login-field grow">
-            <span>Adresse</span>
-            <input type="text" id="health-url" placeholder="http://192.168.178.45:8123" spellcheck="false" required>
+          <label class="login-field">
+            <span>Art</span>
+            <select id="health-type">
+              <option value="http">Webseite (HTTP)</option>
+              <option value="keyword">Webseite enthält Text</option>
+              <option value="json">JSON-Wert</option>
+              <option value="tcp">TCP-Port</option>
+              <option value="ping">Ping</option>
+              <option value="dns">DNS-Server</option>
+            </select>
           </label>
           <label class="login-field">
             <span>Intervall</span>
@@ -309,13 +317,53 @@
               <option value="15">15 Minuten</option>
             </select>
           </label>
-          <label class="toggle-label health-tls">
+          <label class="login-field full" data-types="http keyword json">
+            <span>Adresse</span>
+            <input type="text" id="health-url" placeholder="http://192.168.178.45:8123" spellcheck="false">
+          </label>
+          <label class="login-field" data-types="keyword">
+            <span>Text auf der Seite</span>
+            <input type="text" id="health-keyword" maxlength="200" placeholder="z. B. Willkommen">
+          </label>
+          <label class="toggle-label" data-types="keyword">
+            <input type="checkbox" id="health-invert">
+            Text darf nicht vorkommen
+          </label>
+          <label class="login-field" data-types="json">
+            <span>JSON-Pfad</span>
+            <input type="text" id="health-json-path" placeholder="z. B. status oder data.0.state" spellcheck="false">
+          </label>
+          <label class="login-field" data-types="json">
+            <span>Erwarteter Wert (optional)</span>
+            <input type="text" id="health-json-expected" maxlength="200" placeholder="z. B. ok">
+          </label>
+          <label class="login-field" data-types="tcp ping dns">
+            <span data-label-types="tcp ping">Host</span>
+            <span data-label-types="dns" hidden>DNS-Server</span>
+            <input type="text" id="health-host" placeholder="z. B. 192.168.178.1 oder nas.local" spellcheck="false">
+          </label>
+          <label class="login-field" data-types="tcp">
+            <span>Port</span>
+            <input type="number" id="health-port" min="1" max="65535" placeholder="z. B. 22">
+          </label>
+          <label class="login-field" data-types="dns">
+            <span>Abzufragender Name</span>
+            <input type="text" id="health-query" placeholder="z. B. example.org" spellcheck="false">
+          </label>
+          <label class="login-field" data-types="dns">
+            <span>Erwartete Antwort (optional)</span>
+            <input type="text" id="health-dns-expected" maxlength="100" placeholder="z. B. 93.184.215.14">
+          </label>
+          <label class="toggle-label health-tls" data-types="http keyword json">
             <input type="checkbox" id="health-tls">
             Zertifikat prüfen
           </label>
-          <button type="submit" class="btn-primary">Hinzufügen</button>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="health-submit">Hinzufügen</button>
+            <button type="button" class="btn-secondary" id="health-cancel" hidden>Abbrechen</button>
+          </div>
         </form>
-        <p class="field-hint">Ohne „Zertifikat prüfen“ werden auch selbst-signierte HTTPS-Zertifikate akzeptiert (üblich im Heimnetz).</p>
+        <p class="field-hint">Alle Prüfungen nur im Heimnetz oder VPN. „Webseite“: jede Antwort unter HTTP 400 zählt als erreichbar – auch eine Login-Seite. Ohne „Zertifikat prüfen“ werden auch selbst-signierte Zertifikate akzeptiert. Geräte aus dem Netzwerk-Scan lassen sich unter System-Werkzeuge → Geräte im Netzwerk mit einem Klick überwachen (Ping, folgt der IP über die MAC-Adresse).</p>
       </section>
 
       <!-- Öffentliche Statusseite -->

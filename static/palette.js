@@ -112,7 +112,8 @@
     section('/containers', 'Container', [
       ['kubernetes', 'Kubernetes', 'k3s pods deployments services nodes kubectl'], ['docker', 'Docker-Container', 'docker container start stop logs'],
       ['apps', 'App-Store', 'apps installieren jellyfin pihole home assistant vaultwarden grafana store'],
-      ['stacks', 'Compose-Stacks', 'docker compose stack yaml aktualisieren'], ['images', 'Image-Updates', 'image update neu version registry'],
+      ['live-logs', 'Live-Logs', 'logs dozzle live mehrere container fehler'],
+      ['stacks', 'Compose-Stacks', 'docker compose stack yaml aktualisieren automatisch limits'], ['images', 'Image-Updates', 'image update neu version registry'],
       ['statistik', 'Container-Statistik', 'cpu ram verlauf container stats']
     ]);
     section('/system', 'System-Werkzeuge', [['firewall-traffic', 'Firewall-Traffic', 'blockiert traffic ufw log länder country'],

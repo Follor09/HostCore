@@ -47,6 +47,7 @@
       <a href="#apps">App-Store</a>
       <a href="#kubernetes">Kubernetes</a>
       <a href="#docker">Docker</a>
+      <a href="#live-logs">Live-Logs</a>
       <a href="#stacks">Compose-Stacks</a>
       <a href="#images">Image-Updates</a>
       <a href="#statistik">Statistik</a>
@@ -133,6 +134,31 @@
         </div>
         <div class="table-scroll"><table class="data-table ctr-table" id="dk-table"></table></div>
         <p class="field-hint" id="dk-hint"></p>
+      </section>
+
+      <!-- Live-Logs -->
+      <section class="glass-card settings-section" id="live-logs" data-perm="logs.view">
+        <div class="section-head">
+          <h2>Live-Logs</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="ll-state"></span>
+          </div>
+        </div>
+        <p class="section-desc">Die Logs mehrerer Container gleichzeitig, zeitlich zusammengeführt – jede Farbe ein Container. Bei „Live“ kommen neue Zeilen alle zwei Sekunden dazu; nach oben scrollen hält die Ansicht an.</p>
+        <div class="ll-chips" id="ll-chips"></div>
+        <form class="log-filters" id="ll-form" autocomplete="off">
+          <input type="search" id="ll-q" placeholder="Filtern …" spellcheck="false" aria-label="Filtern">
+          <select id="ll-tail" aria-label="Zeilen pro Container">
+            <option value="50">50 Zeilen je Container</option>
+            <option value="200" selected>200 Zeilen je Container</option>
+            <option value="1000">1000 Zeilen je Container</option>
+          </select>
+          <label class="toggle-label"><input type="checkbox" id="ll-errors"> Nur Fehler &amp; Warnungen</label>
+          <label class="toggle-label"><input type="checkbox" id="ll-live" checked> Live</label>
+          <button type="button" class="btn-secondary" id="ll-clear">Leeren</button>
+        </form>
+        <div class="ll-output" id="ll-output" data-no-i18n></div>
+        <p class="field-hint" id="ll-hint"></p>
       </section>
 
       <!-- Compose-Stacks -->
@@ -260,6 +286,7 @@
   <script src="/static/editor.js"></script>
   <script src="/static/containers.js"></script>
   <script src="/static/appstore.js"></script>
+  <script src="/static/containerlogs.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

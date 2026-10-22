@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import pwd
+import re
 import secrets
 import signal
 import struct
@@ -35,20 +36,39 @@ _tickets: Dict[str, tuple] = {}   # ticket -> (username, expires)
 _sessions: Dict[int, dict] = {}   # pid -> info
 
 
-def issue_ticket(username: str) -> str:
+CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def issue_ticket(username: str, container: str = "") -> str:
+    """container: open a shell inside this running Docker container instead of on the Pi."""
     now = time.time()
-    for t, (_, exp) in list(_tickets.items()):
+    for t, (_, exp, _c) in list(_tickets.items()):
         if exp < now:
             _tickets.pop(t, None)
     ticket = secrets.token_urlsafe(32)
-    _tickets[ticket] = (username, now + TICKET_TTL)
+    _tickets[ticket] = (username, now + TICKET_TTL, container)
     return ticket
 
 
-def redeem_ticket(ticket: Optional[str], username: str) -> bool:
-    """One-time use: a ticket is consumed even if it turns out to be invalid."""
+def redeem_ticket(ticket: Optional[str], username: str) -> Optional[str]:
+    """One-time use: a ticket is consumed even if it turns out to be invalid.
+    Returns the target ("" = the Pi, otherwise a container name) or None."""
     entry = _tickets.pop(ticket or "", None)
-    return bool(entry) and entry[0] == username and entry[1] >= time.time()
+    if not entry or entry[0] != username or entry[1] < time.time():
+        return None
+    return entry[2]
+
+
+def check_container(name: str) -> str:
+    """The container must exist and run - a shell in it is opened with docker exec."""
+    if not CONTAINER_RE.match(name or ""):
+        raise ValueError("Ungültiger Container-Name.")
+    res = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", name], capture_output=True, text=True, timeout=10)
+    if res.returncode != 0:
+        raise ValueError(f"Container {name} nicht gefunden.")
+    if res.stdout.strip() != "true":
+        raise ValueError(f"Container {name} läuft nicht.")
+    return name
 
 
 def session_count() -> int:
@@ -61,7 +81,7 @@ def _set_winsize(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
-def _spawn_shell(rows: int, cols: int):
+def _spawn_shell(rows: int, cols: int, container: str = ""):
     user = pwd.getpwuid(os.getuid())
     master, slave = os.openpty()
     _set_winsize(master, rows, cols)
@@ -81,8 +101,11 @@ def _spawn_shell(rows: int, cols: int):
         # New session + the pty as controlling terminal -> job control, Ctrl+C, sudo prompts work
         fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
+    # In a container: bash if the image has it, sh otherwise
+    argv = ["docker", "exec", "-it", "-e", "TERM=xterm-256color", container, "sh", "-c",
+            "command -v bash >/dev/null 2>&1 && exec bash || exec sh"] if container else [shell, "-l"]
     proc = subprocess.Popen(
-        [shell, "-l"], stdin=slave, stdout=slave, stderr=slave,
+        argv, stdin=slave, stdout=slave, stderr=slave,
         cwd=user.pw_dir, env=env, start_new_session=True,
         preexec_fn=make_controlling_tty, close_fds=True,
     )
@@ -110,9 +133,9 @@ def _terminate(proc: subprocess.Popen) -> None:
             continue
 
 
-async def run_session(websocket, username: str, client: str, rows: int, cols: int) -> None:
-    """Bridge one accepted WebSocket to a fresh shell until either side closes."""
-    proc, master = await asyncio.to_thread(_spawn_shell, rows, cols)
+async def run_session(websocket, username: str, client: str, rows: int, cols: int, container: str = "") -> None:
+    """Bridge one accepted WebSocket to a fresh shell (on the Pi or in a container) until either side closes."""
+    proc, master = await asyncio.to_thread(_spawn_shell, rows, cols, container)
     loop = asyncio.get_running_loop()
     output: asyncio.Queue = asyncio.Queue()
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")

@@ -59,9 +59,9 @@ import appstore
 import statuspage
 import kanban
 import reminders
-import briefing
 import maintenance
 import docs
+import autoupdate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -79,7 +79,9 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(systools.restore_governor)
     history_task = asyncio.create_task(history.background_sampler())
     health_task = asyncio.create_task(healthchecks.background_checker())
+    autoupdate_task = asyncio.create_task(autoupdate.background_runner())
     yield
+    autoupdate_task.cancel()
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
@@ -1056,13 +1058,6 @@ class TracerouteRequest(BaseModel):
     host: str
 
 
-class HealthCheckRequest(BaseModel):
-    name: str
-    url: str
-    interval: int = 5
-    verify_tls: bool = False
-
-
 @app.post("/api/tools/dns")
 async def api_tools_dns(req: DnsRequest, request: Request):
     request.state.audit_detail = f"{req.type} {req.name[:80]} @ {req.server[:40]}"
@@ -1087,14 +1082,52 @@ async def api_health():
 
 
 @app.post("/api/settings/health")
-async def api_settings_health_add(req: HealthCheckRequest, request: Request):
-    request.state.audit_detail = f"{req.name[:40]} · {req.url[:100]}"
+async def api_settings_health_add(payload: dict, request: Request):
+    """payload: name, type (http, keyword, json, tcp, ping, dns), interval and the type's fields."""
+    request.state.audit_detail = f"{str(payload.get('name', ''))[:40]} · {payload.get('type', 'http')}"
     try:
-        item = await asyncio.to_thread(healthchecks.add_check, req.name, req.url, req.interval, req.verify_tls)
+        item = await asyncio.to_thread(healthchecks.add, payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await healthchecks.run_check(item)
     return await asyncio.to_thread(healthchecks.status)
+
+
+@app.post("/api/settings/health/{check_id}/update")
+async def api_settings_health_update(check_id: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{str(payload.get('name', ''))[:40]} · {payload.get('type', 'http')}"
+    try:
+        item = await asyncio.to_thread(healthchecks.update, check_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await healthchecks.run_check(item)
+    return await asyncio.to_thread(healthchecks.status)
+
+
+@app.get("/api/health/{check_id}/history")
+async def api_health_history(check_id: str, hours: int = 24):
+    try:
+        return await asyncio.to_thread(healthchecks.history_detail, check_id, hours)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/api/tools/lan/{mac}/monitor")
+async def api_tools_lan_monitor(mac: str, request: Request):
+    """Watch a device from the LAN scan with a ping check (follows its IP by MAC)."""
+    dev = (settings_store.get("lan_devices", {}) or {}).get(mac.lower())
+    if not dev or not dev.get("ip"):
+        raise HTTPException(status_code=404, detail="Gerät nicht gefunden.")
+    if any(c.get("mac") == mac.lower() for c in healthchecks.checks()):
+        raise HTTPException(status_code=400, detail="Dieses Gerät wird schon überwacht.")
+    name = (dev.get("alias") or dev.get("hostname") or dev["ip"])[:40]
+    request.state.audit_detail = f"{name} · {mac}"
+    try:
+        item = await asyncio.to_thread(healthchecks.add, {"name": name, "type": "ping", "host": dev["ip"], "mac": mac.lower(), "interval": 5})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await healthchecks.run_check(item)
+    return {"message": f"{name} wird jetzt alle 5 Minuten angepingt.", "check": item}
 
 
 @app.post("/api/settings/health/{check_id}/delete")
@@ -1342,6 +1375,7 @@ async def api_tools_fan_curve_reset():
 # ---------------------------------------------------------------------------
 class TerminalTicketRequest(BaseModel):
     password: str = ""
+    container: str = ""      # shell inside this Docker container instead of on the Pi
 
 
 @app.post("/api/terminal/ticket")
@@ -1352,7 +1386,8 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
         # the main dashboard already checked the password; the token proves it's the main dashboard
         if terminal.session_count() >= terminal.MAX_SESSIONS:
             raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
-        return {"ticket": terminal.issue_ticket(request.state.user), "expires_in": terminal.TICKET_TTL}
+        container = await asyncio.to_thread(_terminal_target, req.container)
+        return {"ticket": terminal.issue_ticket(request.state.user, container), "expires_in": terminal.TICKET_TTL}
     ip = request.client.host if request.client else "unknown"
     wait = auth.lockout_remaining(ip)
     if wait:
@@ -1365,7 +1400,7 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     remote = _remote_for(request)
     if remote:
         try:
-            res = await _proxy().post(f"{remote['url']}/api/terminal/ticket", json={},
+            res = await _proxy().post(f"{remote['url']}/api/terminal/ticket", json={"container": req.container},
                                       headers={"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""})
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"{remote['name']} nicht erreichbar ({type(e).__name__}).")
@@ -1374,7 +1409,18 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
         return res.json()
     if terminal.session_count() >= terminal.MAX_SESSIONS:
         raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
-    return {"ticket": terminal.issue_ticket(request.state.user), "expires_in": terminal.TICKET_TTL}
+    container = await asyncio.to_thread(_terminal_target, req.container)
+    request.state.audit_detail = f"Container {container}" if container else ""
+    return {"ticket": terminal.issue_ticket(request.state.user, container), "expires_in": terminal.TICKET_TTL}
+
+
+def _terminal_target(container: str) -> str:
+    if not container:
+        return ""
+    try:
+        return terminal.check_container(container)
+    except (ValueError, OSError, subprocess.SubprocessError) as e:
+        raise HTTPException(status_code=400, detail=str(e) if isinstance(e, ValueError) else "Docker antwortet nicht.")
 
 
 async def _ws_relay(websocket: WebSocket, remote: dict, path_qs: str, user: str) -> None:
@@ -1429,7 +1475,8 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
             await websocket.close(code=4401)
             return
         user = agent.remote_user(websocket.headers)
-        if not terminal.redeem_ticket(ticket, user):
+        target = terminal.redeem_ticket(ticket, user)
+        if target is None:
             await websocket.close(code=4401)
             return
     else:
@@ -1446,17 +1493,19 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
             await asyncio.to_thread(audit.record, user, websocket.client.host if websocket.client else "", "WS", "/ws/terminal", 200, f"@{remote['name']}")
             await _ws_relay(websocket, remote, f"/ws/terminal?ticket={ticket}&rows={int(rows)}&cols={int(cols)}", user)
             return
-        if not terminal.redeem_ticket(ticket, user):
+        target = terminal.redeem_ticket(ticket, user)
+        if target is None:
             await websocket.close(code=4401)
             return
     client = websocket.client.host if websocket.client else "unknown"
     started = time.time()
-    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, "geöffnet")
+    where = f"Container {target} · " if target else ""
+    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}geöffnet")
     try:
-        await terminal.run_session(websocket, user, client, rows, cols)
+        await terminal.run_session(websocket, user, client, rows, cols, target)
     finally:
         minutes = max(1, round((time.time() - started) / 60))
-        await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"beendet nach {minutes} Min.")
+        await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}beendet nach {minutes} Min.")
 
 
 # ---------------------------------------------------------------------------
@@ -1866,7 +1915,8 @@ def _container_call(fn, *args):
 async def api_containers_overview():
     def collect():
         return {"kube": containers.kube_overview(), "docker": containers.docker_list(), "stacks": containers.stacks(),
-                "jobs": containers.running_jobs(), "images": imagecheck.status(), "scaled": containers.kube_scaled()}
+                "jobs": containers.running_jobs(), "images": imagecheck.status(), "scaled": containers.kube_scaled(),
+                "autoupdate": autoupdate.overview()}
     return await asyncio.to_thread(collect)
 
 
@@ -1878,6 +1928,51 @@ async def api_containers_stats():
 @app.get("/api/containers/stats/history")
 async def api_containers_stats_history(kind: str, name: str, hours: int = 24):
     return await asyncio.to_thread(_container_call, containers.stats_history, kind, name, hours)
+
+
+class AutoUpdateRequest(BaseModel):
+    enabled: bool = True
+    time: str = "04:00"
+    days: str = "daily"
+    weekday: int = 6
+
+
+@app.post("/api/containers/autoupdate/{stack}")
+async def api_autoupdate_save(stack: str, req: AutoUpdateRequest, request: Request):
+    request.state.audit_detail = f"{stack}: {'an, ' + req.time if req.enabled else 'aus'}"
+    try:
+        return await asyncio.to_thread(autoupdate.save, stack, req.enabled, req.time, req.days, req.weekday)
+    except autoupdate.AutoUpdateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/containers/autoupdate/{stack}/run")
+async def api_autoupdate_run(stack: str, request: Request):
+    request.state.audit_detail = stack
+    autoupdate.run_in_background(stack)
+    return {"message": f"{stack} wird aktualisiert."}
+
+
+class LimitsRequest(BaseModel):
+    service: str
+    cpus: Optional[float] = None
+    mem_mb: Optional[int] = None
+
+
+@app.post("/api/containers/stacks/{name}/limits")
+async def api_stack_limits(name: str, req: LimitsRequest, request: Request):
+    request.state.audit_detail = f"{name}/{req.service}: CPU {req.cpus or '–'}, RAM {req.mem_mb or '–'} MB"
+    try:
+        return await asyncio.to_thread(containers.set_limits, name, req.service, req.cpus, req.mem_mb)
+    except containers.ContainerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Override-Datei: {e.strerror or e}")
+
+
+@app.get("/api/containers/logs/multi")
+async def api_container_multi_logs(names: str, since: float = 0, tail: int = 200):
+    return await asyncio.to_thread(containers.multi_logs, [n for n in names.split(",") if n], since, tail)
 
 
 @app.get("/api/containers/kube/logs")
@@ -2246,11 +2341,6 @@ async def api_docs_services_save(payload: dict, request: Request):
 @app.post("/api/docs/services/delete")
 async def api_docs_services_delete(payload: dict):
     return await asyncio.to_thread(_docs_call, docs.servicedoc_delete, str(payload.get("target", "")))
-
-
-@app.get("/api/briefing")
-async def api_briefing():
-    return await asyncio.to_thread(briefing.briefing)
 
 
 @app.get("/api/history/interfaces")

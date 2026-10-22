@@ -453,7 +453,9 @@ def _stacks() -> List[Dict[str, Any]]:
                     "dir": os.path.dirname(files[0]) if files else "", "running": running, "total": len(members),
                     "level": level, "containers": [{"name": c["name"], "service": c["service"], "state": c["state"],
                                                     "status": c["status"], "image": c["image"], "level": c["level"]} for c in members],
-                    "images": sorted({c["image"] for c in members})})
+                    "images": sorted({c["image"] for c in members}),
+                    "services": sorted({c["service"] for c in members if c["service"]}),
+                    "limits": limits().get(s["name"], {})})
     rank = {"error": 0, "warning": 1, "active": 2, "inactive": 3}
     out.sort(key=lambda s: (rank[s["level"]], s["name"]))
     return out
@@ -461,6 +463,47 @@ def _stacks() -> List[Dict[str, Any]]:
 
 def stacks() -> List[Dict[str, Any]]:
     return _cached("stacks", CACHE_TTL, _stacks)
+
+
+# ---------------------------------------------------------------------------
+# Combined live logs of several containers (like Dozzle)
+# ---------------------------------------------------------------------------
+_LOG_TS = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})\s?(.*)$")
+MULTI_LOG_MAX = 3000
+
+
+def _container_log_lines(name: str, since: float, tail: int) -> List[Dict[str, Any]]:
+    import calendar
+    args = ["logs", "--timestamps", "--tail", str(tail)]
+    if since:
+        args += ["--since", f"{since:.6f}"]
+    try:
+        res = _docker(args + [name], timeout=15)
+    except subprocess.TimeoutExpired:
+        return [{"ts": time.time(), "container": name, "stream": "err", "text": "(docker logs antwortet nicht)"}]
+    out = []
+    for stream, text in (("out", res.stdout), ("err", res.stderr)):
+        for line in text.splitlines():
+            m = _LOG_TS.match(line)
+            if not m:
+                continue
+            ts = calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")) + float(m.group(2) or 0)
+            out.append({"ts": ts, "container": name, "stream": stream, "text": m.group(4)[:4000]})
+    return out
+
+
+def multi_logs(names: List[str], since: float = 0, tail: int = 200) -> Dict[str, Any]:
+    """Log lines of several containers merged by time. since: only newer lines (for live polling)."""
+    import concurrent.futures
+    known = {c["name"] for c in _docker_list().get("containers", [])}
+    names = [n for n in dict.fromkeys(names) if n in known][:12]
+    if not names:
+        return {"lines": [], "names": [], "until": since}
+    tail = max(10, min(int(tail), 1000))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(names))) as pool:
+        parts = list(pool.map(lambda n: _container_log_lines(n, since, tail), names))
+    lines = sorted((l for p in parts for l in p if not since or l["ts"] > since), key=lambda l: l["ts"])[-MULTI_LOG_MAX:]
+    return {"lines": lines, "names": names, "until": lines[-1]["ts"] if lines else since}
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +552,88 @@ def stack_action(name: str, action: str, user: str = "") -> Dict[str, Any]:
         raise ContainerError(f"Stack {name} nicht gefunden.")
     if not stack["file_exists"]:
         raise ContainerError("Compose-Datei nicht gefunden – der Stack lässt sich nur über docker selbst steuern.")
-    return compose_job(name, stack["files"], stack["dir"], action, user)
+    files = list(stack["files"])
+    override = os.path.join(stack["dir"], LIMITS_FILE)
+    if os.path.isfile(override) and override not in files:
+        files.append(override)      # resource limits set here survive "Aktualisieren" and recreates
+    return compose_job(name, files, stack["dir"], action, user)
+
+
+# ---------------------------------------------------------------------------
+# Resource limits per stack service: applied at once with `docker update` and kept
+# in an override file next to the stack (docker-compose.picore.yml) for recreates
+# ---------------------------------------------------------------------------
+LIMITS_KEY = "container_limits"
+LIMITS_FILE = "docker-compose.picore.yml"
+
+
+def limits() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    return dict(settings_store.get(LIMITS_KEY, {}) or {})
+
+
+def _write_override(stack: Dict[str, Any], services: Dict[str, Dict[str, Any]]) -> None:
+    path = os.path.join(stack["dir"], LIMITS_FILE)
+    active = {svc: l for svc, l in services.items() if l.get("cpus") or l.get("mem_mb")}
+    if not active and not os.path.isfile(path):
+        return
+    # Once used, compose remembers the file in the stack's labels: keep it (empty) instead of deleting it
+    lines = ["# Ressourcen-Limits aus dem PiCore-Dashboard – wird dort verwaltet", "services:" if active else "services: {}"]
+    for svc, l in sorted(active.items()):
+        lines.append(f"  {json.dumps(svc)}:")
+        if l.get("cpus"):
+            lines.append(f"    cpus: {l['cpus']}")
+        if l.get("mem_mb"):
+            lines.append(f"    mem_limit: {json.dumps(str(l['mem_mb']) + 'm')}")
+            lines.append(f"    memswap_limit: {json.dumps(str(l['mem_mb'] * 2) + 'm')}")
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def set_limits(stack_name: str, service: str, cpus: Optional[float], mem_mb: Optional[int]) -> Dict[str, Any]:
+    import psutil
+    stack = next((s for s in _stacks() if s["name"] == stack_name), None)
+    if not stack:
+        raise ContainerError(f"Stack {stack_name} nicht gefunden.")
+    if not stack["dir"] or not stack["file_exists"]:
+        raise ContainerError("Compose-Datei nicht gefunden – Limits brauchen den Stack-Ordner.")
+    members = [c for c in stack["containers"] if c["service"] == service]
+    if not members:
+        raise ContainerError(f"Dienst {service} gehört nicht zu {stack_name}.")
+    cores = psutil.cpu_count() or 4
+    total_mb = psutil.virtual_memory().total // (1024 * 1024)
+    if cpus is not None and not 0.1 <= float(cpus) <= cores:
+        raise ContainerError(f"CPU: 0,1 bis {cores} Kerne.")
+    if mem_mb is not None and not 32 <= int(mem_mb) <= total_mb:
+        raise ContainerError(f"RAM: 32 bis {total_mb} MB.")
+    all_limits = limits()
+    services = dict(all_limits.get(stack_name, {}))
+    services[service] = {"cpus": round(float(cpus), 2) if cpus else None, "mem_mb": int(mem_mb) if mem_mb else None}
+    if not services[service]["cpus"] and not services[service]["mem_mb"]:
+        services.pop(service)
+    _write_override(stack, services)
+    if services:
+        all_limits[stack_name] = services
+    else:
+        all_limits.pop(stack_name, None)
+    settings_store.set(LIMITS_KEY, all_limits)
+
+    # Running containers get the limits right away
+    args = ["update", "--cpus", str(round(float(cpus), 2)) if cpus else "0"]
+    if mem_mb:
+        args += ["--memory", f"{int(mem_mb)}m", "--memory-swap", f"{int(mem_mb) * 2}m"]
+    notes = []
+    for c in members:
+        res = _docker(args + [c["name"]], timeout=20)
+        if res.returncode != 0:
+            err = res.stderr.strip()
+            if "memory" in err.lower() and "cgroup" in err.lower():
+                err = "Der Kernel unterstützt keine RAM-Limits (cgroup memory ist aus)."
+            notes.append(f"{c['name']}: {err[:200]}")
+    invalidate()
+    msg = "Limits gesetzt." if not notes else "Limits gespeichert, aber nicht sofort übernommen: " + "; ".join(notes)
+    if not mem_mb and (all_limits.get(stack_name, {}).get(service) is None):
+        msg += " Ein entferntes RAM-Limit gilt erst nach dem nächsten „Aktualisieren“ oder Neuerstellen."
+    return {"message": msg, "limits": limits(), "applied": not notes}
 
 
 def compose_job(name: str, files: List[str], cwd: str, action: str, user: str = "") -> Dict[str, Any]:

@@ -8861,7 +8861,7 @@ body.replaying #btn-replay {
 }
 
 /* ==========================================================================
-   Night summary, reminders, task board, power budget
+   Reminders and task board
    ========================================================================== */
 .planner-locked .kanban-mini,
 .planner-locked .kanban-quick,
@@ -8893,63 +8893,13 @@ body.replaying #btn-replay {
 .card-foot-actions .wol-manage { margin-top: 0; }
 
 /* Content from the top, actions at the bottom */
-.briefing-card,
 .reminders-card,
 .kanban-card {
   justify-content: flex-start;
 }
 
-.kanban-card > #kanban-open,
-.briefing-today {
+.kanban-card > #kanban-open {
   margin-top: auto;
-}
-
-.briefing-list { margin-bottom: 12px; }
-
-/* --- Briefing */
-.briefing-sentence {
-  font-family: var(--font-display);
-  font-size: 1.02rem;
-  font-weight: 600;
-  color: var(--text-strong);
-  margin: 2px 0 10px;
-}
-
-.briefing-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.briefing-item {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  font-size: 0.84rem;
-  color: var(--text-muted);
-}
-
-.briefing-item a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.briefing-item a:hover {
-  color: var(--accent-cyan);
-}
-
-.briefing-item.critical { color: var(--accent-rose); }
-.briefing-item.warning { color: var(--accent-amber); }
-
-.briefing-today {
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  background: rgba(var(--accent-rgb), 0.08);
-  border: 1px solid rgba(var(--accent-rgb), 0.2);
-  cursor: pointer;
 }
 
 /* --- Reminders */
@@ -9814,3 +9764,125 @@ body.replaying #btn-replay {
 .app-opt-row:has(.app-device) > input[type="checkbox"] { margin-top: 22px; }
 
 .app-card .app-actions { margin-top: auto; }
+
+/* --- Health checks: typed form, detail sheet */
+.health-form [hidden] { display: none !important; }
+.health-form .toggle-label { align-self: center; }
+.health-row.clickable { cursor: pointer; border-radius: 10px; }
+.health-row.clickable:hover { background: rgba(var(--ink-rgb), 0.03); }
+.modal-card.sheet-card.health-sheet { max-width: 860px; }
+#hd-stats { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.hd-chart { height: 180px; }
+.hd-chart svg { width: 100%; height: 180px; display: block; }
+.hd-grid { stroke: var(--chart-grid); }
+.hd-axis { fill: var(--text-dim); font-size: 10px; font-family: var(--font-mono); }
+.hd-line { fill: none; stroke: var(--accent-cyan); stroke-width: 2; stroke-linejoin: round; }
+.hd-down { fill: rgba(255, 42, 95, 0.28); }
+.hd-partial { fill: rgba(255, 183, 3, 0.22); }
+.hd-empty { fill: var(--text-muted); font-size: 13px; }
+
+/* --- Live logs (containers page) */
+.ll-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.ll-chip {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(var(--ink-rgb), 0.03);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ll-chip.on {
+  color: hsl(var(--ll-h), 75%, 68%);
+  border-color: hsla(var(--ll-h), 75%, 55%, 0.55);
+  background: hsla(var(--ll-h), 75%, 55%, 0.12);
+}
+
+.ll-all { background: none; border: none; cursor: pointer; font-size: 0.78rem; }
+
+.ll-output {
+  height: 460px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-code);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  padding: 8px 0;
+}
+
+.ll-line {
+  display: grid;
+  grid-template-columns: auto minmax(90px, 160px) 1fr;
+  gap: 10px;
+  padding: 0 10px;
+}
+
+.ll-line:hover { background: rgba(var(--ink-rgb), 0.04); }
+.ll-line.ll-alert { background: rgba(255, 42, 95, 0.07); }
+.ll-time { color: var(--text-dim); }
+
+.ll-who {
+  color: hsl(var(--ll-h), 75%, 65%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="light"] .ll-who,
+:root[data-theme="light"] .ll-chip.on { color: hsl(var(--ll-h), 70%, 34%); }
+
+.ll-text {
+  color: var(--text-main);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ll-empty { color: var(--text-muted); padding: 16px; text-align: center; font-family: var(--font-body); }
+
+@media (max-width: 760px) {
+  .ll-line { grid-template-columns: 1fr; gap: 0; padding: 4px 10px; }
+}
+
+/* --- Stack cards: auto-updates and resource limits */
+.stack-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stack-extra-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.stack-extra-row .text-btn { background: none; border: none; cursor: pointer; font-size: 0.78rem; }
+.stack-time { width: 110px; }
+.stack-warn { color: var(--accent-amber); }
+.stack-limit-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.stack-limit-form[hidden] { display: none; }
+
+.stack-limit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.stack-limit-row b { min-width: 90px; font-family: var(--font-mono); font-size: 0.8rem; }
+.stack-limit-row input { width: 100px; }
+.hd-dot { fill: var(--accent-cyan); }

@@ -102,6 +102,7 @@
     start: '<polygon points="7 4 20 12 7 20 7 4"></polygon>',
     scale: '<path d="M8 20V4M8 4L4 8M8 4l4 4"></path><path d="M16 4v16M16 20l-4-4M16 20l4-4"></path>',
     logs: '<path d="M4 6h16M4 12h16M4 18h10"></path>',
+    console: '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>',
     stats: '<polyline points="3 17 9 11 13 15 21 7"></polyline>',
     recreate: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path><path d="M3 21v-5h5"></path>'
   };
@@ -445,6 +446,7 @@
       actions.className = 'row-action ctr-actions';
       const path = `/api/workloads/docker/${encodeURIComponent(c.name)}`;
       actions.appendChild(iconBtn('logs', 'Logs', () => openLogs({ kind: 'docker', name: c.name }), 'logs.view'));
+      if (c.state === 'running') actions.appendChild(iconBtn('console', 'Konsole', () => { location.href = `/terminal?container=${encodeURIComponent(c.name)}`; }, 'terminal'));
       if (s) actions.appendChild(iconBtn('stats', 'Verlauf', () => showStats(`docker:${c.name}`)));
       if (c.state === 'running') {
         actions.appendChild(iconBtn('restart', 'Neu starten', b => dockerAction(b, path, 'restart'), 'services.control', 'Neu starten?'));
@@ -531,11 +533,119 @@
       doc.href = `/doku#steckbrief=${encodeURIComponent(`stack:${s.name}`)}`;
       actions.appendChild(doc);
       card.appendChild(actions);
+      card.appendChild(stackExtras(s));
 
       const job = Object.values(state.jobs).filter(j => j.stack === s.name).sort((a, b) => b.started - a.started)[0];
       if (job) card.appendChild(jobPanel(job));
       grid.appendChild(card);
     });
+  }
+
+  // Auto-update schedule and resource limits of one stack
+  const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+  function stackExtras(s) {
+    const box = el('div', 'stack-extras');
+    const au = (state.data.autoupdate || { schedules: {}, log: [] }).schedules[s.name];
+    const last = (state.data.autoupdate || { log: [] }).log.find(e => e.stack === s.name);
+
+    // Auto-update
+    const row = el('div', 'stack-extra-row');
+    const label = el('label', 'toggle-label');
+    const on = el('input');
+    on.type = 'checkbox';
+    on.checked = !!au;
+    on.disabled = !can('services.control') || !s.file_exists;
+    label.append(on, document.createTextNode(` ${t('Automatisch aktualisieren')}`));
+    const time = el('input', 'inline-input stack-time');
+    time.type = 'time';
+    time.value = au ? au.time : '04:00';
+    time.disabled = on.disabled;
+    const days = el('select', 'inline-select');
+    [['daily', 'täglich'], ...DAY_NAMES.map((d, i) => [`w${i}`, `${t('jeden')} ${t(d)}`])].forEach(([v, l]) => {
+      const o = el('option', '', t(l));
+      o.value = v;
+      days.appendChild(o);
+    });
+    days.value = au ? (au.days === 'weekly' ? `w${au.weekday}` : 'daily') : 'daily';
+    days.disabled = on.disabled;
+    const save = async () => {
+      const weekly = days.value.startsWith('w');
+      try {
+        state.data.autoupdate = await api(`/api/containers/autoupdate/${encodeURIComponent(s.name)}`,
+          { enabled: on.checked, time: time.value || '04:00', days: weekly ? 'weekly' : 'daily', weekday: weekly ? +days.value.slice(1) : 6 });
+        toast(on.checked ? `${s.name}: ${t('automatische Updates')} ${days.selectedOptions[0].textContent} ${time.value}` : `${s.name}: ${t('automatische Updates aus')}`, 'success');
+      } catch (err) { toast(err.message, 'error'); on.checked = !on.checked; }
+    };
+    [on, time, days].forEach(x => x.addEventListener('change', save));
+    row.append(label, time, days);
+    if (au && can('services.control')) {
+      const now = el('button', 'text-btn', t('Jetzt ausführen'));
+      now.type = 'button';
+      now.addEventListener('click', async () => {
+        try { toast((await api(`/api/containers/autoupdate/${encodeURIComponent(s.name)}/run`, {})).message, 'success'); setTimeout(loadOverview, 1500); }
+        catch (err) { toast(err.message, 'error'); }
+      });
+      row.appendChild(now);
+    }
+    box.appendChild(row);
+    if (last) {
+      const txt = `${t('Letztes automatisches Update')}: ${fmtTime(last.ts)} · ${last.status === 'ok' ? (last.changed ? t('aktualisiert') : t('schon aktuell')) : t('fehlgeschlagen')}`;
+      const p = el('p', `field-hint${last.status === 'ok' ? '' : ' stack-warn'}`, txt);
+      if (last.status !== 'ok' && last.summary) p.title = last.summary;
+      box.appendChild(p);
+    }
+
+    // Resource limits
+    if (s.services.length) {
+      const lim = el('div', 'stack-limits');
+      const summary = s.services.map(svc => {
+        const l = s.limits[svc];
+        return l ? `${svc}: ${l.cpus ? `${fmtNum(l.cpus)} CPU` : ''}${l.cpus && l.mem_mb ? ' · ' : ''}${l.mem_mb ? fmtBytes(l.mem_mb * 1048576) : ''}` : null;
+      }).filter(Boolean);
+      const head = el('div', 'stack-extra-row');
+      head.appendChild(el('span', 'field-hint', summary.length ? `${t('Limits')}: ${summary.join(' · ')}` : t('Keine Ressourcen-Limits')));
+      const toggle = button('Limits bearbeiten', 'text-btn', () => { form.hidden = !form.hidden; }, 'services.control');
+      head.appendChild(toggle);
+      lim.appendChild(head);
+      const form = el('div', 'stack-limit-form');
+      form.hidden = true;
+      s.services.forEach(svc => {
+        const l = s.limits[svc] || {};
+        const r = el('div', 'stack-limit-row');
+        r.appendChild(raw('b', '', svc));
+        const cpu = el('input', 'inline-input');
+        cpu.type = 'number';
+        cpu.step = '0.1';
+        cpu.min = '0.1';
+        cpu.placeholder = t('CPU-Kerne');
+        cpu.value = l.cpus || '';
+        cpu.setAttribute('aria-label', `${svc} CPU`);
+        const mem = el('input', 'inline-input');
+        mem.type = 'number';
+        mem.step = '64';
+        mem.min = '32';
+        mem.placeholder = t('RAM in MB');
+        mem.value = l.mem_mb || '';
+        mem.setAttribute('aria-label', `${svc} RAM`);
+        const ok = button('Speichern', 'btn-secondary', async b => {
+          b.disabled = true;
+          try {
+            const r2 = await api(`/api/containers/stacks/${encodeURIComponent(s.name)}/limits`,
+              { service: svc, cpus: cpu.value ? +cpu.value : null, mem_mb: mem.value ? +mem.value : null });
+            toast(r2.message, r2.applied ? 'success' : 'info');
+            loadOverview();
+          } catch (err) { toast(err.message, 'error'); }
+          b.disabled = false;
+        }, 'services.control');
+        r.append(cpu, el('span', 'field-hint', 'CPU'), mem, el('span', 'field-hint', 'MB'), ok);
+        form.appendChild(r);
+      });
+      form.appendChild(el('p', 'field-hint', t('Leer = ohne Limit. Gilt sofort und bleibt über eine Override-Datei (docker-compose.picore.yml) im Stack-Ordner auch nach Updates erhalten.')));
+      lim.appendChild(form);
+      box.appendChild(lim);
+    }
+    return box;
   }
 
   function jobPanel(job) {
@@ -863,7 +973,9 @@
     renderKube();
     renderDocker();
     // a job's output is updated in place while it runs; a full re-render would reset the scroll
-    if (!Object.values(state.jobs).some(j => j.status === 'running')) renderStacks();
+    // ... and an open limits form or a focused field must not be wiped by the 15 s refresh
+    const editing = document.querySelector('.stack-limit-form:not([hidden])') || $('stack-grid').contains(document.activeElement);
+    if (!Object.values(state.jobs).some(j => j.status === 'running') && !editing) renderStacks();
     renderImages();
     const hadKey = state.statKey;
     renderStatSelect();

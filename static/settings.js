@@ -278,6 +278,16 @@
   // ---------------------------------------------------------------------------
   // Web services (health checks)
   // ---------------------------------------------------------------------------
+  const HEALTH_TYPES = { http: 'Webseite', keyword: 'Text', json: 'JSON', tcp: 'TCP', ping: 'Ping', dns: 'DNS' };
+  let healthEdit = null;
+
+  function healthState(c) {
+    if (!c.last) return 'Noch nicht geprüft';
+    if (!c.last.ok) return c.last.error;
+    const ms = c.last.ms != null ? `${Math.round(c.last.ms)} ms` : '';
+    return c.last.status ? `OK (HTTP ${c.last.status}, ${ms})` : `OK${ms ? ` (${ms})` : ''}`;
+  }
+
   function renderHealthSettings(h) {
     const list = $('health-settings-list');
     list.innerHTML = '';
@@ -296,10 +306,13 @@
       n.className = 'workload-name';
       n.textContent = c.name;
       n.setAttribute('data-no-i18n', '');
+      const kind = document.createElement('span');
+      kind.className = 'health-tag';
+      kind.textContent = HEALTH_TYPES[c.type || 'http'];
+      n.append(' ', kind);
       const sub = document.createElement('span');
       sub.className = 'workload-sub';
-      const state = !c.last ? 'Noch nicht geprüft' : c.last.ok ? `OK (HTTP ${c.last.status}, ${Math.round(c.last.ms)} ms)` : c.last.error;
-      sub.textContent = `${c.url} · alle ${c.interval} Min.${c.verify_tls ? ' · Zertifikat geprüft' : ''} · ${state}`;
+      sub.textContent = `${c.target || c.url} · alle ${c.interval} Min.${c.verify_tls ? ' · Zertifikat geprüft' : ''}${c.mac ? ' · folgt der MAC' : ''} · ${healthState(c)}`;
       main.append(n, sub);
       const run = document.createElement('button');
       run.className = 'btn-secondary';
@@ -309,6 +322,10 @@
         try { renderHealthSettings(await api(`/api/settings/health/${encodeURIComponent(c.id)}/run`, {})); }
         catch (err) { toast(err.message, 'error'); run.disabled = false; }
       });
+      const edit = document.createElement('button');
+      edit.className = 'btn-secondary';
+      edit.textContent = 'Bearbeiten';
+      edit.addEventListener('click', () => editHealthCheck(c));
       const del = document.createElement('button');
       del.className = 'btn-danger';
       del.textContent = 'Entfernen';
@@ -322,23 +339,72 @@
       });
       const actions = document.createElement('div');
       actions.className = 'item-actions';
-      actions.append(run, del);
+      actions.append(run, edit, del);
       item.append(main, actions);
       list.appendChild(item);
     });
   }
 
+  // Show only the fields of the chosen check type
+  function syncHealthType() {
+    const type = $('health-type').value;
+    document.querySelectorAll('#health-form [data-types]').forEach(el => {
+      el.hidden = !el.dataset.types.split(' ').includes(type);
+    });
+    document.querySelectorAll('#health-form [data-label-types]').forEach(el => {
+      el.hidden = !el.dataset.labelTypes.split(' ').includes(type);
+    });
+  }
+
+  const HEALTH_FIELDS = { url: 'health-url', keyword: 'health-keyword', json_path: 'health-json-path', host: 'health-host',
+                          port: 'health-port', query: 'health-query' };
+
+  function healthPayload() {
+    const type = $('health-type').value;
+    const body = { name: $('health-name').value, type, interval: +$('health-interval').value, verify_tls: $('health-tls').checked,
+                   invert: $('health-invert').checked };
+    Object.entries(HEALTH_FIELDS).forEach(([k, id]) => { body[k] = $(id).value; });
+    body.expected = type === 'dns' ? $('health-dns-expected').value : $('health-json-expected').value;
+    if (healthEdit && healthEdit.mac && type === 'ping') body.mac = healthEdit.mac;
+    return body;
+  }
+
+  function resetHealthForm() {
+    healthEdit = null;
+    $('health-form').reset();
+    $('health-interval').value = '5';
+    $('health-form-title').textContent = 'Prüfung hinzufügen';
+    $('health-submit').textContent = 'Hinzufügen';
+    $('health-cancel').hidden = true;
+    syncHealthType();
+  }
+
+  function editHealthCheck(c) {
+    healthEdit = c;
+    $('health-type').value = c.type || 'http';
+    $('health-name').value = c.name;
+    $('health-interval').value = String(c.interval);
+    Object.entries(HEALTH_FIELDS).forEach(([k, id]) => { $(id).value = c[k] != null ? c[k] : ''; });
+    $('health-tls').checked = !!c.verify_tls;
+    $('health-invert').checked = !!c.invert;
+    $('health-json-expected').value = c.type === 'json' ? c.expected || '' : '';
+    $('health-dns-expected').value = c.type === 'dns' ? c.expected || '' : '';
+    $('health-form-title').textContent = `Prüfung bearbeiten: ${c.name}`;
+    $('health-submit').textContent = 'Speichern';
+    $('health-cancel').hidden = false;
+    syncHealthType();
+    $('health-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   async function addHealthCheck(e) {
     e.preventDefault();
-    const btn = e.submitter || $('health-form').querySelector('button');
+    const btn = $('health-submit');
     btn.disabled = true;
     try {
-      renderHealthSettings(await api('/api/settings/health', {
-        name: $('health-name').value, url: $('health-url').value,
-        interval: +$('health-interval').value, verify_tls: $('health-tls').checked
-      }));
-      ['health-name', 'health-url'].forEach(id => { $(id).value = ''; });
-      toast('Dienst hinzugefügt und geprüft.', 'success');
+      const path = healthEdit ? `/api/settings/health/${encodeURIComponent(healthEdit.id)}/update` : '/api/settings/health';
+      renderHealthSettings(await api(path, healthPayload()));
+      toast(healthEdit ? 'Gespeichert und geprüft.' : 'Dienst hinzugefügt und geprüft.', 'success');
+      resetHealthForm();
     } catch (err) {
       toast(err.message, 'error');
     } finally {
@@ -464,6 +530,9 @@
     });
 
     $('health-form').addEventListener('submit', addHealthCheck);
+    $('health-type').addEventListener('change', syncHealthType);
+    $('health-cancel').addEventListener('click', resetHealthForm);
+    syncHealthType();
     api('/api/links').then(r => renderLinks(r.links)).catch(() => {});
     api('/api/files/shares').then(r => renderShares(r.shares)).catch(() => {});
     $('links-form').addEventListener('submit', async e => {

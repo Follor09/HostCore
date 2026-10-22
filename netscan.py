@@ -190,10 +190,21 @@ def devices() -> Dict[str, Any]:
     known = settings_store.get("lan_devices", {}) or {}
     last = _scan_state["last"]
     wol_macs = {d["mac"].lower() for d in wol.list_devices()}
+    # Devices watched by a ping check (healthchecks, type "ping" with this MAC)
+    monitors: Dict[str, Dict[str, Any]] = {}
+    try:
+        import healthchecks
+        if any(c.get("mac") for c in healthchecks.checks()):
+            for c in healthchecks.status(24)["checks"]:
+                if c.get("mac"):
+                    monitors[c["mac"]] = {"id": c["id"], "ok": bool(c["last"] and c["last"]["ok"]) if c.get("last") else None,
+                                          "uptime": c.get("uptime"), "ms": c["last"]["ms"] if c.get("last") else None}
+    except Exception:
+        pass
     items = []
     for mac, d in known.items():
         online = bool(last) and d.get("last_seen", 0) >= last["ts"]
-        items.append({**d, "online": online, "in_wol": mac in wol_macs,
+        items.append({**d, "online": online, "in_wol": mac in wol_macs, "monitor": monitors.get(mac),
                       "new": bool(last) and d.get("first_seen", 0) >= last["ts"] and len(known) > 1})
     items.sort(key=lambda d: (not d["online"], tuple(int(x) for x in d.get("ip", "0.0.0.0").split("."))))
     return {"devices": items, "last_scan": last, "running": _scan_state["running"], "subnets": [s["network"] for s in local_subnets()]}

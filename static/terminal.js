@@ -1,12 +1,24 @@
 /**
  * PiCore Dashboard - Web terminal (xterm.js <-> /ws/terminal)
  * Flow: password -> one-time ticket -> WebSocket -> login shell in a PTY.
+ * With ?container=<name> the shell runs inside that Docker container (docker exec).
  */
 (function () {
   'use strict';
 
   const $ = id => document.getElementById(id);
+  const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   let term = null, fit = null, ws = null;
+  const container = (new URLSearchParams(location.search).get('container') || '').trim();
+
+  if (container) {
+    document.title = `${container} | ${t('Container-Konsole')}`;
+    $('term-title').textContent = `${t('Konsole')}: ${container}`;
+    $('term-title').setAttribute('data-no-i18n', '');
+    $('term-unlock-title').textContent = t('Container-Konsole öffnen');
+    $('term-hint').textContent = t('Die Shell läuft im Container (docker exec) – bash, falls vorhanden, sonst sh. Nach 30 Min. ohne Eingabe wird sie geschlossen.');
+    $('term-open').textContent = t('Konsole öffnen');
+  }
 
   function setStatus(level, text) {
     const tag = $('term-status');
@@ -83,7 +95,7 @@
       const res = await fetch('/api/terminal/ticket', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: $('term-password').value })
+        body: JSON.stringify({ password: $('term-password').value, container })
       });
       if (res.status === 401) { location.href = '/login'; return; }
       const data = await res.json().catch(() => ({}));
