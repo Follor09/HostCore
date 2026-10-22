@@ -39,7 +39,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("*", r"^/api/settings/status-page$", "settings.manage"),
 
     # --- Boards (start page): everyone who sees the dashboard sees them, editing needs its own permission
-    ("POST", r"^/api/boards(/reset)?$", "board.edit"),
+    ("POST", r"^/api/boards(/reset|/probe)?$", "board.edit"),
+    ("GET", r"^/api/boards/discover$", "board.edit"),
 
     # --- NetBox: reading for system viewers, writing IP addresses with its own permission
     ("GET", r"^/api/netbox/(status|data)$", "system.view"),

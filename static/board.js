@@ -33,6 +33,7 @@
     actions: [3, 5], health: [3, 6], reminders: [3, 6], kanban: [3, 6], pi3d: [3, 6], history: [12, 8],
     workloads: [12, 5], storage: [6, 14], processes: [6, 14]
   };
+  const KIND_LABELS = { search: 'Suchleiste', iframe: 'Webseite', text: 'Textblock', links: 'Linkliste', rss: 'RSS-Feed', calendar: 'Kalender', remote: 'Remote-Pi' };
   const ENGINE_LABELS = { duckduckgo: 'DuckDuckGo', google: 'Google', startpage: 'Startpage', bing: 'Bing', ecosia: 'Ecosia', custom: 'Eigene Adresse' };
   const ICONS = {
     edit: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
@@ -52,6 +53,7 @@
   let saveTimer = null;
   let saving = Promise.resolve();
   let statusTimer = null;
+  const widgetTimers = [];     // refresh timers of the widgets shown (cleared on every render)
   let statusData = {};
 
   function el(tag, cls, text) {
@@ -241,6 +243,269 @@
     return box;
   }
 
+  function widgetBox(cls, title, extra) {
+    const box = el('div', `board-widget glass-card ${cls}`);
+    if (title || extra) {
+      const head = el('div', 'board-widget-head');
+      const label = el('span', 'widget-label', title || '');
+      label.setAttribute('data-no-i18n', '');
+      head.appendChild(label);
+      if (extra) head.appendChild(extra);
+      box.appendChild(head);
+    }
+    const body = el('div', 'board-widget-body');
+    box.appendChild(body);
+    return { box, body };
+  }
+
+  function every(ms, fn) {
+    fn();
+    widgetTimers.push(setInterval(() => { if (!document.hidden) fn(); }, ms));
+  }
+
+  // Small, safe Markdown: headings, lists, checkboxes (read-only), **bold**, *italic*, `code`, [links](https://…)
+  function inline(parent, text) {
+    const re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(https?:\/\/[^\s<>"')]+)/g;
+    let pos = 0, m;
+    while ((m = re.exec(text))) {
+      parent.appendChild(document.createTextNode(text.slice(pos, m.index)));
+      if (m[1]) parent.appendChild(el('strong', '', m[2]));
+      else if (m[3]) parent.appendChild(el('em', '', m[4]));
+      else if (m[5]) parent.appendChild(el('code', '', m[6]));
+      else {
+        const a = el('a', '', m[7] ? m[8] : m[10]);
+        a.href = m[7] ? m[9] : m[10];
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        parent.appendChild(a);
+      }
+      pos = m.index + m[0].length;
+    }
+    parent.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  function textWidget(item) {
+    const { box, body } = widgetBox('board-text');
+    body.setAttribute('data-no-i18n', '');
+    (item.text || '').split('\n').forEach(line => {
+      let m;
+      if ((m = line.match(/^(#{1,3}) (.*)$/))) { const h = el(`h${m[1].length + 2}`, 'board-text-h'); inline(h, m[2]); body.appendChild(h); }
+      else if ((m = line.match(/^\s*[-*] \[( |x|X)\] (.*)$/))) {
+        const d = el('div', `board-text-check${m[1] !== ' ' ? ' done' : ''}`);
+        d.appendChild(el('span', 'board-text-box', m[1] !== ' ' ? '✓' : ''));
+        const s = el('span');
+        inline(s, m[2]);
+        d.appendChild(s);
+        body.appendChild(d);
+      } else if ((m = line.match(/^\s*[-*] (.*)$/))) { const li = el('div', 'notes-li'); inline(li, m[1]); body.appendChild(li); }
+      else if ((m = line.match(/^---+$/))) body.appendChild(el('hr'));
+      else if (!line.trim()) body.appendChild(el('div', 'notes-gap'));
+      else { const p = el('p', 'notes-p'); inline(p, line); body.appendChild(p); }
+    });
+    if (!(item.text || '').trim()) body.appendChild(el('p', 'field-hint', t('Leerer Textblock – im Bearbeiten-Modus mit dem Stift füllen.')));
+    return box;
+  }
+
+  function linksWidget(item) {
+    const { box, body } = widgetBox('board-links', item.title);
+    body.setAttribute('data-no-i18n', '');
+    (item.links || []).forEach(l => {
+      const a = el('a', 'board-link');
+      a.href = safeUrl(l.url) || '#';
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      let host = '';
+      try { host = new URL(l.url).host; } catch (e) { /* ignore */ }
+      a.append(el('span', 'board-link-name', l.name), el('span', 'board-link-host', host));
+      body.appendChild(a);
+    });
+    if (!(item.links || []).length) body.appendChild(el('p', 'field-hint', t('Noch keine Links.')));
+    return box;
+  }
+
+  function relTime(ts) {
+    if (!ts) return '';
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 3600) return t(`vor ${Math.max(1, Math.round(s / 60))} Min.`);
+    if (s < 86400) return t(`vor ${Math.round(s / 3600)} Std.`);
+    if (s < 86400 * 1.5) return t('gestern');
+    if (s < 86400 * 14) return t(`vor ${Math.round(s / 86400)} Tagen`);
+    return new Date(ts * 1000).toLocaleDateString((window.I18N && window.I18N.locale) || 'de-DE');
+  }
+
+  function rssWidget(item) {
+    const { box, body } = widgetBox('board-rss', item.title || t('RSS-Feed'));
+    const load = async () => {
+      try {
+        const r = await api(`/api/boards/rss?board=${encodeURIComponent(active().id)}&item=${encodeURIComponent(item.id)}`);
+        body.innerHTML = '';
+        r.entries.forEach(e => {
+          const a = el(e.link ? 'a' : 'div', 'board-rss-entry');
+          if (e.link) { a.href = e.link; a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+          const title = el('span', 'board-rss-title', e.title);
+          title.setAttribute('data-no-i18n', '');
+          const meta = el('span', 'board-rss-meta');
+          const src = el('span', '', e.source);
+          src.setAttribute('data-no-i18n', '');
+          meta.append(src, document.createTextNode(e.ts ? ' · ' : ''), el('span', '', relTime(e.ts)));
+          a.append(title, meta);
+          body.appendChild(a);
+        });
+        if (!r.entries.length) body.appendChild(el('p', 'field-hint', r.errors.length ? t('Feed nicht lesbar.') : t('Keine Einträge.')));
+        r.errors.forEach(err => { const p = el('p', 'field-hint board-rss-error', err); p.setAttribute('data-no-i18n', ''); body.appendChild(p); });
+      } catch (err) {
+        body.innerHTML = '';
+        body.appendChild(el('p', 'field-hint', err.message));
+      }
+    };
+    every(15 * 60000, load);
+    return box;
+  }
+
+  const LOCALE_ = () => (window.I18N && window.I18N.locale) || 'de-DE';
+  const isoDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const EVENT_TYPES = { reminder: 'Erinnerung', task: 'Aufgabe', maintenance: 'Wartung' };
+
+  function calendarWidget(item) {
+    const nav = el('span', 'board-cal-nav');
+    const prev = el('button', 'mini-icon-btn', '‹');
+    const next = el('button', 'mini-icon-btn', '›');
+    const today = el('button', 'text-btn', t('Heute'));
+    [prev, next, today].forEach(b => { b.type = 'button'; });
+    prev.title = t('Vorheriger Monat');
+    next.title = t('Nächster Monat');
+    nav.append(prev, today, next);
+    const { box, body } = widgetBox('board-calendar', '', nav);
+    const titleEl = box.querySelector('.widget-label');
+    const grid = el('div', 'board-cal-grid');
+    const agenda = el('div', 'board-cal-agenda');
+    body.append(grid, agenda);
+    let month = new Date();
+    month.setDate(1);
+    let selected = null;
+    let data = null;
+
+    function drawAgenda() {
+      agenda.innerHTML = '';
+      const todayIso = data.today;
+      const list = selected ? data.events.filter(e => e.date === selected)
+        : data.events.filter(e => e.date >= todayIso || e.overdue).slice(0, 12);
+      const head = el('div', 'board-cal-agenda-head', selected
+        ? new Date(`${selected}T12:00`).toLocaleDateString(LOCALE_(), { weekday: 'long', day: 'numeric', month: 'long' })
+        : t('Demnächst'));
+      agenda.appendChild(head);
+      list.forEach(e => {
+        const row = el('div', `board-cal-event type-${e.type}${e.overdue ? ' overdue' : ''}`);
+        const when = selected ? '' : new Date(`${e.date}T12:00`).toLocaleDateString(LOCALE_(), { day: '2-digit', month: '2-digit' });
+        if (when) row.appendChild(el('span', 'board-cal-when', when));
+        row.appendChild(el('span', 'board-cal-dot'));
+        const title = el('span', 'board-cal-title', e.title);
+        title.setAttribute('data-no-i18n', '');
+        row.append(title, el('span', 'board-cal-type', t(EVENT_TYPES[e.type])));
+        agenda.appendChild(row);
+      });
+      if (!list.length) agenda.appendChild(el('p', 'field-hint', t('Keine Termine.')));
+    }
+
+    function draw() {
+      titleEl.textContent = month.toLocaleDateString(LOCALE_(), { month: 'long', year: 'numeric' });
+      grid.innerHTML = '';
+      const start = new Date(month);
+      start.setDate(1 - ((start.getDay() + 6) % 7));  // Monday before the 1st
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        grid.appendChild(el('span', 'board-cal-wd', d.toLocaleDateString(LOCALE_(), { weekday: 'short' }).slice(0, 2)));
+      }
+      const byDay = {};
+      (data ? data.events : []).forEach(e => { (byDay[e.date] = byDay[e.date] || []).push(e); });
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const iso = isoDate(d);
+        const cell = el('button', 'board-cal-day');
+        cell.type = 'button';
+        if (d.getMonth() !== month.getMonth()) cell.classList.add('other');
+        if (data && iso === data.today) cell.classList.add('today');
+        if (iso === selected) cell.classList.add('selected');
+        cell.appendChild(el('span', 'board-cal-num', String(d.getDate())));
+        const dots = el('span', 'board-cal-dots');
+        (byDay[iso] || []).slice(0, 3).forEach(e => dots.appendChild(el('span', `board-cal-dot type-${e.type}${e.overdue ? ' overdue' : ''}`)));
+        cell.appendChild(dots);
+        if (byDay[iso]) cell.title = byDay[iso].map(e => e.title).join('\n');
+        cell.addEventListener('click', () => { selected = selected === iso ? null : iso; draw(); });
+        grid.appendChild(cell);
+      }
+      if (data) drawAgenda();
+    }
+
+    async function load() {
+      const start = new Date(month);
+      start.setDate(1 - ((start.getDay() + 6) % 7));
+      try {
+        data = await api(`/api/calendar?start=${isoDate(start)}&days=42&sources=${(item.sources || []).join(',')}`);
+      } catch (err) {
+        data = { events: [], today: isoDate(new Date()) };
+        agenda.innerHTML = '';
+        agenda.appendChild(el('p', 'field-hint', err.status === 401 ? t('Der Kalender ist nur nach Anmeldung sichtbar.') : err.message));
+        draw();
+        return;
+      }
+      draw();
+    }
+
+    prev.addEventListener('click', () => { month.setMonth(month.getMonth() - 1); selected = null; load(); });
+    next.addEventListener('click', () => { month.setMonth(month.getMonth() + 1); selected = null; load(); });
+    today.addEventListener('click', () => { month = new Date(); month.setDate(1); selected = null; load(); });
+    draw();
+    every(10 * 60000, load);
+    return box;
+  }
+
+  function remoteWidget(item) {
+    const open = el('button', 'text-btn', t('Anzeigen'));
+    open.type = 'button';
+    open.title = t('Dashboard auf diesen Pi umschalten');
+    open.addEventListener('click', async () => {
+      try { await api('/api/remotes/select', { id: item.remote }); location.href = '/'; } catch (err) { toast(err.message, 'error'); }
+    });
+    const { box, body } = widgetBox('board-remote', t('Remote-Pi'), open);
+    const titleEl = box.querySelector('.widget-label');
+    const bar = (label, value, pct, unit) => {
+      const row = el('div', 'board-remote-row');
+      const level = pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : 'fill-emerald';
+      const track = el('div', 'progress-bar-bg mini');
+      const fill = el('div', `progress-bar-fill ${level}`);
+      fill.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+      track.appendChild(fill);
+      row.append(el('span', 'board-remote-label', label), el('span', 'board-remote-value', value == null ? '–' : `${Math.round(value * 10) / 10}${unit}`), track);
+      return row;
+    };
+    const load = async () => {
+      try {
+        const r = await api(`/api/boards/remote/${encodeURIComponent(item.remote)}`);
+        titleEl.textContent = r.name;
+        body.innerHTML = '';
+        const head = el('div', 'board-remote-head');
+        head.appendChild(el('span', `health-tag ${r.online ? 'good' : 'critical'}`, r.online ? t('Online') : t('Offline')));
+        const model = el('span', 'lan-sub', r.online ? [r.model, r.uptime ? `${t('läuft seit')} ${r.uptime}` : ''].filter(Boolean).join(' · ') : r.error || '');
+        model.setAttribute('data-no-i18n', '');
+        head.appendChild(model);
+        body.appendChild(head);
+        if (r.online) {
+          body.append(bar('CPU', r.cpu, r.cpu, ' %'), bar(t('Temperatur'), r.temp, r.temp != null ? (r.temp / 85) * 100 : 0, ' °C'),
+            bar('RAM', r.ram, r.ram, ' %'), bar(t('Speicher'), r.disk, r.disk, ' %'));
+          if (r.throttled) body.appendChild(el('span', 'health-tag warning', t('Drosselung aktiv')));
+        }
+      } catch (err) {
+        body.innerHTML = '';
+        body.appendChild(el('p', 'field-hint', err.message));
+      }
+    };
+    every(15000, load);
+    return box;
+  }
+
   function content(item) {
     if (item.kind === 'card') {
       const c = cardEl(item.card);
@@ -250,6 +515,11 @@
     if (item.kind === 'app') return appTile(item);
     if (item.kind === 'search') return searchWidget(item);
     if (item.kind === 'iframe') return frameWidget(item);
+    if (item.kind === 'text') return textWidget(item);
+    if (item.kind === 'links') return linksWidget(item);
+    if (item.kind === 'rss') return rssWidget(item);
+    if (item.kind === 'calendar') return calendarWidget(item);
+    if (item.kind === 'remote') return remoteWidget(item);
     return null;
   }
 
@@ -263,7 +533,7 @@
   function itemTools(item, wrap) {
     const bar = el('div', 'board-item-tools');
     const label = el('span', 'board-item-label', item.kind === 'card' ? t(CARD_LABELS[item.card] || item.card)
-      : item.kind === 'app' ? item.name : item.kind === 'search' ? t('Suchleiste') : (item.title || t('Webseite')));
+      : item.kind === 'app' ? item.name : item.title || t(KIND_LABELS[item.kind] || item.kind));
     label.setAttribute('data-no-i18n', '');
     bar.appendChild(label);
     if (item.kind !== 'card') {
@@ -310,6 +580,7 @@
   // Rendering
   // ---------------------------------------------------------------------------
   function teardown() {
+    widgetTimers.splice(0).forEach(clearInterval);
     returnCards();
     grids.forEach(g => g.destroy(false));
     grids.clear();
@@ -417,6 +688,7 @@
         apps = null;
         const box = el('div', `flow-item kind-${it.kind}${it.w >= board.columns / 2 ? ' wide' : ''}`);
         if (it.kind === 'iframe') box.style.height = `${it.h * CELL}px`;
+        else if (it.kind !== 'card' && it.kind !== 'search') box.style.maxHeight = `${Math.max(it.h, 4) * CELL}px`;
         box.appendChild(content(it));
         sec.appendChild(box);
       });
@@ -832,6 +1104,7 @@
     });
     drawPreview();
     if (iconQ.value && !/^https?:/i.test(iconQ.value)) searchIcons(iconQ.value, false);
+    else if (!icon && item.name) { iconQ.value = item.name; searchIcons(item.name, true); }
 
     const iconRow = el('div', 'board-icon-row');
     iconRow.append(preview, field(t('Icon'), iconQ, t('Aus der Sammlung „Dashboard Icons“ oder eine eigene Bild-Adresse')));
@@ -888,6 +1161,200 @@
     return form;
   }
 
+  function textarea(value, rows, max, placeholder) {
+    const a = el('textarea', 'board-textarea');
+    a.rows = rows;
+    a.maxLength = max;
+    a.value = value || '';
+    if (placeholder) a.placeholder = placeholder;
+    a.spellcheck = false;
+    return a;
+  }
+
+  function textForm(item, onDone) {
+    const form = el('form', 'board-form');
+    const text = textarea(item.text, 12, 4000, t('# Überschrift\nText mit **fett**, *kursiv*, `Code` und [Links](https://…)\n- Liste\n- [ ] Aufgabe'));
+    const { row } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
+    form.append(field(t('Text'), text, t('Markdown: # Überschrift, **fett**, *kursiv*, `Code`, [Link](https://…), - Liste, - [ ] Aufgabe, --- Linie')), row);
+    form.addEventListener('submit', e => { e.preventDefault(); onDone({ ...item, kind: 'text', text: text.value }); });
+    return form;
+  }
+
+  function parseLinks(text) {
+    return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+      const m = l.match(/^(.*?)\s*(?:\||\s)\s*((?:https?:\/\/)?\S+)$/);
+      let name = m ? m[1].trim() : '';
+      let url = m ? m[2] : l;
+      if (!name && !/^https?:\/\//i.test(l) && !/\./.test(l)) return null;
+      if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+      return { name: name || url.replace(/^https?:\/\//, ''), url };
+    }).filter(Boolean);
+  }
+
+  function linksForm(item, onDone) {
+    const form = el('form', 'board-form');
+    const title = input(item.title, { max: 40, placeholder: t('z.B. Router & Netzwerk') });
+    const list = textarea((item.links || []).map(l => `${l.name} | ${l.url}`).join('\n'), 10, 20000, 'FRITZ!Box | http://192.168.178.1\nSwitch | http://192.168.178.2\nhttps://docs.example.org');
+    const { row, msg } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
+    form.append(field(t('Titel'), title), field(t('Links'), list, t('Eine Zeile pro Link: Name | Adresse (Name optional), höchstens 50')), row);
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const links = parseLinks(list.value);
+      if (links.length > 50) { msg.className = 'form-msg error'; msg.textContent = t('Höchstens 50 Links.'); return; }
+      onDone({ ...item, kind: 'links', title: title.value.trim(), links });
+    });
+    return form;
+  }
+
+  function rssForm(item, onDone) {
+    const form = el('form', 'board-form');
+    const title = input(item.title, { max: 40, placeholder: t('z.B. Releases') });
+    const feeds = textarea((item.feeds || []).join('\n'), 5, 3000, 'https://github.com/jellyfin/jellyfin/releases.atom');
+    const limit = input(item.limit || 15, { type: 'number' });
+    limit.min = 3;
+    limit.max = 50;
+    const { row, msg } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
+    form.append(field(t('Titel'), title), field(t('Feeds'), feeds, t('Eine Feed-Adresse (RSS oder Atom) pro Zeile, höchstens 5 – z.B. /releases.atom eines GitHub-Projekts')),
+      field(t('Einträge'), limit), row);
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const list = feeds.value.split('\n').map(f => f.trim()).filter(Boolean).map(f => (/^https?:\/\//i.test(f) ? f : `https://${f}`));
+      if (!list.length || list.length > 5) { msg.className = 'form-msg error'; msg.textContent = t('Eine bis fünf Feed-Adressen angeben.'); return; }
+      onDone({ ...item, kind: 'rss', title: title.value.trim(), feeds: list, limit: Math.max(3, Math.min(50, parseInt(limit.value, 10) || 15)) });
+    });
+    return form;
+  }
+
+  function calendarForm(item, onDone) {
+    const form = el('form', 'board-form');
+    const src = item.sources || ['reminders', 'tasks', 'maintenance'];
+    const boxes = [['reminders', 'Erinnerungen (mit Wiederholungen)'], ['tasks', 'Aufgaben mit Fälligkeitsdatum'], ['maintenance', 'Wartungsfenster']]
+      .map(([k, label]) => { const [l, c] = check(t(label), src.includes(k)); c.value = k; return [l, c]; });
+    const { row } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
+    form.append(el('p', 'field-hint', t('Was soll der Kalender zeigen?')), ...boxes.map(b => b[0]), row);
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      onDone({ ...item, kind: 'calendar', sources: boxes.filter(b => b[1].checked).map(b => b[1].value) });
+    });
+    return form;
+  }
+
+  function remoteForm(item, onDone) {
+    const form = el('form', 'board-form');
+    const sel = el('select');
+    const { row, msg } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
+    form.append(field(t('Remote-Pi'), sel), row);
+    api('/api/remotes/current').then(r => {
+      (r.hosts || []).forEach(h => { const o = el('option', '', h.name); o.value = h.id; sel.appendChild(o); });
+      if (item.remote) sel.value = item.remote;
+      if (!(r.hosts || []).length) {
+        msg.className = 'form-msg error';
+        msg.textContent = t('Noch keine Remote-Pis – unter Einstellungen → Remote-Pis hinzufügen.');
+      }
+    }).catch(err => { msg.className = 'form-msg error'; msg.textContent = err.message; });
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      if (!sel.value) return;
+      onDone({ ...item, kind: 'remote', remote: sel.value });
+    });
+    return form;
+  }
+
+  // Suggestions: apps from Docker / Kubernetes, devices from the LAN scan and NetBox (web ports are probed on request)
+  function discoverPane(add, pane) {
+    const box = el('div', 'board-discover');
+    box.appendChild(el('p', 'field-hint', t('Suche nach Apps und Geräten…')));
+    const known = new Set(allApps().map(a => (a.url || '').replace(/\/+$/, '').toLowerCase()));
+    const appUrl = s => s.url || `${s.scheme}://${location.hostname}${(s.scheme === 'http' && s.port === 80) || (s.scheme === 'https' && s.port === 443) ? '' : `:${s.port}`}`;
+    const openForm = (name, url) => {
+      pane.innerHTML = '';
+      pane.appendChild(appForm({ name: (name || '').slice(0, 40), url, ping: true, new_tab: true }, it => add({ ...it, w: 1, h: 2 })));
+    };
+    api('/api/boards/discover').then(r => {
+      box.innerHTML = '';
+      box.appendChild(el('h4', 'board-discover-head', t('Container & Kubernetes')));
+      if (!r.apps.length) box.appendChild(el('p', 'field-hint', t('Keine laufenden Container mit veröffentlichten Ports und keine Ingresses gefunden.')));
+      r.apps.forEach(s => {
+        const url = appUrl(s);
+        const rowEl = el('div', 'board-discover-row');
+        const info = el('div', 'board-discover-info');
+        const name = el('strong', '', s.name);
+        const sub = el('span', 'lan-sub', `${url} · ${s.detail}`);
+        [name, sub].forEach(x => x.setAttribute('data-no-i18n', ''));
+        info.append(name, sub);
+        rowEl.append(appIcon({ name: s.name, icon: s.icon }), info);
+        if (known.has(url.replace(/\/+$/, '').toLowerCase())) rowEl.appendChild(el('span', 'health-tag good', t('Auf dem Board')));
+        else {
+          const quick = el('button', 'btn-primary', t('Hinzufügen'));
+          quick.type = 'button';
+          quick.addEventListener('click', () => add({ kind: 'app', name: s.name, url, icon: s.icon, description: '', ping: true, ping_url: '', new_tab: true, w: 1, h: 2 }));
+          const adjust = el('button', 'btn-secondary', t('Anpassen'));
+          adjust.type = 'button';
+          adjust.addEventListener('click', () => openForm(s.name, url));
+          rowEl.append(adjust, quick);
+        }
+        box.appendChild(rowEl);
+      });
+
+      box.appendChild(el('h4', 'board-discover-head', t('Geräte im Netzwerk')));
+      if (!r.devices.length) { box.appendChild(el('p', 'field-hint', t('Noch keine Geräte – unter System-Werkzeuge → Geräte im Netzwerk scannen.'))); return; }
+      const filter = input('', { placeholder: t('Filtern: Name, IP…') });
+      filter.type = 'search';
+      const list = el('div', 'board-discover-list');
+      box.append(filter, list);
+      const draw = () => {
+        list.innerHTML = '';
+        const q = filter.value.trim().toLowerCase();
+        r.devices.filter(d => !q || [d.name, d.host, d.detail].some(v => (v || '').toLowerCase().includes(q))).slice(0, 60).forEach(d => {
+          const rowEl = el('div', 'board-discover-row');
+          const info = el('div', 'board-discover-info');
+          const name = el('strong', '', d.name);
+          const sub = el('span', 'lan-sub', [d.host, d.source === 'netbox' ? 'NetBox' : '', d.detail].filter(Boolean).join(' · '));
+          [name, sub].forEach(x => x.setAttribute('data-no-i18n', ''));
+          info.append(name, sub);
+          const results = el('div', 'board-discover-ports');
+          info.appendChild(results);
+          const st = el('span', `health-tag ${d.online ? 'good' : ''}`, d.online ? t('Online') : t('Offline'));
+          const probe = el('button', 'btn-secondary', t('Web-Ports prüfen'));
+          probe.type = 'button';
+          probe.addEventListener('click', async () => {
+            probe.disabled = true;
+            probe.textContent = t('Prüfe…');
+            try {
+              const p = await api('/api/boards/probe', { host: d.host });
+              results.innerHTML = '';
+              p.found.forEach(f => {
+                const b = el('button', 'board-port-chip');
+                b.type = 'button';
+                b.textContent = `${f.url.replace(/^https?:\/\//, '')}${f.title ? ` – ${f.title}` : ''}`;
+                b.title = t('Als App übernehmen');
+                b.setAttribute('data-no-i18n', '');
+                b.addEventListener('click', () => openForm(f.title && f.title.length <= 30 ? f.title : d.name, f.url));
+                results.appendChild(b);
+              });
+              if (!p.found.length) results.appendChild(el('span', 'field-hint', t('Keine Web-Oberfläche auf den üblichen Ports gefunden.')));
+              probe.textContent = t('Erneut prüfen');
+            } catch (err) {
+              results.innerHTML = '';
+              results.appendChild(el('span', 'field-hint', err.message));
+              probe.textContent = t('Web-Ports prüfen');
+            } finally {
+              probe.disabled = false;
+            }
+          });
+          rowEl.append(el('span', 'app-icon letter', (d.name || '?').charAt(0).toUpperCase()), info, st, probe);
+          list.appendChild(rowEl);
+        });
+      };
+      filter.addEventListener('input', draw);
+      draw();
+    }).catch(err => {
+      box.innerHTML = '';
+      box.appendChild(el('p', 'field-hint', err.message));
+    });
+    return box;
+  }
+
   function openItemDialog(item) {
     const done = updated => {
       const board = active();
@@ -896,8 +1363,9 @@
       sync();
       render();
     };
-    const forms = { app: appForm, search: searchForm, iframe: frameForm };
-    const titles = { app: 'App bearbeiten', search: 'Suchleiste bearbeiten', iframe: 'Webseite bearbeiten' };
+    const forms = { app: appForm, search: searchForm, iframe: frameForm, text: textForm, links: linksForm, rss: rssForm, calendar: calendarForm, remote: remoteForm };
+    const titles = { app: 'App bearbeiten', search: 'Suchleiste bearbeiten', iframe: 'Webseite bearbeiten', text: 'Textblock bearbeiten',
+                     links: 'Linkliste bearbeiten', rss: 'RSS-Feed bearbeiten', calendar: 'Kalender bearbeiten', remote: 'Remote-Pi-Widget bearbeiten' };
     openModal(t(titles[item.kind]), '', forms[item.kind](item, done));
   }
 
@@ -915,6 +1383,7 @@
 
     const panes = {
       app: () => appForm({ ping: true, new_tab: true, w: 1, h: 2 }, it => add({ ...it, w: 1, h: 2 })),
+      found: () => discoverPane(add, pane),
       widget: () => {
         const box = el('div', 'board-choice-list');
         const choice = (title, text, fn) => {
@@ -932,6 +1401,15 @@
           pane.innerHTML = '';
           pane.appendChild(frameForm({}, it => add({ ...it, w: 6, h: 6 })));
         });
+        const simple = (title, text, form, init, w, h) => choice(title, text, () => {
+          pane.innerHTML = '';
+          pane.appendChild(form(init, it => add({ ...it, w: Math.min(w, board.columns), h })));
+        });
+        simple(t('Kalender'), t('Erinnerungen, fällige Aufgaben und Wartungsfenster in einer Monatsansicht.'), calendarForm, {}, 4, 9);
+        simple(t('Textblock'), t('Freier Text mit Markdown: Überschrift, Hinweis oder Kurzanleitung.'), textForm, {}, 4, 4);
+        simple(t('Linkliste'), t('Viele Links kompakt in einem Widget, z.B. Router- und Hersteller-Seiten.'), linksForm, {}, 3, 5);
+        simple(t('RSS-Feed'), t('Neuigkeiten aus Feeds, z.B. Releases deiner Tools – vom Pi abgerufen.'), rssForm, { limit: 15 }, 4, 6);
+        simple(t('Remote-Pi'), t('Die wichtigsten Werte eines Remote-Pis, ohne umzuschalten.'), remoteForm, {}, 3, 5);
         return box;
       },
       card: () => {
@@ -966,7 +1444,7 @@
         return form;
       }
     };
-    const labels = { app: 'App', widget: 'Widget', card: 'Karte', section: 'Kategorie' };
+    const labels = { app: 'App', found: 'Erkannt', widget: 'Widget', card: 'Karte', section: 'Kategorie' };
     const show = key => {
       tabs.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
       targetField.hidden = key === 'section';

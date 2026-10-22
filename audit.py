@@ -94,6 +94,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/settings/netbox$", "settings", "NetBox verbunden"),
     ("POST", r"^/api/boards$", "settings", "Dashboard-Board geändert"),
     ("POST", r"^/api/boards/reset$", "settings", "Dashboard-Boards zurückgesetzt"),
+    ("POST", r"^/api/boards/probe$", "network", "Web-Ports eines Geräts geprüft"),
     ("POST", r"^/api/settings/netbox/delete$", "settings", "NetBox getrennt"),
     ("POST", r"^/api/netbox/ip$", "network", "IP-Adresse in NetBox angelegt"),
     ("POST", r"^/api/remotes/[^/]+/delete$", "settings", "Remote-Pi entfernt"),

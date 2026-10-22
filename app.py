@@ -1930,6 +1930,48 @@ async def api_boards_status(board: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@app.get("/api/boards/rss")
+async def api_boards_rss(board: str, item: str):
+    try:
+        return await boards.rss(board, item)
+    except boards.BoardError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/boards/remote/{remote_id}")
+async def api_boards_remote(remote_id: str):
+    try:
+        return await boards.remote(remote_id)
+    except boards.BoardError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/boards/discover")
+async def api_boards_discover():
+    return await boards.discover()
+
+
+class ProbeRequest(BaseModel):
+    host: str
+
+
+@app.post("/api/boards/probe")
+async def api_boards_probe(req: ProbeRequest, request: Request):
+    request.state.audit_detail = req.host[:120]
+    try:
+        return await boards.probe(req.host)
+    except boards.BoardError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/calendar")
+async def api_calendar(start: str, days: int = 42, sources: str = "reminders,tasks,maintenance"):
+    try:
+        return await asyncio.to_thread(boards.calendar, start, days, sources.split(","))
+    except boards.BoardError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/boards/icons")
 async def api_boards_icons(q: str = ""):
     try:

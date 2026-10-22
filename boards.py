@@ -201,6 +201,30 @@ def _item(raw: Dict[str, Any], columns: int) -> Dict[str, Any]:
         item.update(kind="search", engine=engine, custom_url=custom, apps=bool(raw.get("apps", True)))
     elif kind == "iframe":
         item.update(kind="iframe", title=_text(raw.get("title"), 40), url=_url(raw.get("url"), "Webseite", True))
+    elif kind == "text":
+        text = str(raw.get("text") or "")[:4000]
+        item.update(kind="text", text=re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text))
+    elif kind == "links":
+        links = []
+        for link in (raw.get("links") if isinstance(raw.get("links"), list) else [])[:50]:
+            if not isinstance(link, dict):
+                continue
+            url = _url(link.get("url"), "Linkliste", True)
+            links.append({"name": _text(link.get("name"), 60) or re.sub(r"^https?://", "", url)[:60], "url": url})
+        item.update(kind="links", title=_text(raw.get("title"), 40), links=links)
+    elif kind == "rss":
+        feeds = [_url(f, "RSS-Feed", True) for f in (raw.get("feeds") if isinstance(raw.get("feeds"), list) else [])[:5] if str(f or "").strip()]
+        if not feeds:
+            raise BoardError("RSS-Feed: Mindestens eine Feed-Adresse angeben.")
+        item.update(kind="rss", title=_text(raw.get("title"), 40), feeds=feeds, limit=_int(raw.get("limit"), 3, 50, 15))
+    elif kind == "calendar":
+        item.update(kind="calendar", sources=[s for s in ("reminders", "tasks", "maintenance")
+                                              if s in (raw.get("sources") or ["reminders", "tasks", "maintenance"])])
+    elif kind == "remote":
+        rid = _text(raw.get("remote"), 16)
+        if not re.match(r"^[0-9a-f]{1,16}$", rid):
+            raise BoardError("Remote-Pi: Bitte einen Pi auswählen.")
+        item.update(kind="remote", remote=rid)
     else:
         raise BoardError("Unbekannte Art von Element.")
     return item
@@ -393,3 +417,337 @@ async def icon(file: str) -> Optional[str]:
         f.write(res.content)
     os.replace(path + ".tmp", path)
     return path
+
+
+# ---------------------------------------------------------------------------
+# RSS / Atom feeds
+# ---------------------------------------------------------------------------
+_feed_cache: Dict[str, Dict[str, Any]] = {}
+FEED_MAX_AGE = 900
+FEED_MAX_BYTES = 2_000_000
+
+
+def _parse_date(text: str) -> int:
+    import email.utils
+    import datetime as dt
+    text = (text or "").strip()
+    if not text:
+        return 0
+    try:
+        return int(email.utils.parsedate_to_datetime(text).timestamp())
+    except (TypeError, ValueError, IndexError):
+        pass
+    try:
+        return int(dt.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
+
+
+def _parse_feed(data: bytes, source: str) -> List[Dict[str, Any]]:
+    import xml.etree.ElementTree as ET
+    head = data[:4096].lower()
+    if b"<!doctype" in head or b"<!entity" in data[:65536].lower():
+        raise BoardError("Feed mit DOCTYPE/ENTITY wird aus Sicherheitsgründen nicht gelesen.")
+    root = ET.fromstring(data)
+    strip = lambda tag: tag.split("}", 1)[-1]  # noqa: E731 - namespaces don't matter here
+    title = ""
+    entries = []
+    for el in root.iter():
+        tag = strip(el.tag)
+        if tag == "title" and not title and el.text:
+            title = el.text.strip()
+        if tag not in ("item", "entry"):
+            continue
+        fields: Dict[str, str] = {}
+        for child in el:
+            ctag = strip(child.tag)
+            if ctag == "link":
+                href = child.get("href") or (child.text or "").strip()
+                if href and (child.get("rel") in (None, "alternate")) and "link" not in fields:
+                    fields["link"] = href
+            elif ctag in ("title", "pubDate", "published", "updated", "date") and child.text:
+                fields.setdefault(ctag, child.text.strip())
+        link = fields.get("link", "")
+        entries.append({"title": re.sub(r"\s+", " ", fields.get("title", ""))[:200] or "(ohne Titel)",
+                        "link": link if URL_RE.match(link) else "",
+                        "ts": _parse_date(fields.get("pubDate") or fields.get("published") or fields.get("updated") or fields.get("date", "")),
+                        "source": title[:60] or source})
+    return entries
+
+
+async def _feed(client: httpx.AsyncClient, url: str) -> Dict[str, Any]:
+    hit = _feed_cache.get(url)
+    if hit and time.time() - hit["ts"] < FEED_MAX_AGE:
+        return hit
+    try:
+        res = await client.get(url)
+        res.raise_for_status()
+        if len(res.content) > FEED_MAX_BYTES:
+            raise BoardError("Feed ist zu groß.")
+        result = {"entries": _parse_feed(res.content, re.sub(r"^https?://", "", url).split("/")[0]), "error": ""}
+    except (httpx.HTTPError, BoardError, Exception) as e:  # broken XML raises ParseError
+        msg = str(e) if isinstance(e, BoardError) else f"{type(e).__name__}"
+        result = {"entries": (hit or {}).get("entries", []), "error": f"{url}: {msg}"}
+    result["ts"] = time.time()
+    _feed_cache[url] = result
+    return result
+
+
+def _item_of(board_id: str, item_id: str, kind: str) -> Dict[str, Any]:
+    board = next((b for b in get()["boards"] if b["id"] == board_id), None)
+    item = next((it for s in (board or {}).get("sections", []) for it in s["items"] if it["id"] == item_id), None)
+    if not item or item.get("kind") != kind:
+        raise BoardError("Element nicht gefunden.")
+    return item
+
+
+async def rss(board_id: str, item_id: str) -> Dict[str, Any]:
+    item = _item_of(board_id, item_id, "rss")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=True,
+                                 headers={"User-Agent": "PiCore-Dashboard (RSS)"}) as client:
+        results = await asyncio.gather(*(_feed(client, u) for u in item["feeds"]))
+    entries = sorted((e for r in results for e in r["entries"]), key=lambda e: e["ts"], reverse=True)
+    return {"entries": entries[:item["limit"]], "errors": [r["error"] for r in results if r["error"]]}
+
+
+# ---------------------------------------------------------------------------
+# Calendar: reminders (with their repeats), task due dates and maintenance windows
+# ---------------------------------------------------------------------------
+def calendar(start: str, days: int, sources: List[str]) -> Dict[str, Any]:
+    import datetime as dt
+    import kanban
+    import maintenance
+    import reminders
+    try:
+        first = dt.date.fromisoformat(start)
+    except ValueError:
+        raise BoardError("Ungültiges Datum.")
+    days = max(1, min(int(days), 62))
+    last = first + dt.timedelta(days=days - 1)
+    events: List[Dict[str, Any]] = []
+    if "reminders" in sources:
+        for it in reminders.overview()["items"]:
+            due = dt.date.fromisoformat(it["due"])
+            if due < first and it["state"] == "overdue":
+                events.append({"date": due.isoformat(), "title": it["title"], "type": "reminder", "overdue": True})
+            n = 0
+            while due <= last and n < 400:
+                if due >= first:
+                    events.append({"date": due.isoformat(), "title": it["title"], "type": "reminder",
+                                   "overdue": due < dt.date.today(), "repeat": it.get("repeat_label", "")})
+                if it["repeat"] == "none":
+                    break
+                due = reminders._next(it, due)
+                n += 1
+    if "tasks" in sources:
+        for c in kanban.board()["cards"]:
+            if c.get("due") and c["column"] != "done" and first.isoformat() <= c["due"] <= last.isoformat():
+                events.append({"date": c["due"], "title": c["title"], "type": "task", "overdue": c["due_state"] == "overdue"})
+    if "maintenance" in sources:
+        for w in maintenance.overview()["windows"]:
+            a = dt.datetime.fromtimestamp(w["start"]).date()
+            b = dt.datetime.fromtimestamp(max(w["start"], w["end"] - 1)).date()  # ending at midnight: not the next day
+            d = max(a, first)
+            while d <= min(b, last):
+                events.append({"date": d.isoformat(), "title": w["title"], "type": "maintenance", "state": w["state"],
+                               "start": w["start"], "end": w["end"]})
+                d += dt.timedelta(days=1)
+    events.sort(key=lambda e: (e["date"], e["type"], e["title"].lower()))
+    return {"start": first.isoformat(), "days": days, "today": dt.date.today().isoformat(), "events": events}
+
+
+# ---------------------------------------------------------------------------
+# Remote Pi widget: a compact snapshot of an agent
+# ---------------------------------------------------------------------------
+_remote_cache: Dict[str, Dict[str, Any]] = {}
+
+
+async def remote(remote_id: str) -> Dict[str, Any]:
+    import remotes
+    r = remotes.get(remote_id)
+    if not r:
+        raise BoardError("Remote-Pi nicht gefunden – unter Einstellungen → Remote-Pis hinzufügen.")
+    hit = _remote_cache.get(remote_id)
+    if hit and time.time() - hit["ts"] < 8:
+        return hit["data"]
+    base = {"id": r["id"], "name": r["name"]}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(6.0)) as client:
+            res = await client.get(f"{r['url']}/api/system", headers={"Authorization": f"Bearer {r['token']}"})
+        res.raise_for_status()
+        s = res.json()
+        temp = (s.get("temperature") or {}).get("celsius")
+        data = {**base, "online": True, "hostname": s.get("host_name", ""), "model": s.get("model", ""),
+                "cpu": (s.get("cpu") or {}).get("percent"), "temp": temp,
+                "ram": (s.get("memory") or {}).get("percent"), "disk": (s.get("disk") or {}).get("percent"),
+                "uptime": (s.get("uptime") or {}).get("formatted", "") if isinstance(s.get("uptime"), dict) else "",
+                "throttled": bool((s.get("throttled") or {}).get("any_now")) if isinstance(s.get("throttled"), dict) else False}
+    except (httpx.HTTPError, ValueError) as e:
+        remotes.mark_offline(r["id"], f"Nicht erreichbar ({type(e).__name__})")
+        data = {**base, "online": False, "error": f"Nicht erreichbar ({type(e).__name__})"}
+    _remote_cache[remote_id] = {"ts": time.time(), "data": data}
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Discovery: apps from Docker / Kubernetes, devices from the LAN scan and NetBox, web ports of a device
+# ---------------------------------------------------------------------------
+# Order = preference when a container publishes several ports (web UIs first, 8000 is often an API/agent port)
+WEB_PORTS = [80, 443, 8080, 8443, 9443, 9000, 8006, 8096, 8123, 3000, 3001, 5000, 5001, 8081, 8088, 8888, 9090,
+             8000, 81, 2283, 32400, 7878, 8989, 9696, 8384, 19999, 5055, 8920]
+HTTPS_PORTS = {443, 8443, 9443, 8006, 5001, 8920}
+
+
+def _icon_guess(names: Dict[str, str], *candidates: str) -> str:
+    for c in candidates:
+        slug = re.sub(r"[^a-z0-9]+", "-", (c or "").lower()).strip("-")
+        for s in (slug, slug.replace("-", ""), slug.split("-")[0]):
+            if s and s in names:
+                return names[s]
+    return ""
+
+
+def _docker_apps(names: Dict[str, str]) -> List[Dict[str, Any]]:
+    import containers
+    out = []
+    for c in containers.docker_list().get("containers", []):
+        if c.get("state") != "running":
+            continue
+        ports = []
+        for m in re.finditer(r"(?:0\.0\.0\.0|\[::\]|::|[\d.]+):(\d+)->(\d+)/tcp", c.get("ports", "")):
+            host, inner = int(m.group(1)), int(m.group(2))
+            if host not in [p[0] for p in ports]:
+                ports.append((host, inner))
+        if not ports:
+            continue
+        rank = lambda p: (WEB_PORTS.index(p[1]) if p[1] in WEB_PORTS else 99, p[0])  # noqa: E731
+        host, inner = sorted(ports, key=rank)[0]
+        image = c.get("image", "").split("@")[0].rsplit(":", 1)[0].split("/")[-1]
+        name = c.get("service") or c.get("name", "")
+        out.append({"source": "docker", "name": name.replace("-", " ").replace("_", " ").title()[:40],
+                    "port": host, "scheme": "https" if inner in HTTPS_PORTS or host in HTTPS_PORTS else "http",
+                    "detail": f"{c.get('image', '')}" + (f" · Stack {c['stack']}" if c.get("stack") else ""),
+                    "icon": _icon_guess(names, image, c.get("service", ""), c.get("name", ""))})
+    return out
+
+
+def _kube_apps(names: Dict[str, str]) -> List[Dict[str, Any]]:
+    import containers
+    import homelab
+    out: List[Dict[str, Any]] = []
+    if not homelab._kube_cmd() or homelab._kube_env() is None:
+        return out
+    try:
+        res = containers._kubectl(["get", "ingress", "-A", "-o", "json"], timeout=15)
+        items = json.loads(res.stdout or "{}").get("items", []) if res.returncode == 0 else []
+    except Exception:
+        items = []
+    for ing in items:
+        meta, spec = ing.get("metadata", {}), ing.get("spec", {})
+        tls_hosts = {h for t in spec.get("tls", []) or [] for h in t.get("hosts", []) or []}
+        for rule in spec.get("rules", []) or []:
+            host = rule.get("host")
+            if not host or "*" in host:
+                continue
+            path = ((rule.get("http") or {}).get("paths") or [{}])[0].get("path") or "/"
+            out.append({"source": "kubernetes", "name": meta.get("name", host).replace("-", " ").title()[:40],
+                        "url": f"{'https' if host in tls_hosts else 'http'}://{host}{path if path != '/' else ''}",
+                        "detail": f"Ingress {meta.get('namespace', '')}/{meta.get('name', '')}",
+                        "icon": _icon_guess(names, meta.get("name", ""), host.split(".")[0])})
+    try:
+        overview = containers.kube_overview()
+    except Exception:
+        overview = {}
+    for svc in overview.get("services", []) or []:
+        for p in svc.get("ports", []):
+            m = re.search(r"\(Node (\d+)\)", p)
+            if m and p.endswith("/tcp"):
+                out.append({"source": "kubernetes", "name": svc["name"].replace("-", " ").title()[:40],
+                            "port": int(m.group(1)), "scheme": "http",
+                            "detail": f"NodePort {svc['namespace']}/{svc['name']}",
+                            "icon": _icon_guess(names, svc["name"])})
+                break
+    return out
+
+
+async def discover() -> Dict[str, Any]:
+    try:
+        names = await _names()
+    except BoardError:
+        names = {}
+    docker_apps, kube_apps = await asyncio.gather(asyncio.to_thread(_docker_apps, names), asyncio.to_thread(_kube_apps, names))
+    import netscan
+    devices = []
+    lan = await asyncio.to_thread(netscan.devices)
+    seen_hosts = set()
+    for d in lan.get("devices", []):  # online first: a remembered old device never doubles the current one
+        if d.get("ip") and not d.get("self") and d["ip"] not in seen_hosts:
+            seen_hosts.add(d["ip"])
+            devices.append({"source": "lan", "name": d.get("alias") or (d.get("hostname") or "").split(".")[0] or d.get("vendor") or d["ip"],
+                            "host": d["ip"], "online": bool(d.get("online")), "detail": d.get("vendor", "")})
+    try:
+        import netbox
+        if netbox.public().get("configured"):
+            nb = await netbox.data()
+            known = {d["host"] for d in devices}
+            for o in nb.get("objects", []):
+                if o.get("primary_ip") and o["primary_ip"] not in known:
+                    devices.append({"source": "netbox", "name": o["name"], "host": o["primary_ip"],
+                                    "online": o.get("lan") == "online", "detail": " · ".join(filter(None, [o.get("role"), o.get("model")]))})
+    except Exception:
+        pass
+    devices.sort(key=lambda d: (not d["online"], d["name"].lower()))
+    return {"apps": docker_apps + kube_apps, "devices": devices[:200],
+            "docker": bool(docker_apps), "kubernetes": bool(kube_apps)}
+
+
+def _private_host(host: str) -> bool:
+    import ipaddress
+    import socket
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        a = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not (a.is_private or a.is_loopback or a.is_link_local) or a.is_unspecified:
+            return False
+    return bool(infos)
+
+
+async def probe(host: str) -> Dict[str, Any]:
+    """Which common web ports answer on a device in the home network, with the page title."""
+    host = (host or "").strip()
+    if not re.match(r"^[A-Za-z0-9.:-]{1,253}$", host):
+        raise BoardError("Ungültige Adresse.")
+    if not await asyncio.to_thread(_private_host, host):
+        raise BoardError("Nur Geräte im Heimnetz oder VPN lassen sich prüfen.")
+
+    async def open_port(port: int) -> bool:
+        try:
+            _, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=1.5)
+            w.close()
+            return True
+        except (OSError, asyncio.TimeoutError):
+            return False
+
+    flags = await asyncio.gather(*(open_port(p) for p in WEB_PORTS))
+    ports = [p for p, ok in zip(WEB_PORTS, flags) if ok]
+    shown = f"[{host}]" if ":" in host else host
+    found = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(4.0), verify=False, follow_redirects=True) as client:
+        async def page(port: int):
+            order = ["https", "http"] if port in HTTPS_PORTS else ["http", "https"]
+            for scheme in order:
+                url = f"{scheme}://{shown}" + ("" if (scheme, port) in (("http", 80), ("https", 443)) else f":{port}")
+                try:
+                    res = await client.get(url + "/")
+                except httpx.HTTPError:
+                    continue
+                m = re.search(rb"<title[^>]*>([^<]{1,120})</title>", res.content[:65536], re.I)
+                title = m.group(1).decode("utf-8", "replace").strip() if m else ""
+                return {"url": url, "port": port, "status": res.status_code, "title": re.sub(r"\s+", " ", title)}
+            return None
+        results = await asyncio.gather(*(page(p) for p in ports))
+    found = [r for r in results if r]
+    return {"host": host, "found": found}
