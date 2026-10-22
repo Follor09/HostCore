@@ -48,30 +48,34 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
 
 ---
 
-## 🍓 Erst-Installation auf dem Raspberry Pi
+## 🍓 Installation auf dem Raspberry Pi
 
-### 1. Repo auf GitHub anlegen & pushen (einmalig, auf dem Mac)
+**Voraussetzungen:** Raspberry Pi (am besten Pi 5, Pi 4 geht auch) mit Raspberry Pi OS oder Debian (64-bit, Bookworm oder neuer), ein Benutzer mit `sudo`. Docker und k3s sind optional – die Container-Bereiche erscheinen, sobald sie installiert sind.
+
+### Schnellstart – direkt auf dem Pi (per SSH)
 
 ```bash
-git add . && git commit -m "Initial commit"
-git remote add origin https://github.com/DEIN-BENUTZERNAME/pi-dashboard.git
-git push -u origin main
-```
-
-### 2. Auf den Pi deployen
-
-**Option A – vom Mac aus:**
-```bash
-./deploy.sh pi@<IP-DEINES-PI>
-```
-
-**Option B – direkt auf dem Pi (per SSH):**
-```bash
-git clone https://github.com/DEIN-BENUTZERNAME/pi-dashboard.git ~/pi-dashboard
+git clone https://github.com/Follor09/RaspberryPi-Dash.git ~/pi-dashboard
 ~/pi-dashboard/install.sh
 ```
 
-`install.sh` richtet venv & Pakete, den Dienst `raspberry-dashboard`, den Auto-Update-Timer und die sudo-Regel für den Neustart ein. Es kann jederzeit erneut ausgeführt werden.
+`install.sh` richtet venv & Pakete, den Dienst `raspberry-dashboard`, den Auto-Update-Timer und die eng begrenzten sudo-Regeln ein und fragt am Ende nach dem ersten Administrator. Danach ist das Dashboard unter `http://<IP-des-Pi>:8000` erreichbar. Das Skript kann jederzeit erneut ausgeführt werden.
+
+> **Hinweis zu Updates:** Der Pi holt sich automatisch jeden neuen Stand des Branches, von dem er geklont wurde (siehe [Auto-Update](#-auto-update-bei-jedem-commit)). Wer Änderungen lieber selbst prüft, nutzt einen eigenen Fork – oder schaltet den Timer ab: `sudo systemctl disable --now pi-dashboard-update.timer`.
+
+### Eigene Version (Fork) mit Auto-Update
+
+1. Repository auf GitHub **forken** und den Fork auf den Rechner klonen.
+2. Auf den Pi bringen – entweder vom Rechner aus:
+   ```bash
+   ./deploy.sh pi@<IP-DEINES-PI>
+   ```
+   oder direkt auf dem Pi:
+   ```bash
+   git clone https://github.com/<DEIN-BENUTZERNAME>/RaspberryPi-Dash.git ~/pi-dashboard
+   ~/pi-dashboard/install.sh
+   ```
+3. Ab dann landet jeder Push auf deinen Fork innerhalb einer Minute auf dem Pi. Ist der Fork privat, braucht der Pi einen Lese-Token (siehe [Privates Repo](#-privates-repo-github-token-hinterlegen)).
 
 ---
 
@@ -122,7 +126,7 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 - Pro Benutzer: Gruppe wechseln, Passwort setzen, auf allen Geräten abmelden, deaktivieren (sofort abgemeldet), löschen. Es bleibt immer mindestens ein aktiver Administrator; die eigenen Admin-Rechte kann man sich nicht selbst nehmen.
 - Der Server prüft **jede** Anfrage gegen eine zentrale Rechte-Tabelle (`access.py`); neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren. Die Oberfläche blendet nicht erlaubte Knöpfe und Bereiche aus.
 - Passwörter als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed). Eine alte `auth.json` mit einem Benutzer wird automatisch übernommen – dieser wird Administrator.
-- Benutzernamen ohne Groß-/Kleinschreibung („Niko“ = „niko“), Passwörter exakt.
+- Benutzernamen ohne Groß-/Kleinschreibung („Anna“ = „anna“), Passwörter exakt.
 - Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab. Neues Passwort oder „Abmelden“ beendet nur die Sitzungen dieses Benutzers.
 - Nach 5 Fehlversuchen wird die IP zunehmend lange gesperrt (30 s … 15 min).
 - Aktionen werden nur von der eigenen Seite akzeptiert (CSRF-Schutz). Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
@@ -286,3 +290,11 @@ Dann auf dem Pi:
 ```
 
 Der Token wird geprüft und in `.git/github-credentials` gespeichert (nur für deinen Benutzer lesbar, wird nie committed). `install.sh` fragt automatisch danach, falls das Repo nicht lesbar ist. Bei abgelaufenem Token einfach `set-token.sh` erneut ausführen.
+
+---
+
+## 📄 Lizenz & Sicherheit
+
+- Lizenz: [MIT](LICENSE) – frei nutzbar, veränderbar und weitergebbar, solange der Copyright-Hinweis erhalten bleibt.
+- Mitgelieferte Fremdsoftware: xterm.js (MIT, `static/vendor/xterm`); Wetterdaten von Open-Meteo (CC BY 4.0); Länder-Datenbank von DB-IP (CC BY 4.0, wird erst bei Bedarf geladen); App-Katalog von LinuxServer.io (über deren öffentliche API).
+- Sicherheitsmodell und wie man eine Lücke meldet: [SECURITY.md](SECURITY.md). Das Dashboard ist für das Heimnetz bzw. ein VPN gedacht, nicht für den direkten Betrieb im Internet.
