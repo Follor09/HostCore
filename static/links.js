@@ -80,7 +80,7 @@
 
   fetch('/api/links')
     .then(r => (r.ok ? r.json() : { links: [] }))
-    .then(data => { links = data.links || []; build(); })
+    .then(data => { links = data.links || []; if (!document.body.classList.contains('has-sidebar')) build(); })
     .catch(() => {});
 
   window.PiLinks = { list: () => links };

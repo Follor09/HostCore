@@ -23,7 +23,7 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
 - **Laufwerk-Aktivität:** Lese-/Schreibrate je Laufwerk live in der Speicher-Karte und als „Laufwerk“ im Verlauf-Diagramm. Beim Netzwerk-Verlauf lässt sich eine Schnittstelle (LAN, WLAN, NetBird …) wählen.
 - **Schnellaktionen:** eigene Skripte als Buttons. Ausführbare Dateien in `~/pi-dashboard-actions/` ablegen (`chmod +x`), optional mit Kopfzeilen `# name: …`, `# description: …`, `# confirm: yes`, `# timeout: 900`. Laufen als Dashboard-Benutzer, Ausgabe live im Fenster, Stoppen möglich; jeder Lauf steht im Aktivitätsprotokoll. Ein Beispiel-Skript wird beim ersten Mal angelegt.
 - **Web-Dienste:** eigene Dienste im Heimnetz/VPN (Home Assistant, NAS …) werden alle 1/5/15 Min. per HTTP geprüft; Karte mit Status, Antwortzeit und 24-Std.-Leiste. Verwalten unter Einstellungen → Web-Dienste. Adressen im Internet werden abgelehnt.
-- **Helles Design:** Einstellungen → Darstellung (Automatisch / Hell / Dunkel) oder das Sonnen-Symbol oben rechts.
+- **Helles Design:** Einstellungen → Darstellung (Automatisch / Hell / Dunkel) oder „Design-Schema umschalten“ in der Seitenleiste.
 - **Notizen:** Karte auf dem Dashboard, auf dem Pi gespeichert (alle Geräte sehen dasselbe), mit Checklisten (`- [ ]`), Überschriften und Links; speichert beim Tippen und überschreibt nie still eine Änderung von einem anderen Gerät. Nur nach Anmeldung sichtbar.
 - **NVMe-Verlauf:** „Verlauf“ in der NVMe-Karte zeigt Verschleiß, pro Tag geschriebene Datenmenge und Temperatur (Tages-Ø und -Max.) über 30 Tage, 90 Tage oder 1 Jahr, dazu unsichere Abschaltungen, Medienfehler und eine hochgerechnete Restlebensdauer (ab 30 Tagen Daten). Ein Wert pro Tag, 3 Jahre aufbewahrt. Die NVMe-Temperatur gibt es zusätzlich im Verlauf-Diagramm (24 h / 7 Tage).
 - **Container & Pods:** Docker-Container und Kubernetes-Pods (k3s / kubectl) mit Status, Neustarts und Fehler-Hervorhebung.
@@ -31,7 +31,7 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für den Raspberry P
   - k3s braucht eine lesbare kubeconfig: `mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER ~/.kube/config`
 - **Stromversorgung (Pi 5):** Board-Leistung in Watt aus dem PMIC (`vcgencmd pmic_read_adc`), Eingangsspannung, vom Netzteil gemeldete Stromstärke, Unterspannung (live / seit Boot). Auch im Verlauf unter „Leistung“.
 - **Datei-Explorer & Speicher-Analyse:** Über „Öffnen“ bei jedem Laufwerk: Ordner durchsuchen, Dateien herunterladen (nur lesen), Ordnergrößen berechnen und die größten Dateien finden. Sensible Pfade (Dashboard-Login, GitHub-Token, `~/.ssh`, `~/.kube` …) sowie `/proc`, `/sys`, `/dev` sind gesperrt; immer nur mit Login.
-- **Web-Terminal:** Echte Shell im Browser (Terminal-Symbol oben rechts), läuft als dein Benutzer (`sudo` wie gewohnt). Öffnen erfordert das Passwort erneut (Einmal-Ticket, 60 s), nur von der Dashboard-Seite selbst, max. 3 gleichzeitig, schließt nach 30 Min. ohne Eingabe. xterm.js liegt im Repo (`static/vendor/xterm`, MIT) statt aus einem CDN.
+- **Web-Terminal:** Echte Shell im Browser („Terminal“ in der Seitenleiste), läuft als dein Benutzer (`sudo` wie gewohnt). Öffnen erfordert das Passwort erneut (Einmal-Ticket, 60 s), nur von der Dashboard-Seite selbst, max. 3 gleichzeitig, schließt nach 30 Min. ohne Eingabe. xterm.js liegt im Repo (`static/vendor/xterm`, MIT) statt aus einem CDN.
 - **Dienste steuern:** Klick auf eine Dienst-Kachel öffnet Start / Stopp / Neustart (mit Bestätigung) und das Journal des Dienstes. `install.sh` erlaubt per sudo genau diese Units – sonst nichts. Beim Auto-Updater: „Update jetzt ausführen“.
 - **Container-Steuerung:** Docker-Container starten, stoppen, neu starten (mit Bestätigung) und Logs ansehen.
 - **Wake-on-LAN:** PCs, NAS & Co. per Klick wecken; Geräte unter *Einstellungen → Wake-on-LAN* verwalten.
@@ -141,7 +141,7 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 
 ### 🔎 Befehlspalette (Strg+K / ⌘K)
 
-Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder die Lupe oben rechts eine Suche über alle Seiten, Bereiche (z.B. „Firewall“, „SSH-Anmeldungen“, „Sprache“) und Aktionen („System-Updates öffnen“, „NVMe-Verlauf“, „Dateien durchsuchen“, „Prozess suchen“, Dienste steuern, Wake-on-LAN-Geräte wecken, Verlauf-Diagramme, Sprache, Abmelden). Pfeiltasten + Enter, tippfehlertolerant, zuletzt verwendete Befehle stehen oben. Im Web-Terminal gehört Strg+K der Shell – dort die Lupe benutzen.
+Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder „Suchen & Befehle“ in der Seitenleiste eine Suche über alle Seiten, Bereiche (z.B. „Firewall“, „SSH-Anmeldungen“, „Sprache“) und Aktionen („System-Updates öffnen“, „NVMe-Verlauf“, „Dateien durchsuchen“, „Prozess suchen“, Dienste steuern, Wake-on-LAN-Geräte wecken, Verlauf-Diagramme, Sprache, Abmelden). Pfeiltasten + Enter, tippfehlertolerant, zuletzt verwendete Befehle stehen oben. Im Web-Terminal gehört Strg+K der Shell – dort den Eintrag in der Seitenleiste benutzen.
 
 ### © Fußzeile
 
@@ -158,7 +158,7 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 
 ### 🗂️ Planung & Auswertung
 
-- **Verlauf abspielen** (Uhr-Symbol oben rechts, „Abspielen“ im Verlauf oder Befehlspalette): gibt die letzten 24 Stunden oder einen der letzten 7 Tage minutengenau wieder. CPU, Temperatur, RAM, Netzwerk, Lüfter, Leistung und der 3D-Pi zeigen die Werte der jeweiligen Minute (mit Sparklines davor), alle anderen Karten werden ausgegraut. Zeitregler, Wiedergabe/Pause (Leertaste), ±15 Min. (Pfeiltasten, mit Umschalt ±1 Std.), Tempo von 1 Min./s bis 1 Std./s. Ereignisse des Tages (Ausfälle, Drosselung, Anmeldungen …) sind farbige Marken auf dem Regler; Zeiten ohne Messwerte sind schraffiert. Esc kehrt zu den Live-Werten zurück.
+- **Verlauf abspielen** („Verlauf abspielen“ in der Seitenleiste, „Abspielen“ im Verlauf oder Befehlspalette): gibt die letzten 24 Stunden oder einen der letzten 7 Tage minutengenau wieder. CPU, Temperatur, RAM, Netzwerk, Lüfter, Leistung und der 3D-Pi zeigen die Werte der jeweiligen Minute (mit Sparklines davor), alle anderen Karten werden ausgegraut. Zeitregler, Wiedergabe/Pause (Leertaste), ±15 Min. (Pfeiltasten, mit Umschalt ±1 Std.), Tempo von 1 Min./s bis 1 Std./s. Ereignisse des Tages (Ausfälle, Drosselung, Anmeldungen …) sind farbige Marken auf dem Regler; Zeiten ohne Messwerte sind schraffiert. Esc kehrt zu den Live-Werten zurück.
 - **Erinnerungen:** wiederkehrende Aufgaben („monatlich: Backup prüfen“) – einmalig, täglich, wöchentlich, monatlich oder jährlich, auch mit Intervall („alle 3 Monate“). Fällige stehen auf der Karte und in der Statusleiste, bis sie abgehakt sind; abhaken setzt wiederkehrende auf den nächsten Termin (der 31. bleibt in kurzen Monaten der letzte Tag), „Morgen“ verschiebt um einen Tag. Für alle Geräte gleich, Bearbeiten mit dem Recht „Notizen bearbeiten“.
 - **Aufgaben (Kanban):** Board mit *Offen*, *In Arbeit* und *Erledigt*. Karten per Drag & Drop oder Pfeil-Schaltflächen (auch auf Touch-Geräten) verschieben, mit Beschreibung, Labels und Fälligkeitsdatum; überfällige und heute fällige Karten sind markiert. Die Dashboard-Karte zeigt Zähler und anstehende Aufgaben und nimmt neue per Enter an.
 - **Live-3D-Pi:** Karte mit einem drehbaren 3D-Modell des Pi 5 (reines CSS, keine Bibliothek). Der Kühler glüht je nach CPU-Temperatur von Blau bis Rot, der Lüfter dreht mit der echten Lüfterstufe, die grüne LED blinkt schneller bei CPU-Last, die Ethernet-LEDs flackern mit dem Netzwerkverkehr, die rote LED blinkt bei Unterspannung. Ziehen oder Pfeiltasten drehen, Doppelklick setzt die Ansicht zurück.
@@ -166,7 +166,7 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 - **Geräte-Verfügbarkeit:** in System-Werkzeuge → Geräte im Netzwerk „Überwachen“ – das Gerät wird alle 5 Minuten angepingt, über seine MAC-Adresse (auch nach einem IP-Wechsel per DHCP). Status und Verfügbarkeit stehen in der Geräteliste, Verlauf und Vorfälle in der Web-Dienste-Karte.
 - **Öffentliche Statusseite** (`/status`): eine schlichte Seite ohne Anmeldung für Familie und Freunde. Unter Einstellungen → Statusseite einschalten, Titel setzen und Dienste, Web-Dienste und Compose-Stacks auswählen – jeweils mit eigenem Anzeigenamen. Zeigt „Alle Systeme laufen“ / „Teilweise Störung“, den Zustand jedes Eintrags und optional die Verfügbarkeit der letzten 30 Tage als Balken. Es verlassen nur diese Namen und Zustände den Pi – keine Adressen, IPs oder Fehlermeldungen. Ausgeschaltet antwortet `/api/public/status` mit 404.
 
-### 📚 Dokumentation (`/doku`, Buch-Symbol oben rechts)
+### 📚 Dokumentation (`/doku`)
 
 - **Inventar:** Hardware mit Kategorie, Hersteller, Modell, Seriennummer, Standort, Kaufdatum, Preis und Garantie. Optional mit einem Gerät aus dem Netzwerk-Scan verknüpft – dann steht dabei, ob es gerade online ist und unter welcher IP. Gesamtwert oben; endet eine Garantie in den nächsten 30 Tagen, erscheint ein Hinweis in der Statusleiste.
 - **Betriebstagebuch:** eigene Einträge („Was wurde wann geändert und warum“) mit Kategorie (Änderung, Wartung, Störung, Installation, Notiz), Zeitpunkt und Bezug. Durchsuchbar; Einträge erscheinen in den Ereignissen und im Wochenbericht.
@@ -192,6 +192,10 @@ Im Datei-Browser (Laufwerk → „Öffnen“): **Hochladen** per Button oder Dra
 
 Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → Darstellung; Größe und Platz jeder Karte im Board-Bearbeiten-Modus; eigene Links (Home Assistant, Router …) unter Einstellungen → Eigene Links – erscheinen oben unter dem Link-Symbol und in der Suche.
 
+### 🧭 Seitenleiste
+
+Links auf jeder Seite: **Boards**, alle **Seiten** mit Namen (System-Werkzeuge, Container, Dokumentation, Wochenbericht, Terminal, Einstellungen) – die Bereiche der aktuellen Seite (z.B. „Firewall“, „Logs“) stehen direkt darunter und zeigen, wo man gerade ist –, deine **eigenen Links** und die **Aktionen** (Suchen & Befehle, Verlauf abspielen, Board bearbeiten, Vollbild, Design). Der Pfeil oben klappt sie auf reine Symbole ein (gemerkt pro Browser); auf dem Handy öffnet sie das Menü-Symbol oben links.
+
 ### 🧩 Boards (Startseite im Homarr-Stil)
 
 Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und den **Karten** des Dashboards, gegliedert in **Kategorien** – und es kann mehrere **Boards** geben (z.B. „Übersicht“, „Medien“, „Netzwerk“). Gespeichert wird auf dem Pi, alle Geräte sehen dasselbe.
@@ -205,12 +209,12 @@ Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und de
   - **Remote-Pi:** CPU, Temperatur, RAM, Speicher und Laufzeit eines Remote-Pis direkt auf dem Board; „Anzeigen“ schaltet das Dashboard auf ihn um.
 - **Erkannt:** Im Hinzufügen-Dialog schlägt das Dashboard Apps aus laufenden Docker-Containern (veröffentlichte Ports, Icon aus dem Image-Namen) und Kubernetes (Ingresses, NodePorts) vor – per Klick aufs Board. Darunter die Geräte aus dem Geräte-Scan und aus NetBox: „Web-Ports prüfen“ sucht auf den üblichen Ports nach Weboberflächen (mit Seitentitel), ein Klick übernimmt sie als App. Geprüft werden nur Adressen im Heimnetz oder VPN.
 - **Karten:** alle bisherigen Karten (CPU, Temperatur, Verlauf, Container, Notizen, Aufgaben …), jede einmal pro Board.
-- **Bearbeiten** (Raster-Symbol oben rechts, Berechtigung „Dashboard gestalten“, ab 1100 Pixel Fensterbreite): Elemente ziehen, an der Ecke unten rechts in der Größe ändern, auch zwischen Kategorien verschieben; „+ Hinzufügen“ für Apps, Widgets, Karten und Kategorien; Board-Einstellungen mit Name, Spaltenzahl, Hintergrundbild und Abdunkeln. Änderungen werden sofort gespeichert; wurde das Board inzwischen auf einem anderen Gerät geändert, lädt das Dashboard den neuen Stand, statt ihn zu überschreiben.
+- **Bearbeiten** („Board bearbeiten“ in der Seitenleiste, Berechtigung „Dashboard gestalten“, ab 1100 Pixel Fensterbreite): Elemente ziehen, an der Ecke unten rechts in der Größe ändern, auch zwischen Kategorien verschieben; „+ Hinzufügen“ für Apps, Widgets, Karten und Kategorien; Board-Einstellungen mit Name, Spaltenzahl, Hintergrundbild und Abdunkeln. Änderungen werden sofort gespeichert; wurde das Board inzwischen auf einem anderen Gerät geändert, lädt das Dashboard den neuen Stand, statt ihn zu überschreiben.
 - Boards wechseln per Klick, **Alt+1…9**, Befehlspalette oder Link (`/#board-medien`). Apps aller Boards lassen sich auch über die Befehlspalette (Strg+K) öffnen. Kategorien lassen sich zuklappen (pro Browser).
 - Auf schmalen Bildschirmen (Handy, Tablet) stehen die Apps als Kachelraster oben, die Karten darunter untereinander.
 - Beim ersten Start entsteht ein Standard-Board: Suchleiste, deine eigenen Links als Apps und alle Karten in der Kategorie „System“. „Alle Boards zurücksetzen“ in den Board-Einstellungen stellt es wieder her.
 
-### 🧰 System-Werkzeuge (`/system`, Schraubenschlüssel oben rechts)
+### 🧰 System-Werkzeuge (`/system`)
 
 - **Netzwerk:** Schnittstellen mit IPs, MAC, Traffic, Link-Speed und WLAN-Signal (SSID, dBm, Band); Gateway & DNS; offene Ports mit Dienst, Prozess und „nur lokal / im Netzwerk erreichbar“.
 - **Sensoren:** alle Temperaturen (CPU, RP1-Chip, PMIC, NVMe …), Spannungen und Ströme der Pi-5-Stromschienen, Lüfterdrehzahl und Unterspannungs-Alarm – live, mit 24-Stunden-Kurven.
@@ -238,7 +242,7 @@ Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und de
 - **Speicher aufräumen:** System-Logs älter als 14 Tage, apt-Paket-Cache, ungenutzte Docker-Images & Build-Cache, `~/.cache` und Papierkorb – mit Größenvorschau, einzeln oder alles auf einmal. sudo nur für `journalctl --vacuum-time=14d` und `apt-get clean`.
 - **Hardware:** Modell, SoC, RAM, Revision, Seriennummer, Kernel, Firmware, Bootloader mit Update-Hinweis, NVMe mit PCIe-Generation (Tipp für Gen 3), Laufwerke, USB-Geräte mit Geschwindigkeit.
 
-### 🐳 Container (`/containers`, Würfel oben rechts)
+### 🐳 Container (`/containers`)
 
 - **Übersicht:** laufende Pods, bereite Workloads, Docker-Container, Stacks, verfügbare Image-Updates und Kubernetes-Warnungen der letzten 24 Std. – plus eine Liste mit allem, was gerade kaputt ist (CrashLoop, OOMKilled, beendete Container …).
 - **Kubernetes (k3s):** Workloads (Deployments, StatefulSets, DaemonSets) mit Bereit-Status, Images und Aktionen **Neu starten** (`rollout restart`), **Stoppen** (auf 0 skalieren – „Starten“ holt die alte Anzahl zurück) und **Skalieren**; Pods mit Status, Neustarts, OOMKilled, CPU/RAM (metrics-server), **Logs** (Container-Auswahl, vorheriger Start, Filter, Live) und **Neu erstellen**; Services mit Ports/NodePorts/LoadBalancer-IP; Nodes mit Auslastung und Version; Warnungen (Events). Filter nach Namespace und Text, kube-system ausblendbar. Braucht eine lesbare kubeconfig (`~/.kube/config`, siehe Hinweis auf der Seite).

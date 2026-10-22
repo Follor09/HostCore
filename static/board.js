@@ -892,7 +892,8 @@
   function renderTabs() {
     const bar = $('dash-tabs');
     bar.innerHTML = '';
-    bar.hidden = cfg.boards.length < 2 && !editing;
+    bar.hidden = !editing && (cfg.boards.length < 2 || document.body.classList.contains('has-sidebar'));
+    window.dispatchEvent(new CustomEvent('pi-boards-changed', { detail: { boards: cfg.boards.map(b => ({ id: b.id, name: boardName(b) })), active: active().id } }));
     document.body.classList.toggle('has-tabs', !bar.hidden);
     const list = el('div', 'dash-tab-list');
     list.setAttribute('role', 'tablist');
