@@ -56,6 +56,7 @@
       <a href="#dienste" data-perm="settings.manage">Dienste</a>
       <a href="#wake-on-lan" data-perm="settings.manage">Wake-on-LAN</a>
       <a href="#web-dienste" data-perm="settings.manage">Web-Dienste</a>
+      <a href="#statusseite" data-perm="settings.manage">Statusseite</a>
       <a href="#links" data-perm="settings.manage">Eigene Links</a>
       <a href="#freigaben" data-perm="files.share">Freigaben</a>
       <a href="#auto-update" data-perm="settings.manage">Auto-Update</a>
@@ -226,6 +227,15 @@
           <button class="accent-swatch" data-accent="pink" style="--swatch:#ec4899"><i></i>Pink</button>
           <button class="accent-swatch" data-accent="blue" style="--swatch:#3b82f6"><i></i>Blau</button>
         </div>
+        <h3 class="subhead">Stil</h3>
+        <div class="look-grid" id="look-switch" role="radiogroup" aria-label="Stil">
+          <button class="look-card" data-look="standard"><span class="look-preview lp-standard"><i></i><i></i><i></i></span><b>Standard</b><small>Dunkles Glas mit Neon-Akzent</small></button>
+          <button class="look-card" data-look="retro"><span class="look-preview lp-retro"><i></i><i></i><i></i></span><b>Retro-Terminal</b><small>Grüner Phosphor, Scanlines, CRT-Flimmern</small></button>
+          <button class="look-card" data-look="cyberpunk"><span class="look-preview lp-cyberpunk"><i></i><i></i><i></i></span><b>Cyberpunk</b><small>Neon-Pink &amp; Gelb, schräge Ecken, Glitch</small></button>
+          <button class="look-card" data-look="glass"><span class="look-preview lp-glass"><i></i><i></i><i></i></span><b>Glas</b><small>Starker Blur, bunte Farbverläufe im Hintergrund</small></button>
+          <button class="look-card" data-look="minimal"><span class="look-preview lp-minimal"><i></i><i></i><i></i></span><b>Minimal</b><small>Flach und ruhig, ohne Leuchten</small></button>
+        </div>
+        <p class="field-hint">Retro-Terminal und Cyberpunk sind immer dunkel und bringen eigene Farben mit; die Akzentfarbe gilt für Standard, Glas und Minimal.</p>
       </section>
 
       <!-- Wetter -->
@@ -302,6 +312,33 @@
         <p class="field-hint">Ohne „Zertifikat prüfen“ werden auch selbst-signierte HTTPS-Zertifikate akzeptiert (üblich im Heimnetz).</p>
       </section>
 
+      <!-- Öffentliche Statusseite -->
+      <section class="glass-card settings-section" id="statusseite" data-perm="settings.manage">
+        <h2>Öffentliche Statusseite</h2>
+        <p class="section-desc">Eine schlichte Seite ohne Anmeldung für Familie und Freunde: „Jellyfin läuft, NAS kurz weg“. Du wählst, was erscheint und unter welchem Namen – Adressen, IPs und Fehlermeldungen bleiben auf dem Pi.</p>
+        <form class="settings-form" id="sp-form" autocomplete="off">
+          <label class="toggle-label"><input type="checkbox" id="sp-enabled"> Statusseite einschalten</label>
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Titel</span>
+              <input type="text" id="sp-title" maxlength="80" placeholder="Status bei Familie Muster">
+            </label>
+            <label class="login-field">
+              <span>Beschreibung (optional)</span>
+              <input type="text" id="sp-desc" maxlength="300" placeholder="Bei Problemen einfach Bescheid sagen.">
+            </label>
+          </div>
+          <label class="toggle-label"><input type="checkbox" id="sp-history" checked> Verfügbarkeit der letzten 30 Tage zeigen</label>
+          <h3 class="subhead">Was erscheint</h3>
+          <div class="sp-items" id="sp-items"></div>
+          <div class="inline-form">
+            <button type="submit" class="btn-primary">Speichern</button>
+            <a class="btn-secondary" href="/status" target="_blank" rel="noopener" id="sp-open">Statusseite öffnen ↗</a>
+          </div>
+          <p class="field-hint" id="sp-url" data-no-i18n></p>
+        </form>
+      </section>
+
       <!-- Eigene Links -->
       <section class="glass-card settings-section" id="links" data-perm="settings.manage">
         <h2>Eigene Links</h2>
@@ -363,6 +400,7 @@
   <script src="/static/caps.js"></script>
   <script src="/static/hosts.js"></script>
   <script src="/static/settings.js"></script>
+  <script src="/static/statuspage-settings.js"></script>
   <script src="/static/users.js"></script>
   <script src="/static/remotes-ui.js"></script>
   <script src="/static/links.js"></script>

@@ -44,6 +44,7 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#uebersicht" class="active">Übersicht</a>
+      <a href="#apps">App-Store</a>
       <a href="#kubernetes">Kubernetes</a>
       <a href="#docker">Docker</a>
       <a href="#stacks">Compose-Stacks</a>
@@ -63,6 +64,20 @@
         </div>
         <div class="bench-values ssh-stats" id="ov-stats"></div>
         <div id="ov-problems"></div>
+      </section>
+
+      <!-- App-Store -->
+      <section class="glass-card settings-section" id="apps">
+        <div class="section-head">
+          <h2>App-Store</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="app-dir" data-no-i18n></span>
+          </div>
+        </div>
+        <p class="section-desc">Beliebte Self-Hosted-Apps mit wenigen Klicks installieren. Jede App bekommt einen eigenen Ordner mit docker-compose.yml und läuft danach als normaler Compose-Stack – Aktualisieren, Stoppen und Entfernen gehen unten bei den Stacks.</p>
+        <div class="segmented app-filters" id="app-filters" role="tablist" aria-label="Kategorie"></div>
+        <div class="app-grid" id="app-grid"></div>
+        <p class="field-hint" id="app-hint"></p>
       </section>
 
       <!-- Kubernetes -->
@@ -191,6 +206,34 @@
     </div>
   </div>
 
+  <!-- App installieren -->
+  <div class="modal-backdrop" id="app-modal" aria-hidden="true">
+    <div class="modal-card sheet-card app-sheet" role="dialog" aria-modal="true" aria-labelledby="app-modal-title">
+      <div class="sheet-head">
+        <div class="app-card-head">
+          <span class="app-icon" id="app-modal-icon" aria-hidden="true"></span>
+          <div>
+            <h3 id="app-modal-title" data-no-i18n></h3>
+            <p class="card-subtitle" id="app-modal-sub" data-no-i18n></p>
+          </div>
+        </div>
+        <button class="mini-icon-btn" id="app-modal-close" title="Schließen (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form class="app-form" id="app-form" autocomplete="off"></form>
+      <pre class="stack-job-out app-compose" id="app-compose" data-no-i18n hidden></pre>
+      <div class="stack-job" id="app-job" hidden>
+        <div class="stack-job-head" id="app-job-head"></div>
+        <pre class="stack-job-out" id="app-job-out" data-no-i18n></pre>
+      </div>
+      <div class="app-sheet-actions" id="app-actions">
+        <button type="button" class="btn-secondary" id="app-preview">Compose-Datei ansehen</button>
+        <button type="submit" form="app-form" class="btn-primary" id="app-install">Installieren</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-container" id="toast-container"></div>
   <script src="/static/i18n.js"></script>
   <script src="/static/perms.js"></script>
@@ -198,6 +241,7 @@
   <script src="/static/hosts.js"></script>
   <script src="/static/editor.js"></script>
   <script src="/static/containers.js"></script>
+  <script src="/static/appstore.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>
   <script src="/static/mobilenav.js"></script>

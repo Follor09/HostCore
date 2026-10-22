@@ -34,6 +34,8 @@
     }],
     weather: ['Wetter-Ort ändern', 'stadt city', () => { scrollTo('[data-widget=weather]'); click('#weather-city-btn')(); }],
     customize: ['Dashboard anpassen', 'layout karten ausblenden reihenfolge', () => window.PiLayout && window.PiLayout.edit()],
+    replay: ['Tages-Replay abspielen', 'replay zeitreise verlauf abspielen video gestern nacht', () => window.PiReplay && window.PiReplay.open()],
+    achievements: ['Erfolge & Trophäen', 'achievements badges trophäen erfolge punkte', () => window.PiAchievements && window.PiAchievements.open()],
     fullscreen: ['Vollbild', 'kiosk fullscreen', click('#btn-fullscreen')]
   };
   const HISTORY_METRICS = [['cpu', 'CPU'], ['temp', 'Temperatur'], ['ram', 'RAM'], ['net', 'Netzwerk'], ['fan', 'Lüfter'], ['power', 'Leistung'], ['nvme', 'NVMe']];
@@ -63,7 +65,7 @@
     'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools', 'sec:/system#firewall-traffic': 'security.view',
     'sec:/system#verbindungen': 'security.view', 'sec:/system#fehler': 'logs.view',
     'sec:/settings#wetter': 'settings.manage', 'sec:/settings#dienste': 'settings.manage', 'sec:/settings#wake-on-lan': 'settings.manage',
-    'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
+    'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#statusseite': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
     'sec:/settings#verlauf': 'settings.manage', 'sec:/settings#freigaben': 'files.share',
     'sec:/settings#benutzer': 'users.manage', 'sec:/settings#berechtigungen': 'users.manage',
     'dash:files': 'files.read', 'dash:diagnostics': 'system.view', 'dash:weather': 'settings.manage'
@@ -106,6 +108,7 @@
     ]);
     section('/containers', 'Container', [
       ['kubernetes', 'Kubernetes', 'k3s pods deployments services nodes kubectl'], ['docker', 'Docker-Container', 'docker container start stop logs'],
+      ['apps', 'App-Store', 'apps installieren jellyfin pihole home assistant vaultwarden grafana store'],
       ['stacks', 'Compose-Stacks', 'docker compose stack yaml aktualisieren'], ['images', 'Image-Updates', 'image update neu version registry'],
       ['statistik', 'Container-Statistik', 'cpu ram verlauf container stats']
     ]);
@@ -116,7 +119,7 @@
       ['konto', 'Konto', 'passwort sitzung account'], ['benutzer', 'Benutzer', 'users user accounts konten anlegen'],
       ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],
       ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
-      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
+      ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['statusseite', 'Öffentliche Statusseite', 'status page öffentlich familie freunde'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
       ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
     ]);
 
@@ -134,6 +137,10 @@
     [['auto', 'Design: Automatisch'], ['light', 'Design: Hell'], ['dark', 'Design: Dunkel']].forEach(([mode, label]) =>
       cmds.push({ id: `theme:${mode}`, label, group: 'Aktionen', keywords: 'theme design farbe hell dunkel light dark modus',
         run: () => window.PiTheme && window.PiTheme.set(mode) }));
+    [['standard', 'Stil: Standard'], ['retro', 'Stil: Retro-Terminal'], ['cyberpunk', 'Stil: Cyberpunk'], ['glass', 'Stil: Glas'], ['minimal', 'Stil: Minimal']].forEach(([look, label]) =>
+      cmds.push({ id: `look:${look}`, label, group: 'Aktionen', keywords: 'stil look theme design retro cyberpunk glas minimal',
+        run: () => window.PiTheme && window.PiTheme.setLook(look) }));
+    cmds.push({ id: 'page:status', label: 'Öffentliche Statusseite', group: 'Seiten', keywords: 'status page öffentlich', href: '/status' });
     ((window.PiLinks && window.PiLinks.list()) || []).forEach(l => cmds.push({
       id: `link:${l.id}`, label: `${t('Link')}: ${l.name}`, raw: true, group: 'Links', keywords: `link ${l.url}`,
       run: () => window.open(l.url, '_blank', 'noopener')

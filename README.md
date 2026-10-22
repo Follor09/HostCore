@@ -118,7 +118,7 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 | **Benutzer** | System-Werkzeuge ansehen, Dateien ansehen, Notizen |
 | **Betrachter** | nur das Dashboard |
 
-- **Eigene Gruppen** anlegen (Rechte von einer bestehenden übernehmen) und in einer Matrix ankreuzen – 18 Einzelrechte von „Logs lesen“ bis „Web-Terminal“. Änderungen gelten sofort, ohne neue Anmeldung. Eingebaute Gruppen lassen sich anpassen und auf Standard zurücksetzen.
+- **Eigene Gruppen** anlegen (Rechte von einer bestehenden übernehmen) und in einer Matrix ankreuzen – 19 Einzelrechte von „Logs lesen“ bis „Web-Terminal“. Änderungen gelten sofort, ohne neue Anmeldung. Eingebaute Gruppen lassen sich anpassen und auf Standard zurücksetzen.
 - Pro Benutzer: Gruppe wechseln, Passwort setzen, auf allen Geräten abmelden, deaktivieren (sofort abgemeldet), löschen. Es bleibt immer mindestens ein aktiver Administrator; die eigenen Admin-Rechte kann man sich nicht selbst nehmen.
 - Der Server prüft **jede** Anfrage gegen eine zentrale Rechte-Tabelle (`access.py`); neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren. Die Oberfläche blendet nicht erlaubte Knöpfe und Bereiche aus.
 - Passwörter als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed). Eine alte `auth.json` mit einem Benutzer wird automatisch übernommen – dieser wird Administrator.
@@ -150,6 +150,14 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 - **Ereignisse:** Zeitleiste (Karte auf dem Dashboard, komplett unter System-Werkzeuge → Ereignisse) mit Ausfällen und Erholung von Diensten, Drosselung, fehlgeschlagenen Anmeldungen (Dashboard + SSH), Updates, Neustarts und neuen Geräten.
 - **Speicherprognose:** „voll in ~N Tagen“ aus dem täglichen Füllstand, dazu die am stärksten gewachsenen Ordner (7 / 30 Tage). Ordnergrößen misst der Pi einmal täglich mit niedrigster Priorität (`du`).
 - **Wochenbericht** (`/report`): die letzten 7 Tage auf einer Seite – Kennzahlen, Verfügbarkeit, Drosselung, Speicher, Top-Programme, Änderungen, neue Geräte. „Drucken / PDF“ erzeugt eine saubere Druckansicht.
+
+### ✨ Extras
+
+- **Tages-Replay** (Uhr-Symbol oben rechts, „Abspielen“ im Verlauf oder Befehlspalette): spielt die letzten 24 Stunden oder einen der letzten 7 Tage wie ein Video ab. CPU, Temperatur, RAM, Netzwerk, Lüfter, Leistung und der 3D-Pi zeigen die Werte der jeweiligen Minute (mit Sparklines davor), alle anderen Karten werden blass. Zeitregler ziehen, Play/Pause (Leertaste), ±15 Min. (Pfeiltasten, mit Umschalt ±1 Std.), Tempo von 1 Min./s bis 1 Std./s. Ereignisse des Tages (Ausfälle, Drosselung, Anmeldungen …) sind farbige Marken auf dem Regler und erscheinen beim Abspielen als Laufschrift; Zeiten ohne Messwerte sind schraffiert. Esc beendet und kehrt zu den Live-Werten zurück.
+- **Live-3D-Pi:** Karte mit einem drehbaren 3D-Modell des Pi 5 (reines CSS, keine Bibliothek). Der Kühler glüht je nach CPU-Temperatur von Blau bis Rot, der Lüfter dreht mit der echten Lüfterstufe, die grüne LED blinkt schneller bei CPU-Last, die Ethernet-LEDs flackern mit dem Netzwerkverkehr, die rote LED blinkt bei Unterspannung. Ziehen oder Pfeiltasten drehen, Doppelklick setzt die Ansicht zurück.
+- **Erfolge:** 28 Abzeichen in Bronze, Silber und Gold – z. B. „Marathon“ (30 Tage ohne Neustart), „Cool bleiben“ (eine Woche nie über 70 °C), „Sparfuchs“ (unter 5 W), „Kapitän“ (5 Container), „Nachteule“. Berechnet aus den Daten, die das Dashboard ohnehin hat; einmal erreicht bleibt ein Abzeichen freigeschaltet (`settings.json`). Neue Abzeichen erscheinen als Pop-up mit Konfetti, die Karte zeigt Punkte und was als Nächstes kommt, „Alle Trophäen“ die ganze Sammlung mit Fortschritt.
+- **Stile:** Einstellungen → Darstellung → Stil (oder Befehlspalette): *Standard*, *Retro-Terminal* (grüner Phosphor, Scanlines, Flimmern), *Cyberpunk* (Neon-Pink/Gelb, schräge Ecken, Glitch), *Glas* (starker Blur, wandernde Farbverläufe) und *Minimal* (flach, ohne Leuchten). Retro und Cyberpunk sind immer dunkel; pro Browser gespeichert.
+- **Öffentliche Statusseite** (`/status`): eine schlichte Seite ohne Anmeldung für Familie und Freunde. Unter Einstellungen → Statusseite einschalten, Titel setzen und Dienste, Web-Dienste und Compose-Stacks auswählen – jeweils mit eigenem Anzeigenamen. Zeigt „Alle Systeme laufen“ / „Teilweise Störung“, den Zustand jedes Eintrags und optional die Verfügbarkeit der letzten 30 Tage als Balken. Es verlassen nur diese Namen und Zustände den Pi – keine Adressen, IPs oder Fehlermeldungen. Ausgeschaltet antwortet `/api/public/status` mit 404.
 
 ### 📁 Dateien
 
@@ -205,8 +213,9 @@ Das Raster-Symbol oben rechts startet den Bearbeiten-Modus: Karten per Pfeil ode
 - **Compose-Stacks:** aus `docker compose ls` und den Container-Labels; **Starten, Neu starten, Aktualisieren** (`pull` + `up -d`), **Stoppen, Entfernen** (`down`, Volumes bleiben) mit Live-Ausgabe; **Compose-Datei** öffnet den Editor – beim Speichern prüft `docker compose config` die Datei, kaputte YAML wird nicht gespeichert.
 - **Image-Updates:** alle 12 Std. (oder per „Jetzt prüfen“) wird der Digest jedes laufenden Images (Docker + k3s) mit der Registry verglichen – Docker Hub, GHCR, Quay, lscr.io & Co., anonym per `HEAD` (zählt nicht gegen das Docker-Hub-Limit). Bei Updates: Stack direkt aktualisieren oder Deployment neu starten. Nach einem Stack-Update wird automatisch neu geprüft.
 - **Statistik:** CPU, RAM und Netzwerk pro Container (Pods eines Deployments zusammengefasst) für 24 Std. / 7 Tage, einmal pro Minute gemessen (`docker stats`, `kubectl top`), 7 Tage aufbewahrt.
+- **App-Store:** Jellyfin, Pi-hole, AdGuard Home, Uptime Kuma, Vaultwarden, Home Assistant, Node-RED, Grafana, Syncthing und Gitea (alle als arm64-Images). Im Formular Name, Ports, Medien-Ordner und Passwörter wählen – belegte Ports werden erkannt und freie vorgeschlagen, „Compose-Datei ansehen“ zeigt vorher, was geschrieben wird. Jede App landet in `~/picore-apps/<name>/docker-compose.yml` (Daten in Unterordnern daneben) und wird mit `pull` + `up -d` gestartet, mit Live-Ausgabe. Danach ist sie ein normaler Compose-Stack. Systemordner (`/etc`, `/root`, `~/.ssh`, das Dashboard …) lassen sich nicht einbinden.
 
-Ansehen braucht „System ansehen“, Logs „Logs lesen“, alle Aktionen „Dienste steuern“, das Bearbeiten der Compose-Datei „Dateien ändern“.
+Ansehen braucht „System ansehen“, Logs „Logs lesen“, alle Aktionen „Dienste steuern“, das Bearbeiten der Compose-Datei „Dateien ändern“, Apps installieren das neue Recht „Apps installieren“ (nur Administratoren, kann anderen Gruppen gegeben werden).
 
 ### 🛰️ Remote-Pis (Agent)
 

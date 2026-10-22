@@ -80,6 +80,8 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/containers/kube/pod/[^/]+/[^/]+/delete$", "system", "Pod neu erstellt"),
     ("POST", r"^/api/containers/stacks/[^/]+/[^/]+$", "system", "Compose-Stack gesteuert"),
     ("POST", r"^/api/packages/run$", "system", "Paket installiert/entfernt"),
+    ("POST", r"^/api/appstore/[^/]+/install$", "system", "App installiert"),
+    ("POST", r"^/api/settings/status-page$", "settings", "Statusseite geändert"),
     ("POST", r"^/api/remotes$", "settings", "Remote-Pi hinzugefügt"),
     ("POST", r"^/api/remotes/[^/]+/delete$", "settings", "Remote-Pi entfernt"),
     ("POST", r"^/api/remotes/select$", "settings", "Remote-Pi gewählt"),
@@ -100,7 +102,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("WS", r"^/ws/terminal$", "security", "Terminal-Sitzung"),
 ]
 # Frequent, harmless requests that would flood the log
-IGNORE = [r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$"]
+IGNORE = [r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$"]
 
 CATEGORIES = {"login": "Anmeldung", "settings": "Einstellungen", "system": "System",
               "security": "Sicherheit", "network": "Netzwerk", "files": "Dateien"}

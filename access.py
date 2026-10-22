@@ -35,6 +35,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     # --- Dashboard settings
     ("POST", r"^/api/settings/(services|history/clear|wol|wol/[^/]+/delete|health|health/[^/]+/(delete|run)|links|links/[^/]+/(delete|move))$", "settings.manage"),
     ("POST", r"^/api/weather/location$", "settings.manage"),
+    ("*", r"^/api/settings/status-page$", "settings.manage"),
 
     # --- Remote Pis: switching is for everyone logged in, managing them for admins
     ("GET", r"^/api/remotes/current$", "login"),
@@ -78,6 +79,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/services/[^/]+/[^/]+$", "services.control"),
     ("POST", r"^/api/workloads/docker/[^/]+/[^/]+$", "services.control"),
     ("POST", r"^/api/containers/(kube/.+|stacks/[^/]+/[^/]+|images/check)$", "services.control"),
+    ("GET", r"^/api/appstore$", "system.view"),
+    ("*", r"^/api/appstore/[^/]+/(form|preview|install)$", "apps.install"),
     ("POST", r"^/api/power/settings$", "settings.manage"),
     ("POST", r"^/api/processes/\d+/signal$", "processes.kill"),
     ("POST", r"^/api/tools/(cpu-mode|fan-curve|fan-curve/reset|cleanup|benchmark)$", "system.config"),
@@ -97,7 +100,8 @@ _COMPILED = [(m, re.compile(rx), perm) for m, rx, perm in RULES]
 # Reads that stay open in "view without login" mode (the dashboard itself)
 PUBLIC_READ_PREFIXES = ("/api/stats", "/api/system", "/api/processes", "/api/services", "/api/drives", "/api/weather",
                         "/api/history", "/api/homelab", "/api/updates", "/api/nvme", "/api/status-summary", "/api/health",
-                        "/api/wol", "/api/workloads", "/api/diagnostics", "/api/about", "/api/capabilities")
+                        "/api/wol", "/api/workloads", "/api/diagnostics", "/api/about", "/api/capabilities",
+                        "/api/replay")
 
 
 def required_permission(method: str, path: str) -> Optional[str]:

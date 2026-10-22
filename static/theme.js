@@ -2,6 +2,8 @@
  * PiCore Dashboard - light / dark theme.
  * Loaded in <head> (not deferred) so the right theme is set before the first paint.
  * Choice is stored per browser: "auto" follows the device, or "light" / "dark".
+ * A style pack ("look") changes the whole appearance on top of that: retro terminal,
+ * cyberpunk, glass or minimal (html[data-look], styles at the end of style.css).
  */
 (function () {
   'use strict';
@@ -9,6 +11,34 @@
   const KEY = 'theme';
   const ACCENT_KEY = 'accent';
   const ACCENTS = ['cyan', 'green', 'violet', 'orange', 'pink', 'blue'];
+  const LOOK_KEY = 'look';
+  const LOOKS = ['standard', 'retro', 'cyberpunk', 'glass', 'minimal'];
+  // These looks bring their own colors and are always dark
+  const DARK_LOOKS = ['retro', 'cyberpunk'];
+
+  function look() {
+    try {
+      const v = localStorage.getItem(LOOK_KEY);
+      return LOOKS.includes(v) ? v : 'standard';
+    } catch (e) {
+      return 'standard';
+    }
+  }
+
+  function applyLook() {
+    const l = look();
+    if (l === 'standard') delete document.documentElement.dataset.look;
+    else document.documentElement.dataset.look = l;
+  }
+
+  function setLook(l) {
+    try {
+      if (l === 'standard') localStorage.removeItem(LOOK_KEY);
+      else localStorage.setItem(LOOK_KEY, l);
+    } catch (e) { /* storage blocked: still switch for this page */ }
+    applyLook();
+    apply();
+  }
 
   function accent() {
     try {
@@ -45,6 +75,7 @@
   }
 
   function resolved(c = choice()) {
+    if (DARK_LOOKS.includes(look())) return 'dark';
     return c === 'auto' ? (media && media.matches ? 'light' : 'dark') : c;
   }
 
@@ -73,11 +104,12 @@
 
   if (media && media.addEventListener) media.addEventListener('change', () => { if (choice() === 'auto') apply(); });
   applyAccent();
+  applyLook();
   apply();
   document.addEventListener('DOMContentLoaded', () => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = resolved() === 'light' ? '#eef2f7' : '#07090e';
   });
 
-  window.PiTheme = { choice, resolved, set, cycle, accent, setAccent, accents: ACCENTS };
+  window.PiTheme = { choice, resolved, set, cycle, accent, setAccent, accents: ACCENTS, look, setLook, looks: LOOKS, darkLooks: DARK_LOOKS };
 })();

@@ -55,6 +55,9 @@ import healthchecks
 import storage
 import insights
 import access
+import achievements
+import appstore
+import statuspage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -154,7 +157,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Login: everything requires a session, except the login page itself and static assets.
 # With "public view" enabled, GET requests are open and only actions need a login.
 # ---------------------------------------------------------------------------
-PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/api/about", "/favicon.ico"}
+PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/api/about", "/favicon.ico",
+                "/status", "/api/public/status"}   # the public status page answers 404 while switched off
 
 
 def _same_origin(request: Request) -> bool:
@@ -1631,6 +1635,42 @@ async def get_system_page():
     return _serve_page("system.html")
 
 
+@app.get("/status")
+async def get_status_page():
+    return _serve_page("status.html")
+
+
+@app.get("/api/public/status")
+async def api_public_status():
+    data = await asyncio.to_thread(statuspage.public_status)
+    if data is None:
+        return JSONResponse({"detail": "Die Statusseite ist ausgeschaltet."}, status_code=404)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+
+class StatusPageRequest(BaseModel):
+    enabled: bool = False
+    title: str = ""
+    description: str = ""
+    show_history: bool = True
+    items: list = []
+
+
+@app.get("/api/settings/status-page")
+async def api_status_page_settings():
+    return {"config": statuspage.config(), "available": await asyncio.to_thread(statuspage.available)}
+
+
+@app.post("/api/settings/status-page")
+async def api_status_page_save(req: StatusPageRequest, request: Request):
+    try:
+        cfg = await asyncio.to_thread(statuspage.save, req.enabled, req.title, req.description, req.show_history, req.items)
+    except statuspage.StatusPageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    request.state.audit_detail = f"{'an' if cfg['enabled'] else 'aus'} · {len(cfg['items'])} Einträge"
+    return cfg
+
+
 @app.get("/api/changelog")
 async def api_changelog():
     return await asyncio.to_thread(changelog.changelog)
@@ -1884,6 +1924,48 @@ async def api_container_images_check():
     return imagecheck.start_check()
 
 
+def _appstore_call(fn, *args):
+    try:
+        return fn(*args)
+    except (appstore.AppStoreError, containers.ContainerError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Ordner/Datei: {e.strerror or e}")
+
+
+class AppInstallRequest(BaseModel):
+    name: str
+    ports: dict = {}
+    folders: dict = {}
+    env: dict = {}
+
+    def values(self) -> dict:
+        return {"name": self.name, "ports": self.ports, "folders": self.folders, "env": self.env}
+
+
+@app.get("/api/appstore")
+async def api_appstore():
+    return await asyncio.to_thread(appstore.catalog)
+
+
+@app.get("/api/appstore/{app_id}/form")
+async def api_appstore_form(app_id: str):
+    return await asyncio.to_thread(_appstore_call, appstore.form, app_id)
+
+
+@app.post("/api/appstore/{app_id}/preview")
+async def api_appstore_preview(app_id: str, req: AppInstallRequest):
+    return await asyncio.to_thread(_appstore_call, appstore.preview, app_id, req.values())
+
+
+@app.post("/api/appstore/{app_id}/install")
+async def api_appstore_install(app_id: str, req: AppInstallRequest, request: Request):
+    request.state.audit_detail = f"{app_id} als {req.name[:40]}"
+    job = await asyncio.to_thread(_appstore_call, appstore.install, app_id, req.values(), request.state.user or "")
+    logger.info(f"App {app_id} installed as {req.name} by '{request.state.user}'")
+    return job
+
+
 @app.get("/api/capabilities")
 async def api_capabilities():
     """Hardware features of this Pi (or of the selected remote Pi, via the proxy)."""
@@ -1906,6 +1988,17 @@ async def api_processes(limit: int = 8):
 async def api_history(range: str = "24h", iface: str = ""):
     """Downsampled metrics history: range=24h or 7d; iface = network values of one interface."""
     return await asyncio.to_thread(history.get_history, range, iface[:32])
+
+
+@app.get("/api/replay")
+async def api_replay(start: int, end: int = 0):
+    """Every minute sample of a time window (max. 2 days) for the day replay."""
+    return await asyncio.to_thread(history.get_raw, start, end or start + 86400)
+
+
+@app.get("/api/achievements")
+async def api_achievements():
+    return await asyncio.to_thread(achievements.overview)
 
 
 @app.get("/api/history/interfaces")

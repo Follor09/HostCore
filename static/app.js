@@ -1855,6 +1855,8 @@
   }
 
   function updateSystemMetrics(sys) {
+    if (!sys.replay) state.lastSys = sys;
+    window.dispatchEvent(new CustomEvent('pi:system', { detail: sys }));
     if (els.deviceModel) {
       els.deviceModel.textContent = sys.model || 'Raspberry Pi Server';
     }
@@ -2048,7 +2050,9 @@
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'live_update') {
-          if (msg.system) updateSystemMetrics(msg.system);
+          // During a replay the cards show the past: keep the snapshot, don't paint it
+          if (msg.system && window.PiReplay && window.PiReplay.active) state.lastSys = msg.system;
+          else if (msg.system) updateSystemMetrics(msg.system);
           if (msg.processes) renderProcesses(msg.processes);
           if (msg.services) renderServices(msg.services);
           if (msg.storage) renderStorage(msg.storage);
@@ -2079,6 +2083,19 @@
       state.ws.close();
     };
   }
+
+  // Used by replay.js: paint the cards with past values (sparklines get the minutes before them)
+  window.PiDash = {
+    lastSystem: () => state.lastSys || null,
+    showSystem(sys, spark) {
+      if (spark) Object.keys(spark).forEach(k => { state.history[k] = spark[k].slice(-state.history.maxPoints); });
+      updateSystemMetrics(sys);
+    },
+    resetSparklines() {
+      ['cpu', 'temp', 'netDown', 'netUp', 'power'].forEach(k => { state.history[k] = []; });
+      if (state.lastSys) updateSystemMetrics(state.lastSys);
+    }
+  };
 
   async function fetchSystemFallback() {
     if (state.connected) return;

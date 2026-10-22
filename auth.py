@@ -58,6 +58,7 @@ PERMISSIONS = [
     ("notes.edit", "Notizen bearbeiten", "Die Notizen-Karte ändern", "Dashboard"),
     ("actions.run", "Schnellaktionen ausführen", "Eigene Skripte starten und stoppen", "Dashboard"),
     ("services.control", "Dienste & Container steuern", "Starten, stoppen, neu starten", "System"),
+    ("apps.install", "Apps installieren", "Docker-Apps aus dem App-Store einrichten (Ports, Ordner)", "System"),
     ("processes.kill", "Prozesse beenden", "Prozesse des Pi-Benutzers beenden", "System"),
     ("system.config", "System einstellen", "CPU-Modus, Lüfterkurve, Aufräumen, Leistungstest", "System"),
     ("updates.install", "Updates installieren", "apt-Updates und Dashboard-Updates", "System"),

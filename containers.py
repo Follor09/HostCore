@@ -509,11 +509,16 @@ def stack_action(name: str, action: str, user: str = "") -> Dict[str, Any]:
         raise ContainerError(f"Stack {name} nicht gefunden.")
     if not stack["file_exists"]:
         raise ContainerError("Compose-Datei nicht gefunden – der Stack lässt sich nur über docker selbst steuern.")
+    return compose_job(name, stack["files"], stack["dir"], action, user)
+
+
+def compose_job(name: str, files: List[str], cwd: str, action: str, user: str = "") -> Dict[str, Any]:
+    """Run a STACK_ACTIONS entry (or "install" from the app store) for a compose project in the background."""
+    label, steps = STACK_ACTIONS.get(action) or ("Installieren", [["pull"], ["up", "-d"]])
     with _lock:
         if any(j["stack"] == name and j["status"] == "running" for j in _jobs.values()):
             raise ContainerError("Für diesen Stack läuft schon eine Aktion.")
         job_id = f"{int(time.time() * 1000):x}"
-        label, steps = STACK_ACTIONS[action]
         job = {"id": job_id, "stack": name, "action": action, "label": label, "status": "running", "output": "",
                "started": time.time(), "ended": None, "user": user}
         _jobs[job_id] = job
@@ -521,9 +526,9 @@ def stack_action(name: str, action: str, user: str = "") -> Dict[str, Any]:
             if _jobs[old]["status"] != "running":
                 _jobs.pop(old)
     base = ["-p", name]
-    for f in stack["files"]:
+    for f in files:
         base += ["-f", f]
-    threading.Thread(target=_run_job, args=(job, base, steps, stack["dir"]), daemon=True).start()
+    threading.Thread(target=_run_job, args=(job, base, steps, cwd), daemon=True).start()
     return job
 
 

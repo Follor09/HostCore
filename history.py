@@ -215,6 +215,20 @@ def get_history(range_key: str, iface: str = "") -> Dict[str, Any]:
     return {"range": range_key, "bucket_seconds": bucket, "points": points, "iface": iface}
 
 
+def get_raw(start: int, end: int) -> Dict[str, Any]:
+    """Every stored sample (one per minute) between start and end - for the day replay."""
+    end = min(int(end), int(time.time()))
+    start = max(int(start), end - 2 * 86400)
+    if not os.path.exists(DB_PATH):
+        return {"start": start, "end": end, "samples": []}
+    with _connect() as conn:
+        rows = conn.execute(f"SELECT ts, {', '.join(METRICS)} FROM samples WHERE ts >= ? AND ts <= ? ORDER BY ts",
+                            (start, end)).fetchall()
+        oldest = conn.execute("SELECT MIN(ts) FROM samples").fetchone()[0]
+    return {"start": start, "end": end, "oldest": oldest, "metrics": METRICS,
+            "samples": [list(r) for r in rows]}
+
+
 def get_stats() -> Dict[str, Any]:
     if not os.path.exists(DB_PATH):
         return {"size_bytes": 0, "samples": 0, "oldest": None, "newest": None}
