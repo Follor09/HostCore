@@ -45,6 +45,9 @@ import agent
 import remotes
 import netbox
 import boards
+import exchange
+import search
+import fleet
 geoip.on_update.append(security.geoblock_reapply)
 import monitor
 import netscan
@@ -212,7 +215,8 @@ async def require_login(request: Request, call_next):
     user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
     request.state.user = user
 
-    if path.startswith(("/static/", "/s/")) or path in PUBLIC_PATHS:
+    # Share and exchange links are public on purpose (token, expiry and limits are checked in their routes)
+    if path.startswith(("/static/", "/s/", "/x/", "/api/x/")) or path in PUBLIC_PATHS:
         return await call_next(request)
     # The GitHub webhook authenticates itself via HMAC - but only if a secret is configured
     if path == "/api/webhook/github" and updater.WEBHOOK_SECRET:
@@ -777,6 +781,133 @@ async def api_files_shares():
 async def api_files_share_delete(token: str):
     await asyncio.to_thread(files.delete_share, token)
     return {"shares": await asyncio.to_thread(files.list_shares)}
+
+
+class ExchangeRequest(BaseModel):
+    folder: str
+    mode: str = "upload"
+    hours: int = 168
+    max_mb: int = 500
+    note: str = ""
+
+
+@app.get("/api/exchange")
+async def api_exchange_list():
+    return {"links": await asyncio.to_thread(exchange.list_links), "modes": exchange.MODES, "hours": exchange.HOURS}
+
+
+@app.post("/api/exchange")
+async def api_exchange_create(req: ExchangeRequest, request: Request):
+    request.state.audit_detail = f"{exchange.MODES.get(req.mode, req.mode)} · {req.folder}"[:250]
+    try:
+        link = await asyncio.to_thread(exchange.create, req.folder, req.mode, req.hours, req.max_mb, req.note,
+                                       request.state.user or "", auth.can(request.state.user, "files.write"))
+    except exchange.ExchangeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return link
+
+
+@app.post("/api/exchange/{token}/delete")
+async def api_exchange_delete(token: str, request: Request):
+    await asyncio.to_thread(exchange.delete, token)
+    return {"links": await asyncio.to_thread(exchange.list_links)}
+
+
+def _exchange_error(e: Exception, status: int = 404) -> JSONResponse:
+    return JSONResponse({"detail": str(e)}, status_code=status)
+
+
+@app.get("/x/{token}")
+async def public_exchange_page(token: str):
+    return _serve_page("exchange.html")
+
+
+@app.get("/api/x/{token}")
+async def public_exchange_info(token: str):
+    try:
+        return await asyncio.to_thread(exchange.info, token)
+    except exchange.ExchangeError as e:
+        return _exchange_error(e)
+
+
+@app.put("/api/x/{token}/upload")
+async def public_exchange_upload(token: str, name: str, request: Request):
+    """Public upload into an exchange folder: same-origin only, limit checked while streaming."""
+    if not _same_origin(request):
+        return JSONResponse({"detail": "Ungültige Herkunft der Anfrage."}, status_code=403)
+    length = request.headers.get("content-length")
+    size = int(length) if length and length.isdigit() else None
+    try:
+        t = await asyncio.to_thread(exchange.upload_target, token, name, size)
+    except exchange.ExchangeError as e:
+        return _exchange_error(e, 400)
+    target, left = t["target"], t["left"]
+    tmp = os.path.join(os.path.dirname(target), f".{os.path.basename(target)}.upload-{secrets.token_hex(4)}")
+    written = 0
+    try:
+        with open(tmp, "xb") as f:
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > left:
+                    raise HTTPException(status_code=413, detail="Das Limit dieses Links ist erreicht.")
+                await asyncio.to_thread(f.write, chunk)
+        if os.path.lexists(target):  # someone else took the name meanwhile
+            target = (await asyncio.to_thread(exchange.upload_target, token, os.path.basename(target), 0))["target"]
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+    ip = request.client.host if request.client else ""
+    await asyncio.to_thread(exchange.record_upload, token, os.path.basename(target), written, ip)
+    request.state.audit_user = "Austausch-Link"   # the activity log middleware records this request
+    request.state.audit_detail = target
+    return {"ok": True, "name": os.path.basename(target), "size": written}
+
+
+@app.get("/api/x/{token}/file")
+async def public_exchange_download(token: str, name: str, request: Request):
+    try:
+        path = await asyncio.to_thread(exchange.download_path, token, name)
+    except exchange.ExchangeError as e:
+        return _exchange_error(e)
+    ip = request.client.host if request.client else ""
+    await asyncio.to_thread(audit.record, "Austausch-Link", ip, "GET", "/x/file", 200, path)
+    return FileResponse(path, filename=os.path.basename(path), headers={"X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/flotte")
+async def get_fleet_page():
+    return _serve_page("fleet.html")
+
+
+@app.get("/werkzeuge")
+async def get_tools_page():
+    return _serve_page("tools.html")
+
+
+@app.get("/api/fleet")
+async def api_fleet():
+    return await fleet.overview()
+
+
+class FleetAptRequest(BaseModel):
+    ids: list
+    mode: str = "upgrade"
+
+
+@app.post("/api/fleet/apt")
+async def api_fleet_apt(req: FleetAptRequest, request: Request):
+    request.state.audit_detail = f"{req.mode} · {len(req.ids)} Pis"
+    try:
+        return await fleet.apt([str(i) for i in req.ids][:50], req.mode, request.state.user or "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/search")
+async def api_search(q: str = ""):
+    return await asyncio.to_thread(search.search, q)
 
 
 @app.get("/s/{token}")
@@ -1907,9 +2038,9 @@ async def api_boards():
 
 
 @app.post("/api/boards")
-async def api_boards_save(req: BoardsRequest):
+async def api_boards_save(req: BoardsRequest, request: Request):
     try:
-        cfg = await asyncio.to_thread(boards.save, {"boards": req.boards}, req.rev)
+        cfg = await asyncio.to_thread(boards.save, {"boards": req.boards}, req.rev, request.state.user or "")
     except boards.BoardConflict as e:
         raise HTTPException(status_code=409, detail=str(e))
     except boards.BoardError as e:
@@ -1920,6 +2051,27 @@ async def api_boards_save(req: BoardsRequest):
 @app.post("/api/boards/reset")
 async def api_boards_reset():
     return await asyncio.to_thread(boards.reset)
+
+
+@app.get("/api/boards/history")
+async def api_boards_history():
+    return await asyncio.to_thread(boards.history)
+
+
+class RestoreRequest(BaseModel):
+    rev: int
+    base_rev: int
+
+
+@app.post("/api/boards/restore")
+async def api_boards_restore(req: RestoreRequest, request: Request):
+    request.state.audit_detail = f"Version {req.rev}"
+    try:
+        return await asyncio.to_thread(boards.restore, req.rev, req.base_rev, request.state.user or "")
+    except boards.BoardConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except boards.BoardError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.get("/api/boards/status")
@@ -2442,6 +2594,48 @@ async def api_docs_inventory_update(item_id: str, payload: dict):
 @app.post("/api/docs/inventory/{item_id}/delete")
 async def api_docs_inventory_delete(item_id: str):
     return await asyncio.to_thread(_docs_call, docs.inventory_delete, item_id)
+
+
+@app.get("/api/docs/contracts")
+async def api_docs_contracts():
+    return await asyncio.to_thread(docs.contracts)
+
+
+@app.post("/api/docs/contracts")
+async def api_docs_contract_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_docs_call, docs.contract_save, None, payload, request.state.user or "")
+
+
+@app.post("/api/docs/contracts/{contract_id}")
+async def api_docs_contract_update(contract_id: str, payload: dict):
+    return await asyncio.to_thread(_docs_call, docs.contract_save, contract_id, payload)
+
+
+@app.post("/api/docs/contracts/{contract_id}/delete")
+async def api_docs_contract_delete(contract_id: str):
+    return await asyncio.to_thread(_docs_call, docs.contract_delete, contract_id)
+
+
+@app.get("/api/docs/snippets")
+async def api_docs_snippets():
+    return await asyncio.to_thread(docs.snippets)
+
+
+@app.post("/api/docs/snippets")
+async def api_docs_snippet_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:120]
+    return await asyncio.to_thread(_docs_call, docs.snippet_save, None, payload, request.state.user or "")
+
+
+@app.post("/api/docs/snippets/{snippet_id}")
+async def api_docs_snippet_update(snippet_id: str, payload: dict):
+    return await asyncio.to_thread(_docs_call, docs.snippet_save, snippet_id, payload)
+
+
+@app.post("/api/docs/snippets/{snippet_id}/delete")
+async def api_docs_snippet_delete(snippet_id: str):
+    return await asyncio.to_thread(_docs_call, docs.snippet_delete, snippet_id)
 
 
 @app.get("/api/docs/journal")

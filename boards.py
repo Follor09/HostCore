@@ -218,8 +218,8 @@ def _item(raw: Dict[str, Any], columns: int) -> Dict[str, Any]:
             raise BoardError("RSS-Feed: Mindestens eine Feed-Adresse angeben.")
         item.update(kind="rss", title=_text(raw.get("title"), 40), feeds=feeds, limit=_int(raw.get("limit"), 3, 50, 15))
     elif kind == "calendar":
-        item.update(kind="calendar", sources=[s for s in ("reminders", "tasks", "maintenance")
-                                              if s in (raw.get("sources") or ["reminders", "tasks", "maintenance"])])
+        item.update(kind="calendar", sources=[s for s in ("reminders", "tasks", "maintenance", "contracts")
+                                              if s in (raw.get("sources") or ["reminders", "tasks", "maintenance", "contracts"])])
     elif kind == "remote":
         rid = _text(raw.get("remote"), 16)
         if not re.match(r"^[0-9a-f]{1,16}$", rid):
@@ -266,7 +266,7 @@ def _board(raw: Dict[str, Any]) -> Dict[str, Any]:
             "sections": sections}
 
 
-def save(data: Dict[str, Any], base_rev: int) -> Dict[str, Any]:
+def save(data: Dict[str, Any], base_rev: int, user: str = "") -> Dict[str, Any]:
     boards_raw = data.get("boards") if isinstance(data, dict) else None
     if not isinstance(boards_raw, list) or not boards_raw:
         raise BoardError("Mindestens ein Board wird gebraucht.")
@@ -283,6 +283,7 @@ def save(data: Dict[str, Any], base_rev: int) -> Dict[str, Any]:
         if cur.get("icons_pending"):
             cfg["icons_pending"] = True
         settings_store.set("boards", cfg)
+        _record(cfg, user)
     return cfg
 
 
@@ -292,6 +293,79 @@ def reset() -> Dict[str, Any]:
         cfg = default_config()
         cfg["rev"] = rev + 1
         settings_store.set("boards", cfg)
+        _record(cfg, "", note="Auf Standard zurückgesetzt")
+    return cfg
+
+
+# ---------------------------------------------------------------------------
+# History: every saved state, so an earlier layout can be restored
+# ---------------------------------------------------------------------------
+HISTORY_FILE = os.path.join(BASE_DIR, "board_history.json")
+HISTORY_MAX = 60
+HISTORY_MERGE_SECONDS = 120   # dragging around saves often: one version per user and two minutes
+
+
+def _history() -> List[Dict[str, Any]]:
+    try:
+        with open(HISTORY_FILE) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _summary(cfg: Dict[str, Any]) -> Dict[str, int]:
+    items = [it for b in cfg["boards"] for s in b["sections"] for it in s["items"]]
+    return {"boards": len(cfg["boards"]), "sections": sum(len(b["sections"]) for b in cfg["boards"]),
+            "apps": sum(1 for it in items if it["kind"] == "app"), "items": len(items)}
+
+
+def _record(cfg: Dict[str, Any], user: str, note: str = "") -> None:
+    hist = _history()
+    now = int(time.time())
+    entry = {"rev": cfg["rev"], "ts": now, "user": user or "", "note": note, "summary": _summary(cfg),
+             "boards": cfg["boards"]}
+    if hist and not note and not hist[-1].get("note") and hist[-1]["user"] == entry["user"] \
+            and now - hist[-1]["ts"] < HISTORY_MERGE_SECONDS and len(hist) > 1:
+        hist[-1] = {**entry, "since": hist[-1].get("since", hist[-1]["ts"])}
+    else:
+        hist.append(entry)
+    hist = hist[-HISTORY_MAX:]
+    try:
+        with open(HISTORY_FILE + ".tmp", "w") as f:
+            json.dump(hist, f, ensure_ascii=False)
+        os.replace(HISTORY_FILE + ".tmp", HISTORY_FILE)
+    except OSError:
+        pass
+
+
+def history() -> Dict[str, Any]:
+    hist = _history()
+    if not hist:  # first look at the history: the current state is version one
+        cfg = get()
+        _record(cfg, "", note="Stand beim ersten Öffnen")
+        hist = _history()
+    cur = get().get("rev")
+    return {"current": cur, "versions": [{k: v for k, v in h.items() if k != "boards"} for h in reversed(hist)]}
+
+
+def history_version(rev: int) -> Dict[str, Any]:
+    h = next((h for h in _history() if h["rev"] == rev), None)
+    if not h:
+        raise BoardError("Version nicht gefunden.")
+    return h
+
+
+def restore(rev: int, base_rev: int, user: str = "") -> Dict[str, Any]:
+    h = history_version(rev)
+    with _lock:
+        cur = get()
+        if int(base_rev) != int(cur.get("rev", 0)):
+            raise BoardConflict("Das Board wurde inzwischen auf einem anderen Gerät geändert.")
+        cfg = {"rev": int(cur.get("rev", 0)) + 1, "boards": [_board(b) for b in h["boards"]]}
+        settings_store.set("boards", cfg)
+        when = time.strftime("%d.%m. %H:%M", time.localtime(h["ts"]))
+        _record(cfg, user, note=f"Wiederhergestellt: Stand vom {when}")
     return cfg
 
 
@@ -552,6 +626,17 @@ def calendar(start: str, days: int, sources: List[str]) -> Dict[str, Any]:
                 events.append({"date": d.isoformat(), "title": w["title"], "type": "maintenance", "state": w["state"],
                                "start": w["start"], "end": w["end"]})
                 d += dt.timedelta(days=1)
+    if "contracts" in sources:
+        import docs
+        for c in docs.contracts()["items"]:
+            if c["state"] == "ended":
+                continue
+            if c["cancel_by"] and c["notice_days"] and first.isoformat() <= c["cancel_by"] <= last.isoformat():
+                events.append({"date": c["cancel_by"], "title": f"Kündigen bis: {c['name']}", "type": "contract",
+                               "overdue": c["state"] == "missed"})
+            if c["next_end"] and first.isoformat() <= c["next_end"] <= last.isoformat():
+                events.append({"date": c["next_end"], "title": f"{'Verlängerung' if c['auto_renew'] else 'Ende'}: {c['name']}",
+                               "type": "contract", "overdue": False})
     events.sort(key=lambda e: (e["date"], e["type"], e["title"].lower()))
     return {"start": first.isoformat(), "days": days, "today": dt.date.today().isoformat(), "events": events}
 

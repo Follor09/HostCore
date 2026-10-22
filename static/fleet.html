@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
+  <title>Flotte | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber settings-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">Flotte</h1>
+    </div>
+    <div class="header-right">
+      <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      </button>
+      <div class="user-chip" id="user-chip" hidden>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="user-name"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="fleet-layout">
+    <section class="glass-card settings-section" id="flotte">
+      <div class="section-head">
+        <h2>Alle Pis</h2>
+        <div class="head-tools">
+          <span class="field-hint" id="fleet-checked"></span>
+          <button class="btn-secondary" id="fleet-reload" type="button">Neu laden</button>
+        </div>
+      </div>
+      <p class="section-desc">Dieser Pi und alle Remote-Pis auf einen Blick: Erreichbarkeit, Dashboard-Version, ausstehende Paket-Updates, Temperatur und Auslastung. Mehrere Pis auswählen und die Updates gemeinsam anstoßen – jeder Pi führt sie in seinem eigenen apt-Dienst aus. Remote-Pis kommen unter Einstellungen → Remote-Pis dazu.</p>
+      <div class="fleet-actions" data-perm="updates.install">
+        <span class="field-hint" id="fleet-selected">Keine Pis ausgewählt</span>
+        <button class="btn-secondary" id="fleet-update" type="button" disabled>Paketlisten aktualisieren</button>
+        <button class="btn-primary" id="fleet-upgrade" type="button" disabled>Update &amp; Upgrade installieren</button>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="fleet-table"></table>
+      </div>
+      <div class="fleet-results" id="fleet-results"></div>
+    </section>
+  </main>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
+  <script src="/static/hosts.js"></script>
+  <script src="/static/fleet.js"></script>
+  <script src="/static/sidebar.js"></script>
+  <script src="/static/links.js"></script>
+  <script src="/static/palette.js"></script>
+  <script src="/static/mobilenav.js"></script>
+  <script src="/static/footer.js"></script>
+</body>
+</html>

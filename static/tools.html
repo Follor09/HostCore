@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
+  <title>IT-Toolbox | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber settings-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">IT-Toolbox</h1>
+    </div>
+    <div class="header-right">
+      <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      </button>
+      <div class="user-chip" id="user-chip" hidden>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="user-name"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="settings-layout">
+    <nav class="settings-nav" aria-label="Bereiche">
+      <a href="#subnetz" class="active">Netzwerk-Rechner</a>
+      <a href="#base64">Base64</a>
+      <a href="#url">URL-Kodierung</a>
+      <a href="#json">JSON</a>
+      <a href="#hash">Hashes</a>
+      <a href="#jwt">JWT lesen</a>
+      <a href="#passwort">Passwort & UUID</a>
+      <a href="#zeit">Zeitstempel</a>
+      <a href="#cron">Cron-Ausdruck</a>
+    </nav>
+
+    <div class="settings-sections">
+      <p class="field-hint tool-privacy">Alle Werkzeuge rechnen nur in diesem Browser – nichts davon wird an den Pi oder ins Internet geschickt.</p>
+      <section class="glass-card settings-section tool-section" id="subnetz">
+        <h2>Netzwerk-Rechner</h2>
+        <p class="section-desc">IPv4 und IPv6: Netz, Broadcast, Host-Bereich und Anzahl Adressen; Aufteilen in Teilnetze und prüfen, ob eine Adresse im Netz liegt.</p>
+        <div class="tool-body" data-tool="subnetz"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="base64">
+        <h2>Base64</h2>
+        <p class="section-desc">Text (UTF-8) kodieren oder dekodieren, wahlweise URL-sicher.</p>
+        <div class="tool-body" data-tool="base64"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="url">
+        <h2>URL-Kodierung</h2>
+        <p class="section-desc">Sonderzeichen für Adressen und Parameter kodieren oder zurückwandeln.</p>
+        <div class="tool-body" data-tool="url"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="json">
+        <h2>JSON</h2>
+        <p class="section-desc">Formatieren, verkleinern und prüfen – mit Zeile und Spalte bei Fehlern.</p>
+        <div class="tool-body" data-tool="json"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="hash">
+        <h2>Hashes</h2>
+        <p class="section-desc">MD5, SHA-1 und SHA-256 eines Textes, z.B. zum Vergleichen von Prüfsummen.</p>
+        <div class="tool-body" data-tool="hash"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="jwt">
+        <h2>JWT lesen</h2>
+        <p class="section-desc">Header und Inhalt eines JSON Web Tokens anzeigen, mit Ablaufzeit. Die Signatur wird nicht geprüft.</p>
+        <div class="tool-body" data-tool="jwt"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="passwort">
+        <h2>Passwort & UUID</h2>
+        <p class="section-desc">Zufällige Passwörter und UUIDs aus dem Zufallsgenerator des Browsers.</p>
+        <div class="tool-body" data-tool="passwort"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="zeit">
+        <h2>Zeitstempel</h2>
+        <p class="section-desc">Unix-Zeit in Datum umrechnen und umgekehrt.</p>
+        <div class="tool-body" data-tool="zeit"></div>
+      </section>
+      <section class="glass-card settings-section tool-section" id="cron">
+        <h2>Cron-Ausdruck</h2>
+        <p class="section-desc">Einen Cron-Ausdruck in Worten erklären und die nächsten Ausführungen anzeigen.</p>
+        <div class="tool-body" data-tool="cron"></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
+  <script src="/static/hosts.js"></script>
+  <script src="/static/tools.js"></script>
+  <script src="/static/sidebar.js"></script>
+  <script src="/static/links.js"></script>
+  <script src="/static/palette.js"></script>
+  <script src="/static/mobilenav.js"></script>
+  <script src="/static/footer.js"></script>
+</body>
+</html>

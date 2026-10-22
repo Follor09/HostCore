@@ -479,6 +479,34 @@
         <h2>Freigabe-Links</h2>
         <p class="section-desc">Aktive Download-Links für einzelne Dateien (erstellt in der Datei-Vorschau). Jeder mit dem Link kann die Datei ohne Anmeldung laden, bis der Link abläuft oder du ihn beendest.</p>
         <div class="wol-settings-list" id="shares-list"></div>
+
+        <h3 class="subhead">Austausch-Links</h3>
+        <p class="section-desc">Ein Link für einen ganzen Ordner – zum Hochladen (z.B. Logs oder Fotos von anderen einsammeln), zum Herunterladen (alle Dateien des Ordners) oder für beides. Ohne Anmeldung, mit Ablaufdatum und Größenlimit; vorhandene Dateien werden nie überschrieben, Unterordner und versteckte Dateien nie gezeigt.</p>
+        <div class="wol-settings-list" id="exchange-list"></div>
+        <form class="remote-form exchange-form" id="exchange-form" autocomplete="off">
+          <label class="fw-field exchange-folder"><span>Ordner auf dem Pi</span><input type="text" id="ex-folder" placeholder="/home/pi/austausch" spellcheck="false" required></label>
+          <label class="fw-field"><span>Erlaubt</span>
+            <select id="ex-mode">
+              <option value="upload">Nur hochladen</option>
+              <option value="download">Nur herunterladen</option>
+              <option value="both">Hoch- und herunterladen</option>
+            </select>
+          </label>
+          <label class="fw-field"><span>Gültig</span>
+            <select id="ex-hours">
+              <option value="1">1 Stunde</option>
+              <option value="24">24 Stunden</option>
+              <option value="168" selected>7 Tage</option>
+              <option value="720">30 Tage</option>
+            </select>
+          </label>
+          <label class="fw-field"><span>Limit für Uploads (MB)</span><input type="number" id="ex-max" min="1" max="20480" value="500"></label>
+          <label class="fw-field exchange-note"><span>Hinweis für Besucher (optional)</span><input type="text" id="ex-note" maxlength="200" placeholder="z.B. Bitte nur die Logdateien hochladen"></label>
+          <div class="remote-form-actions">
+            <button type="submit" class="btn-primary">Link erstellen</button>
+          </div>
+        </form>
+        <p class="form-msg" id="exchange-msg" role="status"></p>
       </section>
 
       <!-- Auto-Update -->
@@ -522,6 +550,7 @@
   <script src="/static/users.js"></script>
   <script src="/static/remotes-ui.js"></script>
   <script src="/static/netbox-settings.js"></script>
+  <script src="/static/exchange-settings.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>

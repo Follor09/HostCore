@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <script src="/static/theme.js"></script>
+  <title>Dateiaustausch | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber login-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <main class="exchange-wrap">
+    <section class="glass-card exchange-card">
+      <div class="login-brand">
+        <div class="card-icon-pill icon-cyan">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>
+        </div>
+        <div>
+          <h1 id="ex-title">Dateiaustausch</h1>
+          <p class="card-subtitle" id="ex-sub"></p>
+        </div>
+      </div>
+      <p class="login-notice" id="ex-note" hidden></p>
+      <p class="login-error" id="ex-error" role="alert" hidden></p>
+
+      <div id="ex-upload" hidden>
+        <h2 class="subhead">Hochladen</h2>
+        <label class="exchange-drop" id="ex-drop">
+          <input type="file" id="ex-files" multiple hidden>
+          <strong>Dateien hierher ziehen</strong>
+          <span>oder klicken, um sie auszuwählen</span>
+          <small id="ex-limit"></small>
+        </label>
+        <div class="exchange-progress" id="ex-progress"></div>
+      </div>
+
+      <div id="ex-download" hidden>
+        <h2 class="subhead">Dateien</h2>
+        <div class="exchange-files" id="ex-list"></div>
+      </div>
+    </section>
+    <p class="exchange-foot">PiCore Server · Dateien liegen auf dem Raspberry Pi dieses Haushalts</p>
+  </main>
+
+  <script src="/static/i18n.js"></script>
+  <script src="/static/exchange.js"></script>
+</body>
+</html>

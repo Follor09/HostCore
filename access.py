@@ -18,6 +18,10 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/containers$", "system.view"),
     ("GET", r"^/report$", "system.view"),
     ("GET", r"^/doku$", "login"),
+    ("GET", r"^/flotte$", "system.view"),
+    ("GET", r"^/werkzeuge$", "login"),
+    ("GET", r"^/api/fleet$", "system.view"),
+    ("POST", r"^/api/fleet/apt$", "updates.install"),
     ("GET", r"^/terminal$", "terminal"),
     ("GET", r"^/settings$", "login"),
 
@@ -39,8 +43,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("*", r"^/api/settings/status-page$", "settings.manage"),
 
     # --- Boards (start page): everyone who sees the dashboard sees them, editing needs its own permission
-    ("POST", r"^/api/boards(/reset|/probe)?$", "board.edit"),
-    ("GET", r"^/api/boards/discover$", "board.edit"),
+    ("POST", r"^/api/boards(/reset|/probe|/restore)?$", "board.edit"),
+    ("GET", r"^/api/boards/(discover|history)$", "board.edit"),
 
     # --- NetBox: reading for system viewers, writing IP addresses with its own permission
     ("GET", r"^/api/netbox/(status|data)$", "system.view"),
@@ -78,6 +82,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/files/(zip|duplicates)$", "files.read"),
     ("PUT", r"^/api/files/upload$", "files.write"),
     ("POST", r"^/api/files/(share|shares/[^/]+/delete)$", "files.share"),
+    ("*", r"^/api/exchange(/.*)?$", "files.share"),
 
     # --- Dashboard cards
     ("POST", r"^/api/notes$", "notes.edit"),

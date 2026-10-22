@@ -47,6 +47,8 @@
       <a href="#tagebuch">Betriebstagebuch</a>
       <a href="#runbooks">Runbooks</a>
       <a href="#steckbriefe">Steckbriefe</a>
+      <a href="#vertraege">Verträge &amp; Abos</a>
+      <a href="#befehle">Befehle</a>
     </nav>
 
     <div class="settings-sections">
@@ -135,6 +137,41 @@
         <p class="section-desc">Pro Dienst, Web-Dienst oder Compose-Stack das Wichtigste auf einen Blick: Zweck, Adresse, Ports, wo die Daten liegen, wie sie gesichert werden und wer zuständig ist. Auf der Container-Seite führt „Steckbrief“ direkt hierher.</p>
         <div class="docs-form" id="sd-form-wrap" hidden></div>
         <div class="servicedoc-grid" id="sd-list"></div>
+      </section>
+
+      <!-- Verträge & Abos -->
+      <section class="glass-card settings-section" id="vertraege">
+        <div class="section-head">
+          <h2>Verträge &amp; Abos</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="ct-summary"></span>
+            <button data-perm="notes.edit" class="btn-primary" id="ct-add" type="button">Vertrag hinzufügen</button>
+          </div>
+        </div>
+        <p class="section-desc">Domains, Server, Lizenzen und Abos mit Kosten, Laufzeit und Kündigungsfrist. Daraus ergibt sich, bis wann gekündigt werden muss; diese Fristen und die Verlängerungen erscheinen auch im Kalender-Widget.</p>
+        <form class="log-filters" id="ct-filters" autocomplete="off">
+          <input type="search" id="ct-q" placeholder="Name, Anbieter, Notiz …" spellcheck="false" aria-label="Filter">
+          <select id="ct-cat" aria-label="Kategorie"><option value="">Alle Kategorien</option></select>
+        </form>
+        <div class="docs-form" id="ct-form-wrap" hidden></div>
+        <div class="table-scroll"><table class="data-table docs-table" id="ct-table"></table></div>
+      </section>
+
+      <!-- Befehle -->
+      <section class="glass-card settings-section" id="befehle">
+        <div class="section-head">
+          <h2>Befehle</h2>
+          <div class="head-tools">
+            <button data-perm="notes.edit" class="btn-primary" id="sn-add" type="button">Befehl hinzufügen</button>
+          </div>
+        </div>
+        <p class="section-desc">Oft gebrauchte Befehle mit Beschreibung und Tags. Kopieren mit einem Klick; im Web-Terminal fügt „Befehle“ sie direkt ein.</p>
+        <form class="log-filters" id="sn-filters" autocomplete="off">
+          <input type="search" id="sn-q" placeholder="Titel, Befehl, Tag …" spellcheck="false" aria-label="Filter">
+          <select id="sn-tag" aria-label="Tag"><option value="">Alle Tags</option></select>
+        </form>
+        <div class="docs-form" id="sn-form-wrap" hidden></div>
+        <div class="snippet-list" id="sn-list"></div>
       </section>
     </div>
   </main>

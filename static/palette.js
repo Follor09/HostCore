@@ -63,7 +63,7 @@
 
   // What a command needs (checked against PiAuth); unlisted = everyone
   const NEEDS = {
-    'page:system': 'system.view', 'page:report': 'system.view', 'page:terminal': 'terminal', 'page:containers': 'system.view',
+    'page:system': 'system.view', 'page:fleet': 'system.view', 'page:report': 'system.view', 'page:terminal': 'terminal', 'page:containers': 'system.view',
     'sec:/system#logs': 'logs.view', 'sec:/system#ssh': 'security.view', 'sec:/system#aktivitaet': 'security.view',
     'sec:/system#firewall': 'security.view', 'sec:/system#dns': 'network.tools', 'sec:/system#firewall-traffic': 'security.view',
     'sec:/system#verbindungen': 'security.view', 'sec:/system#fehler': 'logs.view',
@@ -97,6 +97,14 @@
     page('page:settings', 'Einstellungen', '/settings', 'settings konfiguration');
     page('page:docs', 'Dokumentation', '/doku', 'doku inventar tagebuch runbook steckbrief anleitung');
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
+    page('page:fleet', 'Flotte', '/flotte', 'alle pis remote übersicht updates fleet');
+    page('page:tools', 'IT-Toolbox', '/werkzeuge', 'base64 json hash md5 sha jwt passwort uuid cron zeitstempel subnetz cidr ipv6 rechner');
+    [['subnetz', 'Netzwerk-Rechner', 'subnetz cidr netzmaske ipv4 ipv6 teilnetz'], ['base64', 'Base64', 'kodieren dekodieren'], ['json', 'JSON formatieren', 'json prüfen'],
+     ['hash', 'Hashes', 'md5 sha1 sha256 prüfsumme'], ['jwt', 'JWT lesen', 'token'], ['passwort', 'Passwort-Generator', 'uuid zufall'],
+     ['zeit', 'Zeitstempel umrechnen', 'unix epoch datum'], ['cron', 'Cron-Ausdruck erklären', 'crontab zeitplan']]
+      .forEach(([id, label, kw]) => cmds.push({ id: `sec:/werkzeuge#${id}`, label, group: 'Bereiche', keywords: kw, href: `/werkzeuge#${id}` }));
+    [['vertraege', 'Verträge & Abos', 'domain lizenz abo kündigung kosten'], ['befehle', 'Befehle (Snippets)', 'snippet befehl kommando']]
+      .forEach(([id, label, kw]) => cmds.push({ id: `sec:/doku#${id}`, label, group: 'Bereiche', keywords: kw, href: `/doku#${id}` }));
 
     const section = (path, prefix, list) => list.forEach(([hash, label, keywords]) =>
       cmds.push({ id: `sec:${path}#${hash}`, label: `${t(prefix)} › ${t(label)}`, raw: true, group: 'Bereiche', keywords, href: `${path}#${hash}` }));
@@ -220,7 +228,25 @@
   // UI
   // ---------------------------------------------------------------------------
   let root, input, list, commands = [], shown = [], active = 0, lastFocus = null;
-  const GROUP_ORDER = ['Zuletzt verwendet', 'Apps', 'Aktionen', 'Links', 'Seiten', 'Bereiche', 'Dienste', 'Wake-on-LAN', 'Verlauf'];
+  // Full-text hits from /api/search (docs, contracts, commands, notes, tasks, apps …), fetched while typing
+  let content = { q: '', items: [] }, contentTimer = 0;
+
+  function searchContent(q) {
+    clearTimeout(contentTimer);
+    if (q.length < 2 || q === content.q) return;
+    contentTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const r = await res.json();
+        content = { q, items: (r.results || []).map((x, i) => ({
+          id: `content:${i}`, label: x.title, detail: x.excerpt, raw: true, group: 'Inhalte', kind: x.kind,
+          href: x.href, external: /^https?:\/\//i.test(x.href), transient: true })) };
+        if (root && !root.hidden && input.value.trim() === q) render();
+      } catch (e) { /* offline or not logged in */ }
+    }, 200);
+  }
+  const GROUP_ORDER = ['Zuletzt verwendet', 'Apps', 'Inhalte', 'Aktionen', 'Links', 'Seiten', 'Bereiche', 'Dienste', 'Wake-on-LAN', 'Verlauf'];
 
   function build() {
     root = document.createElement('div');
@@ -252,6 +278,8 @@
     if (tokens.length) {
       shown = commands.map(c => [c, score(c, tokens)]).filter(([, s]) => s >= 0)
         .sort((a, b) => b[1] - a[1] || GROUP_ORDER.indexOf(a[0].group) - GROUP_ORDER.indexOf(b[0].group)).slice(0, 40).map(([c]) => ({ ...c, shownGroup: c.group }));
+      if (content.q === q) shown = shown.concat(content.items.map(c => ({ ...c, shownGroup: c.group })));
+      searchContent(q);
     } else {
       const rec = recent().map(id => commands.find(c => c.id === id)).filter(Boolean)
         .map(c => ({ ...c, shownGroup: 'Zuletzt verwendet' }));
@@ -278,11 +306,17 @@
       const label = document.createElement('span');
       label.className = 'palette-label';
       label.textContent = c.raw ? c.label : t(c.label);
+      if (c.detail) {
+        const d = document.createElement('span');
+        d.className = 'palette-detail';
+        d.textContent = c.detail;
+        label.appendChild(d);
+      }
       row.appendChild(label);
       if (tokens.length) {
         const g = document.createElement('span');
         g.className = 'palette-kind';
-        g.textContent = t(c.group);
+        g.textContent = t(c.kind || c.group);
         row.appendChild(g);
       }
       row.addEventListener('mousemove', () => { if (active !== i) { active = i; highlight(); } });
@@ -325,11 +359,17 @@
   function execute(i) {
     const c = shown[i];
     if (!c) return;
-    remember(c.id);
+    if (!c.transient) remember(c.id);
     close(false);
-    if (c.href) {
+    if (c.external) {
+      window.open(c.href, '_blank', 'noopener');
+    } else if (c.href) {
       const url = new URL(c.href, location.origin);
-      if (url.pathname === location.pathname && url.hash) {
+      if (url.pathname === location.pathname && url.hash.startsWith('#do=')) {
+        runDashboardAction(decodeURIComponent(url.hash.slice(4)));
+      } else if (url.pathname === location.pathname && url.hash.startsWith('#board-')) {
+        location.hash = url.hash;  // board.js switches on hashchange
+      } else if (url.pathname === location.pathname && url.hash) {
         history.replaceState(null, '', url.hash);
         document.querySelector(url.hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else {

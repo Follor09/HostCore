@@ -61,6 +61,50 @@
     new ResizeObserver(sendSize).observe($('terminal'));
   }
 
+  // Saved commands (Dokumentation -> Befehle): inserted at the prompt, never sent with Enter
+  let snippets = null;
+
+  function drawSnippets() {
+    const list = $('term-snippets-list');
+    list.innerHTML = '';
+    const q = $('term-snippets-q').value.trim().toLowerCase();
+    const items = (snippets || []).filter(s => !q || [s.title, s.command, ...(s.tags || [])].some(v => (v || '').toLowerCase().includes(q)));
+    items.slice(0, 50).forEach(s => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'term-snippet';
+      b.setAttribute('data-no-i18n', '');
+      const title = document.createElement('strong');
+      title.textContent = s.title;
+      const cmd = document.createElement('code');
+      cmd.textContent = s.command.split('\n')[0];
+      b.append(title, cmd);
+      b.addEventListener('click', () => {
+        toggleSnippets(false);
+        if (term) { term.paste(s.command); term.focus(); }
+      });
+      list.appendChild(b);
+    });
+    if (!items.length) {
+      const p = document.createElement('p');
+      p.className = 'field-hint';
+      p.textContent = snippets && snippets.length ? t('Keine Treffer.') : t('Noch keine Befehle gespeichert.');
+      list.appendChild(p);
+    }
+  }
+
+  async function toggleSnippets(open) {
+    $('term-snippets-menu').hidden = !open;
+    $('term-snippets').setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    if (!snippets) {
+      try { snippets = (await (await fetch('/api/docs/snippets')).json()).items || []; } catch (e) { snippets = []; }
+    }
+    $('term-snippets-q').value = '';
+    drawSnippets();
+    $('term-snippets-q').focus();
+  }
+
   function connect(ticket) {
     $('term-unlock').hidden = true;
     $('terminal').hidden = false;
@@ -124,6 +168,14 @@
     }
     $('term-unlock').addEventListener('submit', unlock);
     $('term-reconnect').addEventListener('click', () => showUnlock());
+    $('term-snippets').hidden = false;
+    $('term-snippets').addEventListener('click', e => { e.stopPropagation(); toggleSnippets($('term-snippets-menu').hidden); });
+    $('term-snippets-q').addEventListener('input', drawSnippets);
+    $('term-snippets-q').addEventListener('keydown', e => {
+      if (e.key === 'Escape') toggleSnippets(false);
+      if (e.key === 'Enter') { e.preventDefault(); $('term-snippets-list').querySelector('.term-snippet')?.click(); }
+    });
+    document.addEventListener('click', e => { if (!e.target.closest('.term-snippets-wrap')) toggleSnippets(false); });
     showUnlock();
   }
 

@@ -9,7 +9,7 @@
   const $ = id => document.getElementById(id);
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   const can = p => !window.PiAuth || window.PiAuth.can(p);
-  const state = { inv: null, journal: null, runbooks: null, sd: null, editInv: null, editJr: null, editRb: null, editSd: null, openRun: null };
+  const state = { ct: null, sn: null, inv: null, journal: null, runbooks: null, sd: null, editInv: null, editJr: null, editRb: null, editSd: null, openRun: null };
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -491,6 +491,176 @@
     $('sd-form-wrap').innerHTML = '';
   }
 
+  // ---------------------------------------------------------------------------
+  // Contracts & subscriptions
+  // ---------------------------------------------------------------------------
+  const CT_STATE = { ok: ['good', ''], notice: ['warning', 'Kündigungsfrist naht'], missed: ['critical', 'Frist verpasst'], ended: ['', 'Beendet'] };
+
+  function renderContracts() {
+    const d = state.ct;
+    const cat = $('ct-cat');
+    if (cat.options.length === 1) d.categories.forEach(c => { const o = el('option', '', t(c)); o.value = c; cat.appendChild(o); });
+    $('ct-summary').textContent = `${fmtMoney(d.monthly_total)} ${t('pro Monat')} · ${fmtMoney(d.yearly_total)} ${t('pro Jahr')}${d.notice_soon ? ` · ${d.notice_soon} ${t('Fristen in 30 Tagen')}` : ''}`;
+    const q = $('ct-q').value.trim().toLowerCase();
+    const items = d.items.filter(c => (!cat.value || c.category === cat.value)
+      && (!q || [c.name, c.provider, c.notes, c.category].some(v => (v || '').toLowerCase().includes(q))));
+    const table = $('ct-table');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Vertrag', 'Kosten', 'Läuft bis', 'Kündigen bis', ''].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = table.createTBody();
+    if (!items.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 5;
+      c.className = 'docs-empty';
+      c.textContent = d.items.length ? t('Keine Treffer.') : t('Noch keine Verträge erfasst.');
+    }
+    items.forEach(c => {
+      const row = body.insertRow();
+      const name = row.insertCell();
+      name.className = 'wrap';
+      const title = c.link ? el('a', 'lan-name', c.name) : raw('span', 'lan-name', c.name);
+      if (c.link) { title.href = c.link; title.target = '_blank'; title.rel = 'noopener noreferrer'; title.setAttribute('data-no-i18n', ''); }
+      name.append(title, raw('span', 'lan-sub', [c.provider, t(c.category)].filter(Boolean).join(' · ')));
+      if (c.notes) name.appendChild(raw('span', 'lan-sub', c.notes));
+      const cost = row.insertCell();
+      cost.append(el('span', '', c.cost == null ? '–' : fmtMoney(c.cost)), el('span', 'lan-sub', t(c.interval_label)));
+      const end = row.insertCell();
+      end.append(el('span', '', fmtDay(c.next_end)), el('span', 'lan-sub', c.next_end ? t(c.auto_renew ? 'verlängert sich' : 'endet') : ''));
+      const cancel = row.insertCell();
+      const [cls, label] = CT_STATE[c.state];
+      if (c.cancel_by && c.state !== 'ended') {
+        cancel.appendChild(el('span', '', fmtDay(c.cancel_by)));
+        if (c.notice_days) cancel.appendChild(el('span', 'lan-sub', `${c.notice_days} ${t('Tage Frist')}`));
+        if (label) { cancel.append(' '); cancel.appendChild(el('span', `health-tag ${cls}`, t(label))); }
+      } else cancel.appendChild(label ? el('span', `health-tag ${cls}`, t(label)) : el('span', '', '–'));
+      const act = el('div', 'docs-row-actions');
+      row.insertCell().appendChild(act);
+      act.append(button('Bearbeiten', 'text-btn', () => openCtForm(c), 'notes.edit'),
+        confirmButton('Löschen', 'text-btn danger', async () => {
+          try { state.ct = await api(`/api/docs/contracts/${c.id}/delete`, {}); renderContracts(); } catch (err) { toast(err.message, 'error'); }
+        }, 'notes.edit'));
+    });
+  }
+
+  function openCtForm(item) {
+    const d = state.ct;
+    const wrap = $('ct-form-wrap');
+    const v = item || { interval: 'yearly', auto_renew: true, category: 'Domain' };
+    wrap.innerHTML = '';
+    wrap.hidden = false;
+    wrap.appendChild(el('h3', 'subhead', item ? t('Vertrag bearbeiten') : t('Neuer Vertrag')));
+    wrap.appendChild(buildForm([
+      { key: 'name', label: 'Name', value: v.name, required: true, max: 80, placeholder: 'z. B. example.de' },
+      { key: 'provider', label: 'Anbieter', value: v.provider, max: 80, placeholder: 'z. B. INWX, Hetzner' },
+      { key: 'category', label: 'Kategorie', type: 'select', value: v.category, options: d.categories.map(c => [c, c]) },
+      { key: 'cost', label: 'Kosten (€)', type: 'number', step: '0.01', value: v.cost },
+      { key: 'interval', label: 'Zahlung', type: 'select', value: v.interval, options: Object.entries(d.intervals) },
+      { key: 'start', label: 'Beginn', type: 'date', value: v.start },
+      { key: 'end', label: 'Läuft bis / nächste Verlängerung', type: 'date', value: v.end },
+      { key: 'notice_days', label: 'Kündigungsfrist (Tage)', type: 'number', value: v.notice_days || 0 },
+      { key: 'auto_renew', label: 'Danach', type: 'select', value: v.auto_renew === false ? '0' : '1',
+        options: [['1', 'Verlängert sich automatisch'], ['0', 'Endet']] },
+      { key: 'link', label: 'Link (Kundenkonto)', value: v.link, max: 300, placeholder: 'https://…' },
+      { key: 'notes', label: 'Notizen', type: 'textarea', value: v.notes, full: true, max: 1000 }
+    ], async (values, btn) => {
+      btn.disabled = true;
+      try {
+        state.ct = await api(item ? `/api/docs/contracts/${item.id}` : '/api/docs/contracts', { ...values, auto_renew: values.auto_renew === '1' });
+        closeCtForm();
+        renderContracts();
+        toast(t('Gespeichert.'), 'success');
+      } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+    }, closeCtForm));
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function closeCtForm() {
+    $('ct-form-wrap').hidden = true;
+    $('ct-form-wrap').innerHTML = '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Command snippets
+  // ---------------------------------------------------------------------------
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      // Plain http (no secure context): the old way
+      const ta = el('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    toast(t('Kopiert.'), 'success');
+  }
+
+  function renderSnippets() {
+    const d = state.sn;
+    const tagSel = $('sn-tag');
+    const cur = tagSel.value;
+    tagSel.innerHTML = '';
+    [['', t('Alle Tags')], ...d.tags.map(x => [x, x])].forEach(([v, l]) => { const o = el('option', '', l); o.value = v; tagSel.appendChild(o); });
+    tagSel.value = d.tags.includes(cur) ? cur : '';
+    const q = $('sn-q').value.trim().toLowerCase();
+    const list = $('sn-list');
+    list.innerHTML = '';
+    const items = d.items.filter(s => (!tagSel.value || (s.tags || []).includes(tagSel.value))
+      && (!q || [s.title, s.command, s.description, ...(s.tags || [])].some(v => (v || '').toLowerCase().includes(q))));
+    if (!items.length) list.appendChild(el('p', 'docs-empty', d.items.length ? t('Keine Treffer.') : t('Noch keine Befehle gespeichert.')));
+    items.forEach(s => {
+      const card = el('div', 'snippet-card');
+      const head = el('div', 'snippet-head');
+      head.appendChild(raw('strong', '', s.title));
+      (s.tags || []).forEach(tag => head.appendChild(raw('span', 'health-tag', tag)));
+      card.appendChild(head);
+      if (s.description) card.appendChild(raw('p', 'field-hint', s.description));
+      card.appendChild(raw('pre', 'snippet-code', s.command));
+      const act = el('div', 'docs-row-actions');
+      act.append(button('Kopieren', 'text-btn', () => copyText(s.command)),
+        button('Bearbeiten', 'text-btn', () => openSnForm(s), 'notes.edit'),
+        confirmButton('Löschen', 'text-btn danger', async () => {
+          try { state.sn = await api(`/api/docs/snippets/${s.id}/delete`, {}); renderSnippets(); } catch (err) { toast(err.message, 'error'); }
+        }, 'notes.edit'));
+      card.appendChild(act);
+      list.appendChild(card);
+    });
+  }
+
+  function openSnForm(item) {
+    const wrap = $('sn-form-wrap');
+    const v = item || {};
+    wrap.innerHTML = '';
+    wrap.hidden = false;
+    wrap.appendChild(el('h3', 'subhead', item ? t('Befehl bearbeiten') : t('Neuer Befehl')));
+    wrap.appendChild(buildForm([
+      { key: 'title', label: 'Titel', value: v.title, required: true, max: 100, placeholder: 'z. B. Docker aufräumen' },
+      { key: 'tags', label: 'Tags (mit Komma)', value: (v.tags || []).join(', '), max: 200, placeholder: 'docker, wartung' },
+      { key: 'command', label: 'Befehl', type: 'textarea', rows: 4, value: v.command, full: true, required: true, max: 4000, placeholder: 'docker system prune -af --volumes' },
+      { key: 'description', label: 'Beschreibung', type: 'textarea', rows: 2, value: v.description, full: true, max: 500 }
+    ], async (values, btn) => {
+      btn.disabled = true;
+      try {
+        state.sn = await api(item ? `/api/docs/snippets/${item.id}` : '/api/docs/snippets', values);
+        closeSnForm();
+        renderSnippets();
+        toast(t('Gespeichert.'), 'success');
+      } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+    }, closeSnForm));
+    wrap.querySelector('textarea').classList.add('mono-input');
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function closeSnForm() {
+    $('sn-form-wrap').hidden = true;
+    $('sn-form-wrap').innerHTML = '';
+  }
+
   // #steckbrief=stack:jellyfin from the containers page: show it, or start one
   function followHash() {
     const m = location.hash.match(/^#steckbrief=(.+)$/);
@@ -541,6 +711,14 @@
     $('jr-filters').addEventListener('submit', e => e.preventDefault());
 
     $('rb-add').addEventListener('click', () => openRbForm(null));
+    $('ct-add').addEventListener('click', () => openCtForm(null));
+    $('ct-q').addEventListener('input', () => state.ct && renderContracts());
+    $('ct-cat').addEventListener('change', () => state.ct && renderContracts());
+    $('ct-filters').addEventListener('submit', e => e.preventDefault());
+    $('sn-add').addEventListener('click', () => openSnForm(null));
+    $('sn-q').addEventListener('input', () => state.sn && renderSnippets());
+    $('sn-tag').addEventListener('change', () => state.sn && renderSnippets());
+    $('sn-filters').addEventListener('submit', e => e.preventDefault());
     $('sd-add').addEventListener('click', () => openSdForm($('sd-new-target').value, null));
     window.addEventListener('hashchange', followHash);
 
@@ -555,6 +733,10 @@
     loadJournal();
     loadRunbooks();
     try { state.sd = await api('/api/docs/services'); renderServiceDocs(); followHash(); } catch (err) { toast(err.message, 'error'); }
+    try { state.ct = await api('/api/docs/contracts'); renderContracts(); } catch (err) { toast(err.message, 'error'); }
+    try { state.sn = await api('/api/docs/snippets'); renderSnippets(); } catch (err) { toast(err.message, 'error'); }
+    // Deep links from the search (#vertraege, #befehle) arrive before these sections are filled
+    if (/^#(vertraege|befehle)$/.test(location.hash)) document.querySelector(location.hash)?.scrollIntoView();
   }
 
   init();

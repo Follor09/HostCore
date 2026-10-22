@@ -364,7 +364,7 @@
 
   const LOCALE_ = () => (window.I18N && window.I18N.locale) || 'de-DE';
   const isoDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const EVENT_TYPES = { reminder: 'Erinnerung', task: 'Aufgabe', maintenance: 'Wartung' };
+  const EVENT_TYPES = { reminder: 'Erinnerung', task: 'Aufgabe', maintenance: 'Wartung', contract: 'Vertrag' };
 
   function calendarWidget(item) {
     const nav = el('span', 'board-cal-nav');
@@ -443,7 +443,7 @@
       const start = new Date(month);
       start.setDate(1 - ((start.getDay() + 6) % 7));
       try {
-        data = await api(`/api/calendar?start=${isoDate(start)}&days=42&sources=${(item.sources || []).join(',')}`);
+        data = await api(`/api/calendar?start=${isoDate(start)}&days=42&sources=${(item.sources || ['reminders', 'tasks', 'maintenance', 'contracts']).join(',')}`);
       } catch (err) {
         data = { events: [], today: isoDate(new Date()) };
         agenda.innerHTML = '';
@@ -1228,8 +1228,9 @@
 
   function calendarForm(item, onDone) {
     const form = el('form', 'board-form');
-    const src = item.sources || ['reminders', 'tasks', 'maintenance'];
-    const boxes = [['reminders', 'Erinnerungen (mit Wiederholungen)'], ['tasks', 'Aufgaben mit Fälligkeitsdatum'], ['maintenance', 'Wartungsfenster']]
+    const src = item.sources || ['reminders', 'tasks', 'maintenance', 'contracts'];
+    const boxes = [['reminders', 'Erinnerungen (mit Wiederholungen)'], ['tasks', 'Aufgaben mit Fälligkeitsdatum'], ['maintenance', 'Wartungsfenster'],
+      ['contracts', 'Verträge: Kündigungsfristen und Verlängerungen']]
       .map(([k, label]) => { const [l, c] = check(t(label), src.includes(k)); c.value = k; return [l, c]; });
     const { row } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
     form.append(el('p', 'field-hint', t('Was soll der Kalender zeigen?')), ...boxes.map(b => b[0]), row);
@@ -1500,7 +1501,13 @@
         toast(t('Boards auf den Standard zurückgesetzt.'), 'success');
       } catch (err) { toast(err.message, 'error'); }
     });
-    const { row } = actions(t('Speichern'), reset);
+    const historyBtn = el('button', 'btn-secondary', t('Verlauf'));
+    historyBtn.type = 'button';
+    historyBtn.title = t('Frühere Stände der Boards ansehen und wiederherstellen');
+    historyBtn.addEventListener('click', openHistoryDialog);
+    const extra = el('span', 'board-form-extra');
+    extra.append(historyBtn, reset);
+    const { row } = actions(t('Speichern'), extra);
     const grid = el('div', 'board-form-grid');
     grid.append(field(t('Name'), name), field(t('Spalten'), cols, t('4 bis 24, Standard 12')),
       field(t('Hintergrundbild'), bgUrl, t('Adresse eines Bildes, leer = kein Bild')), field(t('Abdunkeln'), dim));
@@ -1519,6 +1526,61 @@
       render();
     });
     openModal(t('Board-Einstellungen'), boardName(board), form);
+  }
+
+  // Board history: every saved state (one per user and two minutes), restorable
+  async function openHistoryDialog() {
+    sync();
+    clearTimeout(saveTimer);
+    await saving;
+    const body = el('div', 'board-history');
+    body.appendChild(el('p', 'field-hint', t('Lade Verlauf…')));
+    openModal(t('Verlauf der Boards'), t('Ein früherer Stand wird als neue Version wiederhergestellt – nichts geht verloren.'), body);
+    let data;
+    try { data = await api('/api/boards/history'); } catch (err) { body.innerHTML = ''; body.appendChild(el('p', 'field-hint', err.message)); return; }
+    body.innerHTML = '';
+    const locale = (window.I18N && window.I18N.locale) || 'de-DE';
+    data.versions.forEach((v, i) => {
+      const row = el('div', 'board-history-row');
+      const info = el('div', 'board-history-info');
+      const when = new Date(v.ts * 1000).toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const head = el('strong', '', when);
+      const s = v.summary || {};
+      const sub = el('span', 'lan-sub', [v.user, v.note ? t(v.note) : '',
+        `${s.boards} ${t('Boards')} · ${s.sections} ${t('Kategorien')} · ${s.apps} ${t('Apps')} · ${s.items} ${t('Elemente')}`].filter(Boolean).join(' · '));
+      sub.setAttribute('data-no-i18n', '');
+      info.append(head, sub);
+      row.appendChild(info);
+      if (v.rev === data.current) row.appendChild(el('span', 'health-tag good', t('Aktuell')));
+      else {
+        const b = el('button', 'btn-secondary', t('Wiederherstellen'));
+        b.type = 'button';
+        b.addEventListener('click', async () => {
+          if (!b.classList.contains('confirming')) {
+            b.classList.add('confirming');
+            b.textContent = t('Sicher?');
+            setTimeout(() => { b.classList.remove('confirming'); b.textContent = t('Wiederherstellen'); }, 4000);
+            return;
+          }
+          try {
+            const res = await api('/api/boards/restore', { rev: v.rev, base_rev: cfg.rev });
+            cfg = { ...cfg, ...res };
+            if (!cfg.boards.some(x => x.id === activeId)) activeId = cfg.boards[0].id;
+            closeModal();
+            render();
+            startStatus();
+            toast(t('Stand wiederhergestellt.'), 'success');
+          } catch (err) {
+            toast(err.message, 'error');
+            if (err.status === 409) { closeModal(); load(); }
+          }
+        });
+        row.appendChild(b);
+      }
+      if (i === 0 && v.rev !== data.current) row.classList.add('newer');
+      body.appendChild(row);
+    });
+    if (!data.versions.length) body.appendChild(el('p', 'field-hint', t('Noch kein Verlauf.')));
   }
 
   // ---------------------------------------------------------------------------

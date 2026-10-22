@@ -141,7 +141,7 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 
 ### 🔎 Befehlspalette (Strg+K / ⌘K)
 
-Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder „Suchen & Befehle“ in der Seitenleiste eine Suche über alle Seiten, Bereiche (z.B. „Firewall“, „SSH-Anmeldungen“, „Sprache“) und Aktionen („System-Updates öffnen“, „NVMe-Verlauf“, „Dateien durchsuchen“, „Prozess suchen“, Dienste steuern, Wake-on-LAN-Geräte wecken, Verlauf-Diagramme, Sprache, Abmelden). Pfeiltasten + Enter, tippfehlertolerant, zuletzt verwendete Befehle stehen oben. Im Web-Terminal gehört Strg+K der Shell – dort den Eintrag in der Seitenleiste benutzen.
+Auf jeder Seite öffnet **Strg+K** (Mac: **⌘K**) oder „Suchen & Befehle“ in der Seitenleiste eine Suche über alle Seiten, Bereiche (z.B. „Firewall“, „SSH-Anmeldungen“, „Sprache“) und Aktionen („System-Updates öffnen“, „NVMe-Verlauf“, „Dateien durchsuchen“, „Prozess suchen“, Dienste steuern, Wake-on-LAN-Geräte wecken, Verlauf-Diagramme, Sprache, Abmelden). Pfeiltasten + Enter, tippfehlertolerant, zuletzt verwendete Befehle stehen oben. Ab zwei Zeichen durchsucht sie zusätzlich die **Inhalte**: Inventar, Betriebstagebuch, Runbooks, Steckbriefe, Verträge, Befehle, Notizen, Aufgaben, Erinnerungen, Textblöcke und Links der Boards sowie alle Apps – ein Treffer springt an die passende Stelle. Im Web-Terminal gehört Strg+K der Shell – dort den Eintrag in der Seitenleiste benutzen.
 
 ### © Fußzeile
 
@@ -171,6 +171,8 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 - **Inventar:** Hardware mit Kategorie, Hersteller, Modell, Seriennummer, Standort, Kaufdatum, Preis und Garantie. Optional mit einem Gerät aus dem Netzwerk-Scan verknüpft – dann steht dabei, ob es gerade online ist und unter welcher IP. Gesamtwert oben; endet eine Garantie in den nächsten 30 Tagen, erscheint ein Hinweis in der Statusleiste.
 - **Betriebstagebuch:** eigene Einträge („Was wurde wann geändert und warum“) mit Kategorie (Änderung, Wartung, Störung, Installation, Notiz), Zeitpunkt und Bezug. Durchsuchbar; Einträge erscheinen in den Ereignissen und im Wochenbericht.
 - **Runbooks:** Schritt-für-Schritt-Anleitungen (ein Schritt pro Zeile). Ein Durchlauf wird als Checkliste abgehakt – wer welchen Schritt wann erledigt hat, wird gespeichert, auch über mehrere Geräte. Beim Abschluss landet ein Eintrag im Betriebstagebuch (mit übersprungenen Schritten und Notiz); die letzten 30 Durchläufe bleiben sichtbar.
+- **Verträge & Abos:** Domains, Server, Lizenzen, Abos mit Anbieter, Kosten, Zahlungsrhythmus, Laufzeitende, Kündigungsfrist und Link zum Kundenkonto. Das Dashboard rechnet aus, bis wann gekündigt werden muss (bei automatisch verlängernden Verträgen für die nächste Verlängerung), markiert Fristen in den nächsten 30 Tagen und verpasste Fristen und zeigt die Kosten pro Monat und Jahr. Fristen und Verlängerungen erscheinen im Kalender-Widget.
+- **Befehle:** oft gebrauchte Befehle mit Titel, Beschreibung und Tags – mit einem Klick kopiert; im Web-Terminal fügt der Knopf „Befehle“ sie an der Eingabe ein (ohne sie abzuschicken).
 - **Steckbriefe:** pro Dienst, Web-Dienst oder Compose-Stack (oder als eigener Eintrag) Zweck, Adresse, Ports, Speicherort der Daten, Sicherung, Doku-Link, Zuständige und Notizen. Auf der Container-Seite öffnet „Steckbrief“ den passenden Eintrag oder legt ihn an.
 
 Ansehen darf jeder angemeldete Benutzer, Ändern braucht „Notizen & Doku bearbeiten“. Gespeichert in `settings.json`, für alle Geräte gleich.
@@ -182,7 +184,9 @@ Ansehen darf jeder angemeldete Benutzer, Ändern braucht „Notizen & Doku bearb
 
 ### 📁 Dateien
 
-Im Datei-Browser (Laufwerk → „Öffnen“): **Hochladen** per Button oder Drag & Drop (nur wo dein Benutzer schreiben darf, max. 4 GB, bestehende Dateien werden nur nach Rückfrage überschrieben), **Vorschau** für Text/Logs/Configs (mit Suche) und Bilder, **Teilen** als Download-Link für 1 Std., 24 Std. oder 7 Tage – funktioniert ohne Anmeldung für alle, die den Pi erreichen. Aktive Links unter Einstellungen → Freigaben. Gesperrte Dateien (Login, Tokens, SSH-Schlüssel, Aktivitätsprotokoll) lassen sich weder ansehen noch teilen.
+Im Datei-Browser (Laufwerk → „Öffnen“): **Hochladen** per Button oder Drag & Drop (nur wo dein Benutzer schreiben darf, max. 4 GB, bestehende Dateien werden nur nach Rückfrage überschrieben), **Vorschau** für Text/Logs/Configs (mit Suche) und Bilder, **Teilen** als Download-Link für 1 Std., 24 Std. oder 7 Tage – funktioniert ohne Anmeldung für alle, die den Pi erreichen. Aktive Links unter Einstellungen → Freigaben.
+
+**Austausch-Links** (Einstellungen → Freigaben): ein öffentlicher Link für einen ganzen Ordner – **nur hochladen** (z.B. Logs oder Fotos von anderen einsammeln), **nur herunterladen** (alle Dateien direkt im Ordner) oder **beides**. Gültig 1 Std. bis 30 Tage, mit Größenlimit für Uploads und optionalem Hinweis für Besucher. Die Seite `/x/…` braucht keine Anmeldung; hochgeladene Dateien überschreiben nie etwas („Name (2)“), Dateinamen werden bereinigt, Unterordner und versteckte Dateien werden nie gezeigt. Jeder Up- und Download steht im Aktivitätsprotokoll. Erstellen braucht „Dateien teilen“, Upload-Links zusätzlich „Dateien hochladen“. Gesperrte Dateien (Login, Tokens, SSH-Schlüssel, Aktivitätsprotokoll) lassen sich weder ansehen noch teilen.
 
 **Bearbeiten & Papierkorb:** Textdateien (bis 2 MB, UTF-8) öffnen sich per Stift-Symbol oder „Bearbeiten“ in der Vorschau in einem Editor mit Zeilennummern und Farben für YAML, JSON, INI/`.env`, Shell, Python, Dockerfile, XML, CSS und Markdown (Strg+S speichert, Tab rückt ein, Enter übernimmt die Einrückung). Gespeichert wird atomar (Rechte bleiben erhalten); hat jemand die Datei inzwischen geändert, fragt der Editor nach. JSON wird vor dem Speichern geprüft, Compose-Dateien mit `docker compose config`. „+ Datei“ / „+ Ordner“ legen Neues an. **Löschen** (Papierkorb-Symbol, zweimal klicken) verschiebt in den **Papierkorb** auf demselben Laufwerk (`.picore-trash`, im Home unter `~/.local/share/.picore-trash`) – wiederherstellbar für 30 Tage, danach automatisch weg. Das Dashboard selbst, das Home-Verzeichnis und Laufwerks-Wurzeln lassen sich nicht löschen. Braucht das Recht „Dateien ändern“.
 
@@ -194,7 +198,7 @@ Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → D
 
 ### 🧭 Seitenleiste
 
-Links auf jeder Seite: **Boards**, alle **Seiten** mit Namen (System-Werkzeuge, Container, Dokumentation, Wochenbericht, Terminal, Einstellungen) – die Bereiche der aktuellen Seite (z.B. „Firewall“, „Logs“) stehen direkt darunter und zeigen, wo man gerade ist –, deine **eigenen Links** und die **Aktionen** (Suchen & Befehle, Verlauf abspielen, Board bearbeiten, Vollbild, Design). Der Pfeil oben klappt sie auf reine Symbole ein (gemerkt pro Browser); auf dem Handy öffnet sie das Menü-Symbol oben links.
+Links auf jeder Seite: **Boards**, alle **Seiten** mit Namen (System-Werkzeuge, Container, Flotte, Dokumentation, Wochenbericht, IT-Toolbox, Terminal, Einstellungen) – die Bereiche der aktuellen Seite (z.B. „Firewall“, „Logs“) stehen direkt darunter und zeigen, wo man gerade ist –, deine **eigenen Links** und die **Aktionen** (Suchen & Befehle, Verlauf abspielen, Board bearbeiten, Vollbild, Design). Der Pfeil oben klappt sie auf reine Symbole ein (gemerkt pro Browser); auf dem Handy öffnet sie das Menü-Symbol oben links.
 
 ### 🧩 Boards (Startseite im Homarr-Stil)
 
@@ -203,7 +207,7 @@ Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und de
 - **Apps:** Kachel mit Icon, Name und optionaler Beschreibung, die deinen Dienst öffnet. Icons kommen aus der Sammlung [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) (Suche nach Name, passendes Icon wird automatisch vorgeschlagen) oder von einer eigenen Bild-Adresse; der Pi lädt sie einmal und hält sie im Cache (`icon_cache/`). Ein Punkt oben rechts zeigt, ob die App erreichbar ist – der Pi prüft jede Minute, auf Wunsch über eine eigene Status-Adresse.
 - **Widgets:**
   - **Suchleiste** (DuckDuckGo, Google, Startpage, Bing, Ecosia oder eigene Adresse; findet auch deine Apps) und **eingebettete Webseite** (z.B. ein Grafana-Dashboard).
-  - **Kalender:** Monatsansicht mit Erinnerungen (inkl. Wiederholungen), fälligen Aufgaben und Wartungsfenstern, darunter die nächsten Termine; in niedrigen Kacheln nur die Terminliste. Nur nach Anmeldung sichtbar.
+  - **Kalender:** Monatsansicht mit Erinnerungen (inkl. Wiederholungen), fälligen Aufgaben, Wartungsfenstern und Vertragsfristen, darunter die nächsten Termine; in niedrigen Kacheln nur die Terminliste. Nur nach Anmeldung sichtbar.
   - **RSS-Feed:** bis zu 5 RSS-/Atom-Feeds (z.B. `…/releases.atom` eines GitHub-Projekts), vom Pi alle 15 Minuten abgerufen.
   - **Textblock** mit Markdown (Überschriften, fett/kursiv, Code, Links, Listen) und **Linkliste** für viele Links platzsparend in einem Widget.
   - **Remote-Pi:** CPU, Temperatur, RAM, Speicher und Laufzeit eines Remote-Pis direkt auf dem Board; „Anzeigen“ schaltet das Dashboard auf ihn um.
@@ -212,7 +216,16 @@ Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und de
 - **Bearbeiten** („Board bearbeiten“ in der Seitenleiste, Berechtigung „Dashboard gestalten“, ab 1100 Pixel Fensterbreite): Elemente ziehen, an der Ecke unten rechts in der Größe ändern, auch zwischen Kategorien verschieben; „+ Hinzufügen“ für Apps, Widgets, Karten und Kategorien; Board-Einstellungen mit Name, Spaltenzahl, Hintergrundbild und Abdunkeln. Änderungen werden sofort gespeichert; wurde das Board inzwischen auf einem anderen Gerät geändert, lädt das Dashboard den neuen Stand, statt ihn zu überschreiben.
 - Boards wechseln per Klick, **Alt+1…9**, Befehlspalette oder Link (`/#board-medien`). Apps aller Boards lassen sich auch über die Befehlspalette (Strg+K) öffnen. Kategorien lassen sich zuklappen (pro Browser).
 - Auf schmalen Bildschirmen (Handy, Tablet) stehen die Apps als Kachelraster oben, die Karten darunter untereinander.
+- **Verlauf** (Board-Einstellungen → „Verlauf“): jede gespeicherte Änderung wird als Version aufbewahrt (die letzten 60; schnelle Änderungen hintereinander zählen als eine), mit Zeit, Benutzer und Umfang. „Wiederherstellen“ macht einen früheren Stand wieder aktuell – als neue Version, es geht also nichts verloren.
 - Beim ersten Start entsteht ein Standard-Board: Suchleiste, deine eigenen Links als Apps und alle Karten in der Kategorie „System“. „Alle Boards zurücksetzen“ in den Board-Einstellungen stellt es wieder her.
+
+### 🛰️ Flotte (`/flotte`)
+
+Dieser Pi und alle Remote-Pis in einer Tabelle: erreichbar oder nicht, Dashboard-Version (und ob ein Update wartet), ausstehende Paket-Updates mit Sicherheits-Updates und „Neustart nötig“, Temperatur, CPU, RAM, Speicher und Laufzeit; aktualisiert sich alle 30 Sekunden. Mehrere Pis auswählen und **Paketlisten aktualisieren** oder **Update & Upgrade installieren** für alle gleichzeitig starten – jeder Pi führt es in seinem eigenen apt-Dienst aus (Berechtigung „Updates installieren“).
+
+### 🧮 IT-Toolbox (`/werkzeuge`)
+
+Alltagshelfer, die nur im Browser rechnen (nichts geht an den Pi oder ins Internet): **Netzwerk-Rechner** für IPv4 und IPv6 (Netz, Maske, Broadcast, Host-Bereich, Anzahl, Art der Adresse; in Teilnetze aufteilen; prüfen, ob eine IP im Netz liegt), **Base64** (auch URL-sicher), **URL-Kodierung**, **JSON** formatieren/verkleinern/prüfen mit Zeile und Spalte, **Hashes** (MD5, SHA-1, SHA-256), **JWT lesen** mit Ablaufzeit, **Passwort- und UUID-Generator**, **Zeitstempel** umrechnen und **Cron-Ausdrücke** in Worten erklärt mit den nächsten Ausführungen.
 
 ### 🧰 System-Werkzeuge (`/system`)
 

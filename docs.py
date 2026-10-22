@@ -7,6 +7,7 @@ Homelab documentation (page /docs), stored in settings.json and shared by every 
 - service docs ("Steckbriefe"): purpose, address, ports, data location, docs link per service
 """
 
+import calendar
 import datetime
 import re
 import secrets
@@ -333,3 +334,145 @@ def servicedoc_delete(target: str) -> Dict[str, Any]:
         docs.pop(target, None)
         settings_store.set(SERVICEDOCS_KEY, docs)
     return servicedocs()
+
+
+# ---------------------------------------------------------------------------
+# Contracts & subscriptions: domains, servers, licenses ... with costs and notice periods
+# ---------------------------------------------------------------------------
+CONTRACTS_KEY = "contracts"
+CONTRACT_CATEGORIES = ["Domain", "Server & Hosting", "Lizenz", "Abo", "Internet & Telefon", "Versicherung", "Sonstiges"]
+CONTRACT_INTERVALS = {"monthly": "Monatlich", "quarterly": "Vierteljährlich", "yearly": "Jährlich", "once": "Einmalig"}
+_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
+
+
+def _money(value: Any, label: str) -> Optional[float]:
+    v = str(value if value is not None else "").strip().replace(",", ".")
+    if not v:
+        return None
+    try:
+        n = round(float(v), 2)
+    except ValueError:
+        raise DocsError(f"{label}: ungültiger Betrag.")
+    if not 0 <= n <= 1_000_000:
+        raise DocsError(f"{label}: ungültiger Betrag.")
+    return n
+
+
+def _clean_contract(f: Dict[str, Any]) -> Dict[str, Any]:
+    interval = str(f.get("interval") or "yearly")
+    if interval not in CONTRACT_INTERVALS:
+        raise DocsError("Unbekannter Zahlungsrhythmus.")
+    category = str(f.get("category") or "Sonstiges")
+    if category not in CONTRACT_CATEGORIES:
+        category = "Sonstiges"
+    try:
+        notice = int(f.get("notice_days") or 0)
+    except (TypeError, ValueError):
+        raise DocsError("Kündigungsfrist: Anzahl Tage.")
+    if not 0 <= notice <= 730:
+        raise DocsError("Kündigungsfrist: 0 bis 730 Tage.")
+    link = _text(f.get("link"), "Link", 300)
+    if link and not re.match(r"^https?://", link, re.I):
+        link = "https://" + link
+    return {"name": _text(f.get("name"), "Name", 80, True), "provider": _text(f.get("provider"), "Anbieter", 80),
+            "category": category, "cost": _money(f.get("cost"), "Kosten"), "interval": interval,
+            "start": _date(f.get("start"), "Beginn"), "end": _date(f.get("end"), "Laufzeitende / Verlängerung"),
+            "notice_days": notice, "auto_renew": bool(f.get("auto_renew", True)),
+            "link": link, "notes": _text(f.get("notes"), "Notizen", 1000)}
+
+
+def _contract_view(c: Dict[str, Any], today: datetime.date) -> Dict[str, Any]:
+    end = datetime.date.fromisoformat(c["end"]) if c.get("end") else None
+    # Recurring contracts that renew themselves: the next renewal after today
+    if end and c.get("auto_renew") and c["interval"] in _MONTHS:
+        n = 0
+        while end < today and n < 600:
+            m = end.month - 1 + _MONTHS[c["interval"]]
+            y, m = end.year + m // 12, m % 12 + 1
+            end = datetime.date(y, m, min(end.day, calendar.monthrange(y, m)[1]))
+            n += 1
+    cancel_by = end - datetime.timedelta(days=c.get("notice_days") or 0) if end else None
+    days_cancel = (cancel_by - today).days if cancel_by else None
+    notice = c.get("notice_days") or 0
+    state = ("ended" if end and end < today else "notice" if notice and days_cancel is not None and 0 <= days_cancel <= 30
+             else "missed" if notice and days_cancel is not None and days_cancel < 0 and end and end >= today else "ok")
+    cost = c.get("cost")
+    monthly = None if cost is None or c["interval"] == "once" else cost / _MONTHS[c["interval"]]
+    return {**c, "next_end": end.isoformat() if end else "", "cancel_by": cancel_by.isoformat() if cancel_by else "",
+            "days_to_cancel": days_cancel, "state": state, "monthly": round(monthly, 2) if monthly is not None else None,
+            "interval_label": CONTRACT_INTERVALS[c["interval"]]}
+
+
+def contracts() -> Dict[str, Any]:
+    today = datetime.date.today()
+    items = [_contract_view(c, today) for c in settings_store.get(CONTRACTS_KEY, []) or []]
+    items.sort(key=lambda c: (c["state"] == "ended", c["cancel_by"] or c["next_end"] or "9999", c["name"].lower()))
+    active = [c for c in items if c["state"] != "ended"]
+    monthly = round(sum(c["monthly"] or 0 for c in active), 2)
+    return {"items": items, "categories": CONTRACT_CATEGORIES, "intervals": CONTRACT_INTERVALS,
+            "monthly_total": monthly, "yearly_total": round(monthly * 12, 2),
+            "notice_soon": sum(1 for c in items if c["state"] == "notice")}
+
+
+def contract_save(contract_id: Optional[str], fields: Dict[str, Any], user: str = "") -> Dict[str, Any]:
+    clean = _clean_contract(fields)
+
+    def apply(items):
+        if contract_id:
+            it = _find(items, contract_id, "Vertrag")
+            it.update(clean, updated=int(time.time()))
+        else:
+            if len(items) >= 300:
+                raise DocsError("Höchstens 300 Verträge.")
+            items.append({"id": secrets.token_hex(5), **clean, "created": int(time.time()), "user": user})
+    _update_list(CONTRACTS_KEY, apply)
+    return contracts()
+
+
+def contract_delete(contract_id: str) -> Dict[str, Any]:
+    _remove(CONTRACTS_KEY, contract_id)
+    return contracts()
+
+
+# ---------------------------------------------------------------------------
+# Command snippets: often used commands with a description and tags
+# ---------------------------------------------------------------------------
+SNIPPETS_KEY = "snippets"
+
+
+def _clean_snippet(f: Dict[str, Any]) -> Dict[str, Any]:
+    command = str(f.get("command") or "").replace("\r\n", "\n").strip("\n")
+    if not command.strip():
+        raise DocsError("Befehl fehlt.")
+    if len(command) > 4000:
+        raise DocsError("Befehl: höchstens 4000 Zeichen.")
+    tags = f.get("tags") or []
+    if isinstance(tags, str):
+        tags = tags.split(",")
+    tags = list(dict.fromkeys(str(x).strip().lower()[:20] for x in tags if str(x).strip()))[:8]
+    return {"title": _text(f.get("title"), "Titel", 100, True), "command": command,
+            "description": _text(f.get("description"), "Beschreibung", 500), "tags": tags}
+
+
+def snippets() -> Dict[str, Any]:
+    items = sorted(settings_store.get(SNIPPETS_KEY, []) or [], key=lambda s: s["title"].lower())
+    return {"items": items, "tags": sorted({t for s in items for t in s.get("tags", [])})}
+
+
+def snippet_save(snippet_id: Optional[str], fields: Dict[str, Any], user: str = "") -> Dict[str, Any]:
+    clean = _clean_snippet(fields)
+
+    def apply(items):
+        if snippet_id:
+            _find(items, snippet_id, "Befehl").update(clean, updated=int(time.time()))
+        else:
+            if len(items) >= 500:
+                raise DocsError("Höchstens 500 Befehle.")
+            items.append({"id": secrets.token_hex(5), **clean, "created": int(time.time()), "user": user})
+    _update_list(SNIPPETS_KEY, apply)
+    return snippets()
+
+
+def snippet_delete(snippet_id: str) -> Dict[str, Any]:
+    _remove(SNIPPETS_KEY, snippet_id)
+    return snippets()

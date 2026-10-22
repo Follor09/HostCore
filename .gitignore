@@ -16,3 +16,5 @@ appstore_cache.json
 appstore_cache.json.tmp
 appstore_logos/
 icon_cache/
+board_history.json
+board_history.json.tmp
