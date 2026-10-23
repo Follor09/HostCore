@@ -210,6 +210,10 @@ Akzentfarbe (Cyan, Grün, Violett, Orange, Pink, Blau) unter Einstellungen → D
 
 Links auf jeder Seite: **Boards**, alle **Seiten** mit Namen (System-Werkzeuge, Container, Flotte, Dokumentation, Wissen, Wochenbericht, IT-Toolbox, Terminal, Einstellungen) – die Bereiche der aktuellen Seite (z.B. „Firewall“, „Logs“) stehen direkt darunter und zeigen, wo man gerade ist –, deine **eigenen Links** und die **Aktionen** (Suchen & Befehle, Verlauf abspielen, Board bearbeiten, Vollbild, Design). Der Pfeil oben klappt sie auf reine Symbole ein (gemerkt pro Browser); auf dem Handy öffnet sie das Menü-Symbol oben links.
 
+
+### 🗂️ Gruppen auf langen Seiten
+
+System-Werkzeuge, Einstellungen, Container und Dokumentation beginnen mit einer **Übersicht aus Kacheln** – eine pro Gruppe (z. B. Zustand, Netzwerk, Sicherheit, Hardware & Strom, Speicher & Backups, Logs, Pakete & Wartung) mit ihrem Zustand: Warnungen aus der Statusübersicht und ein paar Kennzahlen (Geräte online, Firewall, Temperatur, Belegung, Backups, Updates …). Ein Klick öffnet die Gruppe; oben wechseln fixierte Reiter zwischen den Gruppen, die Seitenleiste listet die Gruppen statt aller Bereiche. Die Adresse merkt sich, was offen ist (`#g-netzwerk`), und alte Direktlinks auf einen Bereich (`/system#firewall`) öffnen die passende Gruppe.
 ### 🧩 Boards (Startseite im Homarr-Stil)
 
 Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und den **Karten** des Dashboards, gegliedert in **Kategorien** – und es kann mehrere **Boards** geben (z.B. „Übersicht“, „Medien“, „Netzwerk“). Gespeichert wird auf dem Pi, alle Geräte sehen dasselbe.
