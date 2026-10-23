@@ -14,9 +14,13 @@ FastMCP's OIDCProxy federated to Pocket ID - the same setup as the *-no-kari ser
 
 import asyncio
 import contextlib
+import hashlib
+import json
 import logging
+import os
 import re
 import secrets
+import threading
 import time
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import urlparse
@@ -46,7 +50,9 @@ def config() -> Dict[str, Any]:
 def public() -> Dict[str, Any]:
     c = config()
     base = c.get("base_url", "")
+    appr = approval_config()
     return {"enabled": bool(c.get("enabled")), "base_url": base, "issuer": c.get("issuer", ""),
+            "approval": appr, "approval_tools": [{"name": n, "label": l} for n, l in APPROVAL_TOOLS.items()],
             "client_id": c.get("client_id", ""), "has_secret": bool(c.get("client_secret")),
             "users": c.get("users", []), "consent": c.get("consent", True),
             "callback_url": f"{base}/auth/callback" if base else "", "mcp_url": f"{base}/mcp" if base else "",
@@ -117,6 +123,20 @@ def save(fields: Dict[str, Any]) -> Dict[str, Any]:
     return c
 
 
+def save_approval(a: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        wait = int(a.get("wait", 60))
+    except (TypeError, ValueError):
+        raise McpConfigError("Wartezeit: Anzahl Sekunden.")
+    if not 10 <= wait <= 240:
+        raise McpConfigError("Wartezeit: 10 bis 240 Sekunden.")
+    c = dict(config())
+    c["approval"] = {"enabled": bool(a.get("enabled")), "wait": wait,
+                     "tools": [t for t in (a.get("tools") or []) if t in APPROVAL_TOOLS]}
+    settings_store.set(KEY, c)
+    return approval_config()
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle and routing
 # ---------------------------------------------------------------------------
@@ -152,6 +172,10 @@ async def reload() -> Dict[str, Any]:
         _state["error"] = ""
         c = config()
         if not c.get("enabled"):
+            return public()
+        missing = [k for k in ("base_url", "issuer", "client_id", "client_secret", "jwt_key") if not c.get(k)]
+        if missing:
+            _state["error"] = f"Einstellungen unvollständig ({', '.join(missing)})"
             return public()
         try:
             mcp = await asyncio.to_thread(_build, c)
@@ -203,6 +227,246 @@ class McpDispatch:
                     await send({"type": "http.response.body", "body": b"Not found"})
                 return
         return await self.app(scope, receive, send)
+
+
+# ---------------------------------------------------------------------------
+# Approvals: chosen actions wait until a person confirms them in the dashboard
+# ---------------------------------------------------------------------------
+APPROVAL_TOOLS = {
+    "service_action": "Dienste starten/stoppen", "container_action": "Container starten/stoppen",
+    "stack_action": "Compose-Stacks", "kube_restart": "Kubernetes neu starten", "kube_scale": "Kubernetes skalieren",
+    "apt_run": "apt-Updates", "fleet_apt": "apt auf mehreren Pis", "packages": "Pakete installieren/entfernen",
+    "system_power": "Neustart & Herunterfahren", "firewall": "Firewall ändern", "run_quick_action": "Schnellaktionen",
+    "wake_on_lan": "Wake-on-LAN", "maintenance_window": "Wartungsfenster", "write_file": "Dateien schreiben",
+    "move_to_trash": "Dateien löschen", "delete_task": "Aufgaben löschen", "write_notes": "Notizen ändern",
+    "save_wiki_page": "Wiki-Seiten ändern", "add_app_to_board": "Boards ändern",
+}
+DEFAULT_APPROVAL = ["stack_action", "kube_scale", "apt_run", "fleet_apt", "packages", "system_power", "firewall",
+                    "write_file", "move_to_trash"]
+APPROVAL_TTL = 15 * 60
+_approvals: Dict[str, Dict[str, Any]] = {}
+
+
+def approval_config() -> Dict[str, Any]:
+    a = config().get("approval") or {}
+    return {"enabled": bool(a.get("enabled")), "wait": int(a.get("wait", 60)),
+            "tools": list(a.get("tools", DEFAULT_APPROVAL))}
+
+
+def _summary(args: Dict[str, Any], limit: int = 300) -> str:
+    def short(v):
+        if isinstance(v, str) and len(v) > 80:
+            return v[:77] + "…"
+        return v
+    text = ", ".join(f"{k}={json.dumps(short(v), ensure_ascii=False)}" for k, v in (args or {}).items() if v not in (None, "", [], {}))
+    return text[:limit] or "–"
+
+
+def _approval_key(user: str, tool: str, args: Dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps([user, tool, args], sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+
+
+def _prune_approvals() -> None:
+    now = time.time()
+    for k, a in list(_approvals.items()):
+        if now - a["created"] > APPROVAL_TTL * 2 or (a["status"] == "used" and now - a["decided"] > 3600):
+            _approvals.pop(k, None)
+
+
+def approvals(user: str, can_manage: bool) -> Dict[str, Any]:
+    _prune_approvals()
+    now = time.time()
+    items = []
+    for a in sorted(_approvals.values(), key=lambda a: -a["created"]):
+        if not can_manage and a["user"] != user:
+            continue
+        status = a["status"]
+        if status == "pending" and now > a["expires"]:
+            status = "expired"
+        items.append({k: a[k] for k in ("id", "tool", "label", "user", "identity", "summary", "args", "created", "expires",
+                                         "decided", "decided_by")} | {"status": status})
+    return {"enabled": bool(config().get("enabled")) and approval_config()["enabled"], "items": items[:50],
+            "pending": sum(1 for i in items if i["status"] == "pending")}
+
+
+def decide(approval_id: str, approve: bool, user: str, can_manage: bool) -> Dict[str, Any]:
+    a = next((x for x in _approvals.values() if x["id"] == approval_id), None)
+    if not a:
+        raise McpConfigError("Anfrage nicht gefunden (abgelaufen?).")
+    if a["user"] != user and not can_manage:
+        raise McpConfigError("Nur der zugeordnete Benutzer oder ein Administrator darf das freigeben.")
+    if a["status"] != "pending" or time.time() > a["expires"]:
+        raise McpConfigError("Diese Anfrage ist nicht mehr offen.")
+    a.update(status="approved" if approve else "denied", decided=time.time(), decided_by=user,
+             expires=time.time() + APPROVAL_TTL)
+    if a.get("event") is not None:
+        a["event"].set()  # the dashboard and the MCP app share one event loop
+    return {k: v for k, v in a.items() if k not in ("event", "key")}
+
+
+async def _await_approval(user: str, identity: str, tool: str, args: Dict[str, Any]) -> None:
+    from fastmcp.exceptions import ToolError
+    cfg = approval_config()
+    if not cfg["enabled"] or tool not in cfg["tools"]:
+        return
+    _prune_approvals()
+    key = _approval_key(user, tool, args)
+    a = _approvals.get(key)
+    now = time.time()
+    if a and a["status"] == "approved" and now <= a["expires"]:
+        a["status"] = "used"
+        return
+    if a and a["status"] == "denied" and now <= a["expires"]:
+        a["status"] = "used"
+        raise ToolError(f"Abgelehnt von {a['decided_by']} im Dashboard.")
+    if not a or a["status"] != "pending" or now > a["expires"]:
+        a = {"id": secrets.token_hex(6), "key": key, "tool": tool, "label": APPROVAL_TOOLS.get(tool, tool), "user": user,
+             "identity": identity, "args": json.loads(json.dumps(args, default=str)), "summary": _summary(args),
+             "created": now, "expires": now + APPROVAL_TTL, "status": "pending", "decided": 0, "decided_by": "",
+             "event": asyncio.Event()}
+        _approvals[key] = a
+        try:
+            import notify
+            notify.approval_requested({**a, "event": None})
+        except Exception as e:
+            logger.warning(f"Approval mail: {e}")
+    try:
+        await asyncio.wait_for(a["event"].wait(), timeout=cfg["wait"])
+    except asyncio.TimeoutError:
+        raise ToolError(f"Diese Aktion wartet auf eine Freigabe im Dashboard (Einstellungen → MCP-Aktivität, Anfrage {a['id']}). "
+                        "Bitte die Person um Freigabe bitten und das Werkzeug danach mit denselben Parametern erneut aufrufen – "
+                        "die Freigabe gilt 15 Minuten.")
+    if a["status"] == "approved":
+        a["status"] = "used"
+        return
+    a["status"] = "used"
+    raise ToolError(f"Abgelehnt von {a['decided_by']} im Dashboard.")
+
+
+# ---------------------------------------------------------------------------
+# Call log (Einstellungen -> MCP-Aktivität)
+# ---------------------------------------------------------------------------
+CALLS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_calls.json")
+_calls_lock = threading.Lock()
+
+
+def _load_calls() -> List[Dict[str, Any]]:
+    try:
+        with open(CALLS_FILE) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _write_calls(items: List[Dict[str, Any]]) -> None:
+    with open(CALLS_FILE + ".tmp", "w") as f:
+        json.dump(items, f, ensure_ascii=False)
+    os.replace(CALLS_FILE + ".tmp", CALLS_FILE)
+
+
+def _max_calls() -> int:
+    import retention
+    return retention.get("mcp_calls")
+
+
+def record_call(entry: Dict[str, Any]) -> None:
+    with _calls_lock:
+        items = _load_calls()
+        items.append(entry)
+        try:
+            _write_calls(items[-_max_calls():])
+        except OSError as e:
+            logger.warning(f"MCP call log: {e}")
+
+
+def trim_calls() -> None:
+    with _calls_lock:
+        items = _load_calls()
+        if len(items) > _max_calls():
+            _write_calls(items[-_max_calls():])
+
+
+def calls(tool: str = "", user: str = "", status: str = "", query: str = "", limit: int = 200) -> Dict[str, Any]:
+    items = list(reversed(_load_calls()))
+    tools = sorted({c["tool"] for c in items})
+    users = sorted({c.get("user") or "" for c in items} - {""})
+    if tool:
+        items = [c for c in items if c["tool"] == tool]
+    if user:
+        items = [c for c in items if c.get("user") == user]
+    if status:
+        items = [c for c in items if c.get("status") == status]
+    q = (query or "").strip().lower()
+    if q:
+        items = [c for c in items if q in json.dumps(c, ensure_ascii=False).lower()]
+    day = time.time() - 86400
+    recent = [c for c in _load_calls() if c["ts"] >= day]
+    by_tool: Dict[str, int] = {}
+    for c in recent:
+        by_tool[c["tool"]] = by_tool.get(c["tool"], 0) + 1
+    return {"calls": items[:max(1, min(limit, 1000))], "total": len(items), "tools": tools, "users": users,
+            "last_24h": {"calls": len(recent), "errors": sum(1 for c in recent if c.get("status") == "error"),
+                         "top": sorted(by_tool.items(), key=lambda kv: -kv[1])[:8]}}
+
+
+def _identity() -> str:
+    try:
+        from fastmcp.server.dependencies import get_access_token
+        token = get_access_token()
+        claims = (token.claims if token else {}) or {}
+        return str(claims.get("email") or claims.get("preferred_username") or claims.get("sub") or "")
+    except Exception:
+        return ""
+
+
+def _make_middleware():
+    from fastmcp.server.middleware import Middleware
+
+    class Guard(Middleware):
+        """Logs every tool call and holds back actions that need an approval."""
+
+        async def on_call_tool(self, context, call_next):
+            tool = context.message.name
+            args = dict(context.message.arguments or {})
+            t0 = time.time()
+            identity = _identity()
+            entry = {"ts": int(t0), "tool": tool, "identity": identity, "user": "", "args": _summary(args, 500),
+                     "status": "ok", "error": "", "approval": ""}
+            try:
+                try:
+                    entry["user"] = _user()
+                except Exception:
+                    pass
+                if entry["user"] and tool in APPROVAL_TOOLS:
+                    cfg = approval_config()
+                    if cfg["enabled"] and tool in cfg["tools"]:
+                        entry["approval"] = "required"
+                        await _await_approval(entry["user"], identity, tool, args)
+                        entry["approval"] = "approved"
+                result = await call_next(context)
+                if getattr(result, "is_error", False) or getattr(result, "isError", False):
+                    entry["status"] = "error"
+                return result
+            except Exception as e:
+                entry["status"] = "error"
+                entry["error"] = str(e)[:300]
+                if entry["approval"] == "required":
+                    entry["approval"] = "denied" if "Abgelehnt" in str(e) else "waiting"
+                raise
+            finally:
+                entry["ms"] = int((time.time() - t0) * 1000)
+                await asyncio.to_thread(record_call, entry)
+
+        async def on_list_resources(self, context, call_next):
+            items = list(await call_next(context))
+            try:
+                items += await _dynamic_resources()
+            except Exception as e:
+                logger.info(f"MCP resources: {e}")
+            return items
+
+    return Guard()
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +525,10 @@ def _build(c: Dict[str, Any]):
             "Most tools take an optional `host` (a remote Pi name from list_hosts; empty = the main Pi)."),
         auth=auth_provider,
     )
+    mcp.add_middleware(_make_middleware())
     _register_tools(mcp)
+    _register_prompts(mcp)
+    _register_resources(mcp)
     return mcp
 
 
@@ -651,6 +918,31 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
                     raise
                 await asyncio.sleep(0.5)
 
+    @mcp.tool(annotations=RO)
+    async def image_updates(host: Host = None) -> dict:
+        """Container images with a newer version in the registry (Docker, Compose stacks, Kubernetes)."""
+        return await _api("GET", "/api/containers/images", host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def image_release_notes(ref: str, host: Host = None) -> dict:
+        """GitHub release notes of an image (ref from image_updates, e.g. 'ghcr.io/org/app:latest') - check for breaking changes."""
+        return await _api("GET", "/api/containers/images/releases", {"ref": ref}, host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def list_backups(host: Host = None) -> dict:
+        """Watched backups (restic, Borg, folders): last backup, age, state (ok/overdue/error), size."""
+        return await _api("GET", "/api/backups", host=host or "")
+
+    @mcp.tool
+    async def check_backup(backup_id: str, host: Host = None) -> dict:
+        """Check one watched backup again now (id from list_backups)."""
+        return await _api("POST", f"/api/backups/{backup_id}/check", host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def list_domains() -> dict:
+        """Own domains with expiry date, registrar, name servers and warning state."""
+        return await _api("GET", "/api/docs/domains")
+
     # ------------------------------------------------------------------ files
     @mcp.tool(annotations=RO)
     async def list_directory(path: str = "/", host: Host = None) -> dict:
@@ -677,3 +969,149 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
     async def move_to_trash(path: str, host: Host = None) -> dict:
         """Move a file or folder to the dashboard's recycle bin (restorable for 30 days)."""
         return await _api("POST", "/api/files/delete", body={"path": path}, host=host or "")
+
+
+# ---------------------------------------------------------------------------
+# Prompts: ready-made procedures for Claude
+# ---------------------------------------------------------------------------
+def _register_prompts(mcp) -> None:
+    def where(host: Optional[str]) -> str:
+        return f" auf dem Pi „{host}“ (host=\"{host}\")" if host else ""
+
+    @mcp.prompt(name="morgen_check", title="Morgen-Check")
+    def morgen_check(host: Optional[str] = None) -> str:
+        """Kurzer Zustandsbericht für den Start in den Tag."""
+        return (f"Mach einen Morgen-Check des Homelabs{where(host)}. Nutze get_overview, get_events (days=1), apt_status, "
+                "web_services, list_backups, list_domains und list_reminders – bei mehreren Pis zusätzlich fleet_overview. "
+                "Fasse knapp zusammen: 1. Was ist auffällig oder kaputt (mit Ursache, falls aus den Logs erkennbar), "
+                "2. Was ist heute fällig (Erinnerungen, Fristen, überfällige Backups, ablaufende Domains), "
+                "3. Empfohlene nächste Schritte. Ändere nichts ohne Rückfrage.")
+
+    @mcp.prompt(name="stoerung_analysieren", title="Störung analysieren")
+    def stoerung_analysieren(dienst: str, host: Optional[str] = None) -> str:
+        """Ursache einer Störung eines Dienstes oder Containers finden."""
+        return (f"Analysiere die Störung von „{dienst}“{where(host)}. Vorgehen: list_services bzw. list_containers für den "
+                "Zustand, service_journal oder container_logs für die letzten Meldungen, get_logs (priority=err, since=6h) und "
+                "get_events für den zeitlichen Zusammenhang, get_metrics_history für Last, Temperatur und Speicher. Prüfe "
+                "list_service_docs und list_runbooks auf vorhandene Anleitungen. Nenne die wahrscheinlichste Ursache mit Belegen "
+                "und einen konkreten Lösungsvorschlag. Erst nach meiner Zustimmung neu starten oder Dateien ändern; danach mit "
+                "add_journal_entry (Kategorie Störung) dokumentieren.")
+
+    @mcp.prompt(name="wochenbericht", title="Wochenbericht schreiben")
+    def wochenbericht() -> str:
+        """Den Wochenbericht verständlich zusammenfassen und als Wiki-Seite ablegen."""
+        return ("Schreibe einen Wochenbericht des Homelabs. Grundlage: weekly_report, list_journal (letzte 7 Tage), "
+                "get_costs und get_events (days=7). Gliederung: Zusammenfassung in drei Sätzen, Verfügbarkeit, Vorfälle, "
+                "Änderungen, Ressourcen und Trends, Kosten, offene Punkte. Zeige mir den Text und speichere ihn nach "
+                "Bestätigung mit save_wiki_page im Ordner „Berichte“ unter dem Titel „Wochenbericht KW <Kalenderwoche>“.")
+
+    @mcp.prompt(name="wartung_planen", title="Wartung planen")
+    def wartung_planen(aufgabe: str, zeitpunkt: Optional[str] = None) -> str:
+        """Eine Wartung vorbereiten: Ablauf, Wartungsfenster, Runbook, Doku."""
+        when = f" für {zeitpunkt}" if zeitpunkt else ""
+        return (f"Plane die Wartung „{aufgabe}“{when}. Ermittle mit list_services, list_containers und list_service_docs, "
+                "welche Dienste betroffen sind, und schlage einen Ablauf mit Rückfallplan vor. Nach meiner Zustimmung: "
+                "maintenance_window für die betroffenen Dienste anlegen, den Ablauf als Runbook speichern (save_runbook) und "
+                "eine Erinnerung setzen (add_reminder). Nach der Wartung einen Eintrag ins Betriebstagebuch (Kategorie Wartung).")
+
+    @mcp.prompt(name="update_runde", title="Update-Runde")
+    def update_runde() -> str:
+        """Ausstehende System- und Image-Updates prüfen und geordnet einspielen."""
+        return ("Prüfe ausstehende Updates: fleet_overview bzw. apt_status für apt, image_updates für Container-Images und "
+                "image_release_notes für die Änderungen der neuen Versionen (achte auf Breaking Changes). Erstelle eine "
+                "Liste mit Empfehlung (jetzt / später / nicht), Sicherheitsupdates zuerst. Spiele erst nach meiner Zustimmung "
+                "ein und dokumentiere jede Änderung mit add_journal_entry.")
+
+
+# ---------------------------------------------------------------------------
+# Resources: knowledge as context (wiki pages, runbooks, service docs)
+# ---------------------------------------------------------------------------
+def _runbook_md(r: Dict[str, Any]) -> str:
+    lines = [f"# {r.get('title', '')}", ""]
+    if r.get("description"):
+        lines += [r["description"], ""]
+    for i, st in enumerate(r.get("steps", []), 1):
+        lines.append(f"{i}. {st.get('text', st) if isinstance(st, dict) else st}")
+    return "\n".join(lines)
+
+
+DOC_FIELDS = [("purpose", "Zweck"), ("url", "Adresse"), ("ports", "Ports"), ("data", "Daten"), ("backup", "Backup"),
+              ("docs_url", "Doku"), ("owner", "Zuständig"), ("notes", "Notizen")]
+
+
+def _servicedoc_md(d: Dict[str, Any], fields: Optional[List[Dict[str, str]]] = None) -> str:
+    lines = [f"# {d.get('name') or d.get('target', '')}", ""]
+    for k, label in ([(f["key"], f["label"]) for f in fields] if fields else DOC_FIELDS):
+        if d.get(k):
+            lines.append(f"**{label}:** {d[k]}")
+    return "\n".join(lines)
+
+
+def _service_docs(data: Any) -> List[Dict[str, Any]]:
+    items = data.get("docs") if isinstance(data, dict) else data
+    if isinstance(items, dict):
+        items = [{**v, "target": k} for k, v in items.items()]
+    return [d for d in (items or []) if isinstance(d, dict)]
+
+
+async def _dynamic_resources() -> list:
+    from fastmcp.resources import FunctionResource
+    out = []
+    wiki, runbooks, docs = await asyncio.gather(_api("GET", "/api/wiki"), _api("GET", "/api/docs/runbooks"),
+                                                _api("GET", "/api/docs/services"), return_exceptions=True)
+    if isinstance(wiki, dict):
+        for p in wiki.get("pages", [])[:300]:
+            title = f"{p['folder']}/{p['title']}" if p.get("folder") else p["title"]
+            out.append(FunctionResource.from_function(lambda: "", uri=f"picore://wiki/{p['id']}", name=f"wiki-{p['id']}",
+                                                      title=f"Wissen: {title}", mime_type="text/markdown",
+                                                      description="Seite der Wissensdatenbank"))
+    if isinstance(runbooks, dict):
+        for r in runbooks.get("runbooks", [])[:200]:
+            out.append(FunctionResource.from_function(lambda: "", uri=f"picore://runbook/{r['id']}", name=f"runbook-{r['id']}",
+                                                      title=f"Runbook: {r.get('title', '')}", mime_type="text/markdown",
+                                                      description="Schritt-für-Schritt-Anleitung"))
+    if not isinstance(docs, Exception):
+        for d in _service_docs(docs)[:200]:
+            target = d.get("target") or d.get("id") or ""
+            if target:
+                out.append(FunctionResource.from_function(lambda: "", uri=f"picore://servicedoc/{target}",
+                                                          name=f"servicedoc-{target}", title=f"Steckbrief: {d.get('name') or target}",
+                                                          mime_type="text/markdown", description="Dienst-Steckbrief"))
+    return out
+
+
+def _register_resources(mcp) -> None:
+    from fastmcp.exceptions import ResourceError
+
+    @mcp.resource("picore://wiki", name="wiki-index", title="Wissensdatenbank: Übersicht", mime_type="text/markdown")
+    async def wiki_index() -> str:
+        """All knowledge base pages with their resource addresses."""
+        data = await _api("GET", "/api/wiki")
+        lines = ["# Wissensdatenbank", ""]
+        for p in data.get("pages", []):
+            lines.append(f"- [{(p['folder'] + '/') if p.get('folder') else ''}{p['title']}](picore://wiki/{p['id']})")
+        return "\n".join(lines) if data.get("pages") else "Noch keine Seiten."
+
+    @mcp.resource("picore://wiki/{page_id}", name="wiki-page", title="Wissensseite", mime_type="text/markdown")
+    async def wiki_page(page_id: str) -> str:
+        """One knowledge base page (Markdown)."""
+        p = await _api("GET", f"/api/wiki/{page_id}")
+        return f"# {p['title']}\n\n{p.get('content', '')}"
+
+    @mcp.resource("picore://runbook/{runbook_id}", name="runbook", title="Runbook", mime_type="text/markdown")
+    async def runbook(runbook_id: str) -> str:
+        """One runbook as a numbered list."""
+        data = await _api("GET", "/api/docs/runbooks")
+        r = next((x for x in data.get("runbooks", []) if x["id"] == runbook_id), None)
+        if not r:
+            raise ResourceError("Runbook nicht gefunden.")
+        return _runbook_md(r)
+
+    @mcp.resource("picore://servicedoc/{target}", name="servicedoc", title="Dienst-Steckbrief", mime_type="text/markdown")
+    async def servicedoc(target: str) -> str:
+        """One service doc."""
+        data = await _api("GET", "/api/docs/services")
+        d = next((x for x in _service_docs(data) if (x.get("target") or x.get("id")) == target), None)
+        if not d:
+            raise ResourceError("Steckbrief nicht gefunden.")
+        return _servicedoc_md(d, data.get("fields") if isinstance(data, dict) else None)

@@ -3,7 +3,7 @@ Webhook inbox: own addresses (/hook/<token>) that other services post messages t
 Watchtower / Shoutrrr, GitHub, scripts (curl). Each message becomes an event in the dashboard's
 event feed (and the weekly report), with a level guessed from the payload.
 
-Hooks in settings.json "webhooks", the last messages in "webhook_events" (ring of 500).
+Hooks in settings.json "webhooks", the last messages in "webhook_events" (ring of 500 by default, see retention.py).
 """
 
 import json
@@ -18,7 +18,7 @@ import settings_store
 HOOKS_KEY = "webhooks"
 EVENTS_KEY = "webhook_events"
 MAX_HOOKS = 30
-MAX_EVENTS = 500
+
 MAX_BODY = 64 * 1024
 RATE_PER_MINUTE = 60
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
@@ -29,6 +29,18 @@ _rate: Dict[str, List[float]] = {}
 
 class WebhookError(Exception):
     pass
+
+
+def _max_events() -> int:
+    import retention
+    return retention.get("webhook_events")
+
+
+def trim() -> None:
+    with _lock:
+        events = settings_store.get(EVENTS_KEY, []) or []
+        if len(events) > _max_events():
+            settings_store.set(EVENTS_KEY, events[-_max_events():])
 
 
 def hooks() -> List[Dict[str, Any]]:
@@ -129,7 +141,7 @@ def receive(token: str, body: bytes, content_type: str, headers: Dict[str, str],
         msg["level"] = hook["level"]
     event = {"ts": int(now), "hook": hook["id"], "source": hook["name"], "ip": ip, **msg}
     with _lock:
-        events = (settings_store.get(EVENTS_KEY, []) or [])[-(MAX_EVENTS - 1):]
+        events = (settings_store.get(EVENTS_KEY, []) or [])[-(_max_events() - 1):]
         events.append(event)
         settings_store.set(EVENTS_KEY, events)
         items = hooks()

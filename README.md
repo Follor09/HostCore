@@ -154,6 +154,7 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 - **Statusleiste** oben im Dashboard: „Alles in Ordnung“ – oder genau, was Aufmerksamkeit braucht (Dienst mit Fehler, Web-Dienst nicht erreichbar, Laufwerk fast voll / bald voll, zu heiß, Unterspannung, NVMe-Verschleiß, Sicherheitsupdates, Dashboard-Update). Ein Klick springt an die richtige Stelle.
 - **Ereignisse:** Zeitleiste (Karte auf dem Dashboard, komplett unter System-Werkzeuge → Ereignisse) mit Ausfällen und Erholung von Diensten, Drosselung, fehlgeschlagenen Anmeldungen (Dashboard + SSH), Updates, Neustarts und neuen Geräten.
 - **Speicherprognose:** „voll in ~N Tagen“ aus dem täglichen Füllstand, dazu die am stärksten gewachsenen Ordner (7 / 30 Tage). Ordnergrößen misst der Pi einmal täglich mit niedrigster Priorität (`du`).
+- **Backups** (System-Werkzeuge): restic- und Borg-Repositorys (lokal, SFTP, REST, S3/B2 über Umgebungsvariablen) sowie Backup-Ordner (neueste Datei, optional nur `*.sql.gz` o. ä.) werden stündlich geprüft – letztes Backup, Anzahl, Größe. Ist das letzte älter als das eingestellte Höchstalter oder scheitert die Prüfung, gibt es ein Ereignis, einen Eintrag in der Statusübersicht und eine E-Mail. Das Repository muss für den Dashboard-Benutzer lesbar sein; Passwörter bleiben in `settings.json`.
 - **Wochenbericht** (`/report`): die letzten 7 Tage auf einer Seite – Kennzahlen, Verfügbarkeit, Drosselung, Speicher, Top-Programme, Änderungen, neue Geräte. „Drucken / PDF“ erzeugt eine saubere Druckansicht.
 
 ### 🗂️ Planung & Auswertung
@@ -174,6 +175,7 @@ Unter jeder Seite (außer dem Terminal): Copyright, installierte Version (Commit
 - **Verträge & Abos:** Domains, Server, Lizenzen, Abos mit Anbieter, Kosten, Zahlungsrhythmus, Laufzeitende, Kündigungsfrist und Link zum Kundenkonto. Das Dashboard rechnet aus, bis wann gekündigt werden muss (bei automatisch verlängernden Verträgen für die nächste Verlängerung), markiert Fristen in den nächsten 30 Tagen und verpasste Fristen und zeigt die Kosten pro Monat und Jahr. Fristen und Verlängerungen erscheinen im Kalender-Widget.
 - **Kosten:** Strom (vom Pi gemessen, hochgerechnet), Verträge & Abos und Hardware-Käufe aus dem Inventar – pro Monat und Jahr, Hardware zusätzlich auf drei Jahre verteilt, dazu ein Diagramm der letzten 12 Monate.
 - **Anhänge:** PDFs, Bilder, Text- und ZIP-Dateien (bis 25 MB) an Inventar, Verträge, Steckbriefe und Wiki-Seiten hängen – Rechnungen, Handbücher, Fotos. Gespeichert unter `attachments/` auf dem Pi; Bilder und PDFs öffnen sich in einer abgeschotteten Vorschau.
+- **Domains:** eigene Domains mit Ablaufdatum, Registrar, Nameservern und DNSSEC – einmal täglich per RDAP (Nachfolger von WHOIS) abgefragt, auch für .de, .ch und .io. Registries ohne öffentliches Ablaufdatum (z. B. DENIC) bekommen das Verlängerungsdatum von Hand. Vor Ablauf (Vorwarnzeit pro Domain) erscheint eine Warnung in der Statusübersicht und in der täglichen E-Mail.
 - **Befehle:** oft gebrauchte Befehle mit Titel, Beschreibung und Tags – mit einem Klick kopiert; im Web-Terminal fügt der Knopf „Befehle“ sie an der Eingabe ein (ohne sie abzuschicken).
 - **Steckbriefe:** pro Dienst, Web-Dienst oder Compose-Stack (oder als eigener Eintrag) Zweck, Adresse, Ports, Speicherort der Daten, Sicherung, Doku-Link, Zuständige und Notizen. Auf der Container-Seite öffnet „Steckbrief“ den passenden Eintrag oder legt ihn an.
 
@@ -181,7 +183,7 @@ Ansehen darf jeder angemeldete Benutzer, Ändern braucht „Notizen & Doku bearb
 
 ### 📖 Wissensdatenbank (`/wissen`)
 
-Freie Markdown-Seiten in Ordnern für alles, was nicht in Runbooks oder Steckbriefe passt: Überschriften, Listen, Aufgaben, Tabellen, Code-Blöcke, Zitate; `[[Seitentitel]]` verlinkt auf eine andere Seite. Editor mit Vorschau (Strg+S speichert), Anhänge pro Seite, **Verlauf** mit den letzten 20 Versionen (ansehen, wiederherstellen) und Schutz vor gleichzeitigem Überschreiben. Die Seiten liegen in `wiki.json` und sind über die Volltextsuche (Strg+K) und den MCP erreichbar.
+Freie Markdown-Seiten in Ordnern für alles, was nicht in Runbooks oder Steckbriefe passt: Überschriften, Listen, Aufgaben, Tabellen, Code-Blöcke, Zitate; `[[Seitentitel]]` verlinkt auf eine andere Seite. Editor mit Vorschau (Strg+S speichert), Anhänge pro Seite, **Verlauf** mit den letzten 20 Versionen (ansehen, wiederherstellen; Anzahl unter Datenaufbewahrung einstellbar) und Schutz vor gleichzeitigem Überschreiben. **Vorlagen** für neue Seiten: Gerät, Störungsbericht, Anleitung, Dienst, Entscheidung, Netzwerk – dazu jede eigene Seite im Ordner „Vorlagen“; `{{titel}}`, `{{datum}}` und `{{benutzer}}` werden beim Anlegen ausgefüllt. Die Seiten liegen in `wiki.json` und sind über die Volltextsuche (Strg+K) und den MCP erreichbar.
 
 ### 🛠️ Wartungsfenster & Gastzugänge
 
@@ -229,7 +231,7 @@ Die Startseite ist ein frei anordenbares Raster aus **Apps**, **Widgets** und de
 
 ### 🤖 MCP-Server (Claude)
 
-Das Dashboard ist zugleich ein **MCP-Server** (Streamable HTTP unter `/mcp`), mit dem Claude (claude.ai, Claude Desktop, Claude Code) es bedienen kann – über 60 Werkzeuge:
+Das Dashboard ist zugleich ein **MCP-Server** (Streamable HTTP unter `/mcp`), mit dem Claude (claude.ai, Claude Desktop, Claude Code) es bedienen kann – über 70 Werkzeuge:
 
 | Bereich | Werkzeuge |
 | --- | --- |
@@ -240,6 +242,11 @@ Das Dashboard ist zugleich ein **MCP-Server** (Streamable HTTP unter `/mcp`), mi
 | Netzwerk | `list_lan_devices`, `scan_lan`, `netbox_comparison`, `wake_on_lan`, `firewall`, `web_services`, `maintenance_window` |
 | Doku & Planung | Notizen, Aufgaben, Erinnerungen, Betriebstagebuch, Runbooks, Steckbriefe, Inventar, Verträge, Befehle, Wissensdatenbank, Kosten, Boards (`add_app_to_board`) |
 | Dateien | `list_directory`, `read_file`, `write_file` (mit Konfliktschutz), `search_files`, `move_to_trash` |
+| Backups, Domains, Images | `list_backups`, `check_backup`, `list_domains`, `image_updates`, `image_release_notes` |
+
+**Prompts** (fertige Abläufe, in Claude über das Plus-Menü): `morgen_check`, `stoerung_analysieren`, `wochenbericht`, `wartung_planen`, `update_runde`. **Ressourcen:** Wiki-Seiten (`picore://wiki/<id>`, Übersicht `picore://wiki`), Runbooks (`picore://runbook/<id>`) und Steckbriefe (`picore://servicedoc/<ziel>`) lassen sich als Kontext anhängen.
+
+**Freigaben:** unter **Einstellungen → MCP-Aktivität** wird festgelegt, welche Aktionen (z. B. apt, Neustart, Firewall, Dateien schreiben/löschen) erst nach einer Bestätigung laufen. Claude wartet bis zu einer einstellbaren Zeit; währenddessen erscheint auf jeder Dashboard-Seite eine Leiste mit „Freigeben“ / „Ablehnen“ (und auf Wunsch eine E-Mail). Kommt die Freigabe später, ruft Claude das Werkzeug mit denselben Parametern erneut auf – eine Freigabe gilt 15 Minuten und einmal. Freigeben darf der zugeordnete Benutzer oder ein Administrator, nie der MCP selbst. Darunter steht das **Protokoll aller Werkzeug-Aufrufe** (Zeit, Werkzeug, Benutzer, Parameter, Ergebnis, Dauer) mit Filtern; gespeichert in `mcp_calls.json`.
 
 Fast alle Werkzeuge nehmen `host` – den Namen eines Remote-Pis –, sonst gilt der Haupt-Pi. **Anmeldung per OAuth über Pocket ID** (FastMCP OIDCProxy, wie bei eigenen *-no-kari-Servern); jede Pocket-ID-Identität (E-Mail, Benutzername oder Subject) wird unter **Einstellungen → MCP-Server** einem Dashboard-Benutzer zugeordnet. Jedes Werkzeug ruft intern die Dashboard-API als dieser Benutzer auf: es gelten genau dessen **Berechtigungen**, alles steht mit „(MCP)“ im **Aktivitätsprotokoll**, und Remote-Pis werden wie im Browser über ihren Agent erreicht.
 
@@ -287,6 +294,7 @@ Alltagshelfer, die nur im Browser rechnen (nichts geht an den Pi oder ins Intern
 - **Kubernetes (k3s):** Workloads (Deployments, StatefulSets, DaemonSets) mit Bereit-Status, Images und Aktionen **Neu starten** (`rollout restart`), **Stoppen** (auf 0 skalieren – „Starten“ holt die alte Anzahl zurück) und **Skalieren**; Pods mit Status, Neustarts, OOMKilled, CPU/RAM (metrics-server), **Logs** (Container-Auswahl, vorheriger Start, Filter, Live) und **Neu erstellen**; Services mit Ports/NodePorts/LoadBalancer-IP; Nodes mit Auslastung und Version; Warnungen (Events). Filter nach Namespace und Text, kube-system ausblendbar. Braucht eine lesbare kubeconfig (`~/.kube/config`, siehe Hinweis auf der Seite).
 - **Docker:** alle Container mit Status/Health, CPU (inkl. 24-Std.-Sparkline), RAM, Ports; Starten/Stoppen/Neu starten, Logs, Verlauf.
 - **Compose-Stacks:** aus `docker compose ls` und den Container-Labels; **Starten, Neu starten, Aktualisieren** (`pull` + `up -d`), **Stoppen, Entfernen** (`down`, Volumes bleiben) mit Live-Ausgabe; **Compose-Datei** öffnet den Editor – beim Speichern prüft `docker compose config` die Datei, kaputte YAML wird nicht gespeichert.
+- **Versionshinweise:** „Was ist neu?“ bei einem Image zeigt die GitHub-Releases seines Projekts (Quelle aus den Image-Labels, sonst die üblichen Orte bei GHCR und LinuxServer.io, sonst selbst eintragen), neuere Versionen als das lokale Image zuerst und mit Hinweis auf Breaking Changes.
 - **Image-Updates:** alle 12 Std. (oder per „Jetzt prüfen“) wird der Digest jedes laufenden Images (Docker + k3s) mit der Registry verglichen – Docker Hub, GHCR, Quay, lscr.io & Co., anonym per `HEAD` (zählt nicht gegen das Docker-Hub-Limit). Bei Updates: Stack direkt aktualisieren oder Deployment neu starten. Nach einem Stack-Update wird automatisch neu geprüft.
 - **Statistik:** CPU, RAM und Netzwerk pro Container (Pods eines Deployments zusammengefasst) für 24 Std. / 7 Tage, einmal pro Minute gemessen (`docker stats`, `kubectl top`), 7 Tage aufbewahrt.
 - **App-Store:** zehn empfohlene Apps (Jellyfin, Pi-hole, AdGuard Home, Uptime Kuma, Vaultwarden, Home Assistant, Node-RED, Grafana, Syncthing, Gitea) plus der Katalog von [LinuxServer.io](https://www.linuxserver.io) über deren API – rund 160 Apps, gefiltert auf Images für die Architektur des Pi. Suche über Name, Beschreibung und Kategorie, Filter nach Kategorie und Quelle (auch „Installiert“), Sortierung nach Beliebtheit (monatliche Downloads), Name oder Aktualität. Der Katalog wird höchstens einmal am Tag geladen und in `appstore_cache.json` gespeichert (funktioniert danach offline); Logos lädt der Pi selbst und legt sie in `appstore_logos/` ab, der Browser fragt nie bei GitHub an. Das Formular entsteht aus der Konfiguration der App: Ports (freie werden vorgeschlagen, Web-Ports unter 1024 als 8080/8443 …), Ordner (`./name` im App-Verzeichnis oder ein vorhandener Pfad), Umgebungsvariablen (PUID/PGID/TZ automatisch), optionale Ports, Ordner und Geräte zum Anhaken. Apps mit privilegiertem Modus, Host-Netzwerk, Zusatzrechten oder Geräten sind als „Erweiterte Rechte“ markiert und zeigen vor der Installation, was sie brauchen; der Docker-Socket wird nie eingebunden. „Compose-Datei ansehen“ zeigt vorher, was geschrieben wird. Jede App landet in `~/picore-apps/<name>/docker-compose.yml` und wird mit `pull` + `up -d` gestartet, mit Live-Ausgabe; danach ist sie ein normaler Compose-Stack. Systemordner (`/etc`, `/root`, `/dev`, `~/.ssh`, das Dashboard …) lassen sich nicht einbinden.
@@ -331,6 +339,9 @@ Deutsch oder Englisch – umschaltbar unter *Einstellungen → Sprache* oder unt
 - **Wake-on-LAN:** Geräte hinzufügen / entfernen
 - **Auto-Update:** Repo, Branch, Commit, Timer-Status, Token-Status, „Jetzt prüfen“
 - **Verlauf:** Größe & Zeitraum der Messdaten, „Verlauf löschen“
+- **Datenaufbewahrung:** wie lange Messwerte (bis 90 Tage – ab 30 Tagen zeigt das Verlaufsdiagramm auch „30 Tage“), Verfügbarkeit, Web-Dienst-Prüfungen, Aktivitätsprotokoll, Datenverbrauch, Speicherverlauf und Papierkorb bleiben und wie viele Wiki-Versionen, Board-Stände, Webhook-Meldungen und MCP-Aufrufe behalten werden; dazu der Speicherbedarf jeder Ablage und „Jetzt aufräumen“
+- **E-Mail-Benachrichtigungen:** SMTP (STARTTLS, SSL oder ohne), Empfänger und Dashboard-Adresse für Links. Verschickt werden neue Ereignisse ab Warnung oder nur kritische (gesammelt alle 5 Minuten), eine Tagesübersicht zur gewählten Uhrzeit (fällige Erinnerungen, Kündigungsfristen, Garantien, ablaufende Domains, überfällige Backups – nur wenn es etwas gibt), der Wochenbericht an einem Wochentag und MCP-Freigaben sofort. Test-Mail und Vorschau von Tagesübersicht und Wochenbericht per Knopf
+- **MCP-Aktivität:** offene Freigaben, welche Werkzeuge eine Freigabe brauchen, Protokoll der Aufrufe
 - **System:** Hostname, Modell, OS, Kernel, Python, Laufzeit, IP-Adressen
 
 Die Einstellungsseite braucht immer ein Login – auch wenn „Ansehen ohne Login“ aktiv ist.

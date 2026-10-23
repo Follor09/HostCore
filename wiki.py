@@ -1,7 +1,7 @@
 """
 Knowledge base (page /wissen): free Markdown pages in folders for everything that doesn't fit a
 runbook or service doc. Stored in wiki.json next to the dashboard (not settings.json - pages can be
-long); every save keeps the previous version (last 20 per page).
+long); every save keeps the previous version (last 20 per page by default, see retention.py).
 """
 
 import json
@@ -16,7 +16,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WIKI_FILE = os.path.join(BASE_DIR, "wiki.json")
 MAX_PAGES = 1000
 MAX_CONTENT = 100_000
-MAX_VERSIONS = 20
 _lock = threading.Lock()
 
 
@@ -90,7 +89,7 @@ def save(page_id: Optional[str], fields: Dict[str, Any], user: str = "", base: O
             if any(p.get(k) != clean[k] for k in ("title", "folder", "content")):
                 p.setdefault("versions", []).append({"ts": p.get("updated", now), "user": p.get("user", ""),
                                                       "title": p["title"], "content": p.get("content", "")})
-                p["versions"] = p["versions"][-MAX_VERSIONS:]
+                p["versions"] = p["versions"][-_max_versions():]
                 p.update(clean, updated=now, user=user or "")
         else:
             if len(data["pages"]) >= MAX_PAGES:
@@ -99,6 +98,21 @@ def save(page_id: Optional[str], fields: Dict[str, Any], user: str = "", base: O
             data["pages"].append(p)
         _save(data)
     return page(p["id"])
+
+
+def _max_versions() -> int:
+    import retention
+    return retention.get("wiki_versions")
+
+
+def trim_versions() -> None:
+    keep = _max_versions()
+    with _lock:
+        data = _load()
+        if any(len(p.get("versions", [])) > keep for p in data["pages"]):
+            for p in data["pages"]:
+                p["versions"] = p.get("versions", [])[-keep:]
+            _save(data)
 
 
 def delete(page_id: str) -> Dict[str, Any]:
@@ -112,3 +126,37 @@ def delete(page_id: str) -> Dict[str, Any]:
 def all_pages() -> List[Dict[str, Any]]:
     """For the full-text search."""
     return _load()["pages"]
+
+
+# ---------------------------------------------------------------------------
+# Templates: built-in outlines plus every page in the folder "Vorlagen"
+# Placeholders {{titel}}, {{datum}} and {{benutzer}} are filled in when a page is created.
+# ---------------------------------------------------------------------------
+TEMPLATE_FOLDER = "Vorlagen"
+BUILTIN_TEMPLATES = [
+    {"id": "builtin:geraet", "title": "Gerät", "folder": "Geräte", "description": "Hardware mit Daten, Zugang, Konfiguration und Wartung",
+     "content": "Stand: {{datum}} · {{benutzer}}\n\n## Überblick\n\n| | |\n|---|---|\n| Hersteller / Modell | |\n| Seriennummer | |\n"
+                "| Standort | |\n| IP-Adresse | |\n| MAC-Adresse | |\n| Betriebssystem | |\n\n## Zugang\n\n- Verwaltung: \n- Anmeldung: (Zugangsdaten nicht hier, sondern im Passwort-Manager)\n\n"
+                "## Konfiguration\n\n## Wartung\n\n- [ ] Firmware prüfen\n- [ ] Backup der Konfiguration\n\n## Verlauf\n\n- {{datum}}: Seite angelegt\n"},
+    {"id": "builtin:stoerung", "title": "Störungsbericht", "folder": "Störungen", "description": "Ablauf, Ursache und Maßnahmen einer Störung",
+     "content": "Datum: {{datum}} · Bericht: {{benutzer}}\n\n## Zusammenfassung\n\nWas ist passiert, in einem Satz.\n\n## Auswirkung\n\n- Betroffene Dienste: \n- Dauer: \n\n"
+                "## Zeitlinie\n\n| Zeit | Ereignis |\n|---|---|\n| | Störung bemerkt |\n| | Ursache gefunden |\n| | Behoben |\n\n"
+                "## Ursache\n\n## Lösung\n\n## Maßnahmen\n\n- [ ] \n"},
+    {"id": "builtin:anleitung", "title": "Anleitung", "folder": "Anleitungen", "description": "Ziel, Voraussetzungen, Schritte, Prüfung",
+     "content": "## Ziel\n\n## Voraussetzungen\n\n- \n\n## Schritte\n\n1. \n2. \n3. \n\n## Prüfen\n\n```\n\n```\n\n## Rückgängig machen\n\n"},
+    {"id": "builtin:dienst", "title": "Dienst", "folder": "Dienste", "description": "Anwendung mit Installation, Backup und Updates",
+     "content": "## Zweck\n\n## Adresse & Ports\n\n- Web: \n- Ports: \n\n## Installation\n\n## Konfiguration\n\n- Daten liegen in: \n\n"
+                "## Backup & Wiederherstellung\n\n## Updates\n\n## Bekannte Probleme\n"},
+    {"id": "builtin:entscheidung", "title": "Entscheidung", "folder": "Entscheidungen", "description": "Warum etwas so gelöst wurde (Kontext, Alternativen, Folgen)",
+     "content": "Datum: {{datum}} · {{benutzer}} · Status: entschieden\n\n## Kontext\n\n## Entscheidung\n\n## Alternativen\n\n| Möglichkeit | Vorteile | Nachteile |\n|---|---|---|\n| | | |\n\n## Folgen\n"},
+    {"id": "builtin:netzwerk", "title": "Netzwerk", "folder": "Netzwerk", "description": "Subnetze, VLANs, wichtige Adressen",
+     "content": "## Subnetze\n\n| Netz | VLAN | Zweck | Gateway | DHCP |\n|---|---|---|---|---|\n| | | | | |\n\n## Wichtige Adressen\n\n| Adresse | Gerät |\n|---|---|\n| | |\n\n"
+                "## DNS\n\n## Firewall-Regeln\n"},
+]
+
+
+def templates() -> Dict[str, Any]:
+    own = [{"id": p["id"], "title": p["title"], "folder": "", "description": "Eigene Vorlage", "content": p.get("content", ""), "own": True}
+           for p in _load()["pages"] if (p.get("folder") or "").split("/")[0] == TEMPLATE_FOLDER]
+    own.sort(key=lambda t: t["title"].lower())
+    return {"templates": [{**t, "own": False} for t in BUILTIN_TEMPLATES] + own, "folder": TEMPLATE_FOLDER}

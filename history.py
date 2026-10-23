@@ -25,12 +25,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "history.db")
 
 SAMPLE_INTERVAL = 60                 # seconds between samples
-RETENTION_SECONDS = 7 * 24 * 3600
+RETENTION_SECONDS = 7 * 24 * 3600   # default; the actual limit is retention "metrics"
 
 # range -> (window seconds, bucket seconds): ~288 points for 24h, 336 for 7d
 RANGES = {
     "24h": (24 * 3600, 5 * 60),
     "7d": (7 * 24 * 3600, 30 * 60),
+    "30d": (30 * 24 * 3600, 2 * 3600),   # only filled when the retention is 30 days or more
 }
 
 METRICS = ["cpu", "temp", "ram", "net_down", "net_up", "fan", "power", "nvme_temp", "disk_read", "disk_write"]
@@ -112,13 +113,19 @@ class _Sampler:
         }
 
 
+def retention_seconds() -> int:
+    import retention
+    return retention.seconds("metrics")
+
+
 def _store(row: Dict[str, Any]) -> None:
     with _connect() as conn:
         conn.execute(
             f"INSERT OR REPLACE INTO samples (ts, {', '.join(METRICS)}) VALUES (?{', ?' * len(METRICS)})",
             [row["ts"]] + [row[m] for m in METRICS],
         )
-        conn.execute("DELETE FROM samples WHERE ts < ?", (row["ts"] - RETENTION_SECONDS,))
+        if row["ts"] % 3600 < SAMPLE_INTERVAL:
+            conn.execute("DELETE FROM samples WHERE ts < ?", (row["ts"] - retention_seconds(),))
 
 
 def nvme_snapshot() -> None:
@@ -212,7 +219,8 @@ def get_history(range_key: str, iface: str = "") -> Dict[str, Any]:
         per_iface = monitor.iface_history(iface, since, bucket)
         for p in points:
             p.update(per_iface.get(p["ts"], {"net_down": None, "net_up": None}))
-    return {"range": range_key, "bucket_seconds": bucket, "points": points, "iface": iface}
+    return {"range": range_key, "bucket_seconds": bucket, "points": points, "iface": iface,
+            "retention_days": retention_seconds() // 86400}
 
 
 def get_raw(start: int, end: int) -> Dict[str, Any]:
@@ -235,7 +243,7 @@ def get_stats() -> Dict[str, Any]:
     with _connect() as conn:
         count, oldest, newest = conn.execute("SELECT COUNT(*), MIN(ts), MAX(ts) FROM samples").fetchone()
     return {"size_bytes": os.path.getsize(DB_PATH), "samples": count, "oldest": oldest, "newest": newest,
-            "retention_days": RETENTION_SECONDS // 86400, "interval_seconds": SAMPLE_INTERVAL}
+            "retention_days": retention_seconds() // 86400, "interval_seconds": SAMPLE_INTERVAL}
 
 
 def clear() -> None:

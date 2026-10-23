@@ -41,7 +41,7 @@ def rollup() -> None:
     recomputed until its samples are gone and only the roll-up remains)."""
     now = time.time()
     with _conn() as conn:
-        for offset in range(0, history.RETENTION_SECONDS // 86400 + 1):
+        for offset in range(0, history.retention_seconds() // 86400 + 1):
             t = time.localtime(now - offset * 86400)
             day = time.strftime("%Y-%m-%d", t)
             start = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))

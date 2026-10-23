@@ -35,6 +35,7 @@ DENIED = [os.path.realpath(p) for p in (
     os.path.join(BASE_DIR, "settings.json"),
     os.path.join(BASE_DIR, "history.db"),          # activity + login log
     os.path.join(BASE_DIR, "history.db-journal"),
+    os.path.join(BASE_DIR, "mcp_calls.json"),
     os.path.join(BASE_DIR, ".git"),
     os.path.join(HOME, ".ssh"),
     os.path.join(HOME, ".kube"),
@@ -435,9 +436,11 @@ def create_folder(directory: str, name: str) -> Dict[str, Any]:
 
 # ---------------------------------------------------------------------------
 # Recycle bin: deleting moves into <drive>/.picore-trash/<id>/ (same filesystem, so it's
-# a rename, not a copy). Items older than TRASH_DAYS are removed for good.
+# a rename, not a copy). Items older than the retention "trash" (default 30 days) are removed for good.
 # ---------------------------------------------------------------------------
-TRASH_DAYS = 30
+def _trash_days() -> int:
+    import retention
+    return retention.get("trash")
 
 
 def _protected(real: str) -> bool:
@@ -541,6 +544,7 @@ def trash_move(path: str, user: str = "") -> Dict[str, Any]:
 
 def _trash_items() -> List[Dict[str, Any]]:
     items = []
+    days = _trash_days()
     for trash in _trash_dirs():
         try:
             names = os.listdir(trash)
@@ -557,7 +561,7 @@ def _trash_items() -> List[Dict[str, Any]]:
                 continue
             if not os.path.lexists(os.path.join(box, "data")):
                 continue
-            info.update(id=name, box=box, expires=info.get("deleted", 0) + TRASH_DAYS * 86400)
+            info.update(id=name, box=box, expires=info.get("deleted", 0) + days * 86400)
             items.append(info)
     items.sort(key=lambda i: -i.get("deleted", 0))
     return items
@@ -566,7 +570,7 @@ def _trash_items() -> List[Dict[str, Any]]:
 def trash_list() -> Dict[str, Any]:
     items = _trash_items()
     return {"items": [{k: v for k, v in i.items() if k != "box"} for i in items],
-            "total": sum(i.get("size", 0) for i in items), "days": TRASH_DAYS}
+            "total": sum(i.get("size", 0) for i in items), "days": _trash_days()}
 
 
 def _trash_item(item_id: str) -> Dict[str, Any]:

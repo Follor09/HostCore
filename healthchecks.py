@@ -39,7 +39,6 @@ TYPES = ("http", "keyword", "json", "tcp", "ping", "dns")
 HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$|^[0-9A-Fa-f:]{2,39}$")
 MAC_RE = re.compile(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$")
 TIMEOUT = 8
-RETENTION = 30 * 86400
 MAX_CHECKS = 30
 VPN_NET = ipaddress.ip_network("100.64.0.0/10")
 
@@ -315,8 +314,13 @@ async def background_checker() -> None:
             await asyncio.gather(*(run_check(c) for c in due), return_exceptions=True)
         if now - last_cleanup > 3600:
             last_cleanup = now
-            with _conn() as conn:
-                conn.execute("DELETE FROM health_results WHERE ts < ?", (int(now) - RETENTION,))
+            cleanup()
+
+
+def cleanup() -> None:
+    import retention
+    with _conn() as conn:
+        conn.execute("DELETE FROM health_results WHERE ts < ?", (int(time.time()) - retention.seconds("health"),))
 
 
 def status(hours: int = 24) -> Dict[str, Any]:

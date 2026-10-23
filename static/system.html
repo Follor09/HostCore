@@ -56,6 +56,7 @@
       <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
+      <a href="#backups">Backups</a>
       <a href="#sensoren">Sensoren</a>
       <a data-cap="pmic" href="#strom">Stromverbrauch</a>
       <a href="#ressourcen">Ressourcen</a>
@@ -101,6 +102,7 @@
             <option value="maintenance">Wartung</option>
             <option value="journal">Betriebstagebuch</option>
             <option value="webhook">Webhooks</option>
+            <option value="backup">Backups</option>
           </select>
         </form>
         <p class="field-hint" id="events-summary"></p>
@@ -553,6 +555,20 @@
         <p class="field-hint" id="forecast-hint"></p>
       </section>
 
+      <!-- Backups -->
+      <section class="glass-card settings-section" id="backups">
+        <div class="section-head">
+          <h2>Backups</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="bk-summary"></span>
+            <button data-perm="settings.manage" class="btn-primary" id="bk-add" type="button">Backup überwachen</button>
+          </div>
+        </div>
+        <p class="section-desc">Prüft stündlich, ob restic-, Borg- oder Ordner-Backups aktuell sind, und warnt, wenn das letzte zu alt ist oder die Prüfung scheitert – in den Ereignissen, der Statusübersicht und per E-Mail. Das Repository muss für den Dashboard-Benutzer lesbar sein; Passwörter bleiben auf dem Pi.</p>
+        <div class="docs-form" id="bk-form-wrap" hidden></div>
+        <div class="backup-list" id="bk-list"></div>
+      </section>
+
       <!-- Sensoren -->
       <section class="glass-card settings-section" id="sensoren">
         <div class="section-head">
@@ -843,6 +859,7 @@
   <script src="/static/overview.js"></script>
   <script src="/static/system.js"></script>
   <script src="/static/netbox.js"></script>
+  <script src="/static/backups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>

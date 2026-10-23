@@ -301,8 +301,18 @@ def reset() -> Dict[str, Any]:
 # History: every saved state, so an earlier layout can be restored
 # ---------------------------------------------------------------------------
 HISTORY_FILE = os.path.join(BASE_DIR, "board_history.json")
-HISTORY_MAX = 60
 HISTORY_MERGE_SECONDS = 120   # dragging around saves often: one version per user and two minutes
+
+
+def _history_max() -> int:
+    import retention
+    return retention.get("board_versions")
+
+
+def trim_history() -> None:
+    hist = _history()
+    if len(hist) > _history_max():
+        _write_history(hist[-_history_max():])
 
 
 def _history() -> List[Dict[str, Any]]:
@@ -330,7 +340,10 @@ def _record(cfg: Dict[str, Any], user: str, note: str = "") -> None:
         hist[-1] = {**entry, "since": hist[-1].get("since", hist[-1]["ts"])}
     else:
         hist.append(entry)
-    hist = hist[-HISTORY_MAX:]
+    _write_history(hist[-_history_max():])
+
+
+def _write_history(hist: List[Dict[str, Any]]) -> None:
     try:
         with open(HISTORY_FILE + ".tmp", "w") as f:
             json.dump(hist, f, ensure_ascii=False)

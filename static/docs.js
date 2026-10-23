@@ -9,7 +9,7 @@
   const $ = id => document.getElementById(id);
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   const can = p => !window.PiAuth || window.PiAuth.can(p);
-  const state = { ct: null, sn: null, inv: null, journal: null, runbooks: null, sd: null, editInv: null, editJr: null, editRb: null, editSd: null, openRun: null };
+  const state = { dm: null, ct: null, sn: null, inv: null, journal: null, runbooks: null, sd: null, editInv: null, editJr: null, editRb: null, editSd: null, openRun: null };
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -665,6 +665,103 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Domains (expiry via RDAP)
+  // ---------------------------------------------------------------------------
+  const DM_STATE = { ok: ['good', 'OK'], warning: ['warning', 'Läuft bald ab'], critical: ['critical', 'Läuft ab'],
+    expired: ['critical', 'Abgelaufen'], unknown: ['', 'Unbekannt'] };
+
+  function renderDomains() {
+    const d = state.dm;
+    $('dm-summary').textContent = d.domains.length
+      ? [t(`${d.domains.length} ${d.domains.length === 1 ? 'Domain' : 'Domains'}`), d.warnings ? t(`${d.warnings} mit Warnung`) : '',
+        d.checked ? `${t('geprüft')} ${fmtTs(d.checked)}` : ''].filter(Boolean).join(' · ')
+      : '';
+    $('dm-check').disabled = d.running || !d.domains.length;
+    $('dm-check').textContent = t(d.running ? 'Prüfe…' : 'Jetzt prüfen');
+    const table = $('dm-table');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Domain', 'Läuft ab', 'Registrar', 'Nameserver', ''].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = table.createTBody();
+    if (!d.domains.length) {
+      const c = body.insertRow().insertCell();
+      c.colSpan = 5;
+      c.className = 'docs-empty';
+      c.textContent = t('Noch keine Domains erfasst.');
+    }
+    d.domains.forEach(x => {
+      const row = body.insertRow();
+      const name = row.insertCell();
+      name.className = 'wrap';
+      name.appendChild(raw('span', 'lan-name', x.unicode));
+      if (x.unicode !== x.name) name.appendChild(raw('span', 'lan-sub', x.name));
+      if (x.notes) name.appendChild(raw('span', 'lan-sub', x.notes));
+      const exp = row.insertCell();
+      const [cls, label] = DM_STATE[x.state];
+      if (x.expiry) {
+        exp.appendChild(el('span', '', fmtDay(x.expiry)));
+        exp.append(' ');
+        exp.appendChild(el('span', `health-tag ${cls}`, t(label)));
+        exp.appendChild(el('span', 'lan-sub', t(x.days < 0 ? `seit ${-x.days} Tagen` : `in ${x.days} Tagen`)));
+        if (x.expiry_source === 'manual') exp.appendChild(el('span', 'lan-sub', t('von Hand eingetragen')));
+      } else {
+        exp.appendChild(el('span', `health-tag ${cls}`, t(label)));
+        if (x.no_expiry) exp.appendChild(el('span', 'lan-sub', t('Registry nennt kein Ablaufdatum – von Hand eintragen')));
+      }
+      if (x.error) exp.appendChild(raw('span', 'lan-sub warn', x.error));
+      const reg = row.insertCell();
+      reg.className = 'wrap';
+      reg.appendChild(raw('span', '', x.registrar || x.registrar_note || '–'));
+      const sub = [x.registered ? `${t('registriert')} ${fmtDay(x.registered)}` : '', x.dnssec === true ? 'DNSSEC' : ''].filter(Boolean).join(' · ');
+      if (sub) reg.appendChild(raw('span', 'lan-sub', sub));
+      const ns = row.insertCell();
+      ns.className = 'wrap';
+      ns.appendChild(raw('span', 'lan-sub mono', x.nameservers.join(', ') || '–'));
+      const act = el('div', 'docs-row-actions');
+      row.insertCell().appendChild(act);
+      act.append(button('Bearbeiten', 'text-btn', () => openDmForm(x), 'notes.edit'),
+        confirmButton('Löschen', 'text-btn danger', async () => {
+          try { state.dm = await api(`/api/docs/domains/${x.id}/delete`, {}); renderDomains(); } catch (err) { toast(err.message, 'error'); }
+        }, 'notes.edit'));
+    });
+    if (d.running) setTimeout(loadDomains, 3000);
+  }
+
+  async function loadDomains() {
+    try { state.dm = await api('/api/docs/domains'); renderDomains(); } catch (err) { toast(err.message, 'error'); }
+  }
+
+  function openDmForm(item) {
+    const wrap = $('dm-form-wrap');
+    const v = item || { warn_days: 30 };
+    wrap.innerHTML = '';
+    wrap.hidden = false;
+    wrap.appendChild(el('h3', 'subhead', item ? t('Domain bearbeiten') : t('Neue Domain')));
+    wrap.appendChild(buildForm([
+      { key: 'name', label: 'Domain', value: v.unicode || v.name, required: true, max: 253, placeholder: 'z. B. example.de' },
+      { key: 'warn_days', label: 'Warnen ab (Tage vorher)', type: 'number', value: v.warn_days || 30 },
+      { key: 'manual_expiry', label: 'Ablauf / Verlängerung (falls die Registry keins nennt)', type: 'date', value: v.manual_expiry },
+      { key: 'registrar_note', label: 'Registrar (eigene Angabe)', value: v.registrar_note, max: 80, placeholder: 'z. B. INWX' },
+      { key: 'notes', label: 'Notizen', type: 'textarea', value: v.notes, full: true, max: 500 }
+    ], async (values, btn) => {
+      btn.disabled = true;
+      try {
+        state.dm = await api(item ? `/api/docs/domains/${item.id}` : '/api/docs/domains', values);
+        closeDmForm();
+        renderDomains();
+        toast(t('Gespeichert – die Abfrage läuft im Hintergrund.'), 'success');
+        setTimeout(loadDomains, 4000);
+      } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+    }, closeDmForm));
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function closeDmForm() {
+    $('dm-form-wrap').hidden = true;
+    $('dm-form-wrap').innerHTML = '';
+  }
+
+  // ---------------------------------------------------------------------------
   // Command snippets
   // ---------------------------------------------------------------------------
   async function copyText(text) {
@@ -868,6 +965,10 @@
     $('ct-cat').addEventListener('change', () => state.ct && renderContracts());
     $('ct-filters').addEventListener('submit', e => e.preventDefault());
     $('sn-add').addEventListener('click', () => openSnForm(null));
+    $('dm-add').addEventListener('click', () => openDmForm(null));
+    $('dm-check').addEventListener('click', async () => {
+      try { state.dm = await api('/api/docs/domains/check', {}); renderDomains(); } catch (err) { toast(err.message, 'error'); }
+    });
     $('sn-q').addEventListener('input', () => state.sn && renderSnippets());
     $('sn-tag').addEventListener('change', () => state.sn && renderSnippets());
     $('sn-filters').addEventListener('submit', e => e.preventDefault());
@@ -888,9 +989,10 @@
     try { state.sd = await api('/api/docs/services'); renderServiceDocs(); followHash(); } catch (err) { toast(err.message, 'error'); }
     try { state.ct = await api('/api/docs/contracts'); renderContracts(); } catch (err) { toast(err.message, 'error'); }
     try { state.sn = await api('/api/docs/snippets'); renderSnippets(); } catch (err) { toast(err.message, 'error'); }
+    await loadDomains();
     try { renderCosts(await api('/api/costs')); } catch (err) { toast(err.message, 'error'); }
     // Deep links from the search (#vertraege, #befehle) arrive before these sections are filled
-    if (/^#(vertraege|befehle|kosten)$/.test(location.hash)) document.querySelector(location.hash)?.scrollIntoView();
+    if (/^#(vertraege|domains|befehle|kosten)$/.test(location.hash)) document.querySelector(location.hash)?.scrollIntoView();
   }
 
   init();

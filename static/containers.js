@@ -728,6 +728,12 @@
       if (i.error) { st.appendChild(el('span', 'ctr-sub', i.error)); }
       const actions = el('div', 'img-actions');
       st.appendChild(actions);
+      if (i.status !== 'local' && i.status !== 'pinned') {
+        const notes = el('button', 'btn-secondary', i.status === 'update' ? 'Was ist neu?' : 'Versionshinweise');
+        notes.type = 'button';
+        notes.addEventListener('click', () => toggleReleases(row, i, notes));
+        actions.appendChild(notes);
+      }
       if (i.status === 'update') {
         i.users.filter(u => u.kind === 'stack').forEach(u => {
           const stack = state.data.stacks.find(s => s.name === u.name);
@@ -745,6 +751,92 @@
     if (!im.images.length) emptyRow(table, 3, im.checked ? t('Keine Images gefunden.') : t('Noch nicht geprüft – „Jetzt prüfen“.'));
     $('img-hint').textContent = im.error || '';
     if (im.running) setTimeout(loadOverview, 3000);
+  }
+
+  // Release notes of the image's GitHub project, below the image's row
+  async function toggleReleases(row, image, btn, refresh) {
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('img-notes-row') && !refresh) { next.remove(); return; }
+    if (next && next.classList.contains('img-notes-row')) next.remove();
+    const tr = row.parentNode.insertRow(row.sectionRowIndex + 1);
+    tr.className = 'img-notes-row';
+    const cell = tr.insertCell();
+    cell.colSpan = 3;
+    const box = el('div', 'img-notes', 'Lade Versionshinweise…');
+    cell.appendChild(box);
+    btn.disabled = true;
+    let d;
+    try {
+      d = await api(`/api/containers/images/releases?ref=${encodeURIComponent(image.ref)}${refresh ? '&refresh=1' : ''}`);
+    } catch (err) {
+      box.textContent = err.message;
+      btn.disabled = false;
+      return;
+    }
+    btn.disabled = false;
+    box.innerHTML = '';
+    const head = el('div', 'img-notes-head');
+    if (d.github) {
+      const a = raw('a', 'img-notes-repo', `github.com/${d.github}`);
+      a.href = `https://github.com/${d.github}/releases`;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      head.appendChild(a);
+    }
+    if (d.current) head.appendChild(raw('span', 'ctr-sub', `${t('Läuft')}: ${d.current}`));
+    else if (d.created) head.appendChild(raw('span', 'ctr-sub', `${t('Lokales Image vom')} ${new Date(d.created).toLocaleDateString(LOCALE)}`));
+    box.appendChild(head);
+    if (d.error) box.appendChild(el('p', 'field-hint', d.error));
+    const newer = d.releases.filter(r => r.newer);
+    const shown = newer.length ? newer : d.releases.slice(0, 3);
+    if (d.releases.length) {
+      box.appendChild(el('p', 'field-hint', newer.length
+        ? `${newer.length} ${t(newer.length === 1 ? 'Version ist neuer als das lokale Image' : 'Versionen sind neuer als das lokale Image')}`
+        : t('Die letzten Versionen:')));
+    }
+    shown.forEach((r, n) => {
+      const det = el('details', 'img-release');
+      det.open = n === 0;
+      const sum = el('summary');
+      sum.appendChild(raw('span', 'img-release-name', r.name));
+      if (r.name !== r.tag) sum.appendChild(raw('code', '', r.tag));
+      if (r.prerelease) sum.appendChild(el('span', 'health-tag warning', 'Vorabversion'));
+      if (r.current) sum.appendChild(el('span', 'health-tag good', 'Läuft'));
+      if (r.published) sum.appendChild(raw('span', 'ctr-sub', new Date(r.published * 1000).toLocaleDateString(LOCALE)));
+      det.appendChild(sum);
+      const body = window.PiMarkdown ? window.PiMarkdown.render(r.body || '') : raw('pre', '', r.body || '');
+      body.setAttribute('data-no-i18n', '');
+      if (/breaking|BREAKING|migration|Migration|incompatib/i.test(r.body || '')) det.appendChild(el('p', 'img-breaking', 'Enthält Hinweise auf Breaking Changes oder Migration – vor dem Update lesen.'));
+      det.appendChild(body);
+      if (r.url) {
+        const link = el('a', 'img-release-link', 'Auf GitHub öffnen');
+        link.href = r.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        det.appendChild(link);
+      }
+      box.appendChild(det);
+    });
+    // Own source when the image doesn't name one (or names the wrong one)
+    if (can('services.control')) {
+      const form = el('form', 'img-source');
+      const inp = raw('input');
+      inp.type = 'text';
+      inp.placeholder = 'owner/repository';
+      inp.value = d.github || '';
+      inp.spellcheck = false;
+      const save = el('button', 'btn-secondary', 'Quelle speichern');
+      save.type = 'submit';
+      form.append(el('span', 'ctr-sub', 'GitHub-Projekt:'), inp, save);
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        try {
+          await api('/api/containers/images/source', { repo: d.repo, github: inp.value.trim() });
+          toggleReleases(row, image, btn, true);
+        } catch (err) { toast(err.message, 'error'); }
+      });
+      box.appendChild(form);
+    }
   }
 
   // ---------------------------------------------------------------------------

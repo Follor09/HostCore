@@ -21,12 +21,12 @@ from typing import Any, Dict, List, Optional
 import psutil
 
 import history
+import retention
 import settings_store
 
 logger = logging.getLogger("pi_dashboard.insights")
 
 LEVELS = {"good": 0, "info": 1, "warning": 2, "critical": 3}
-DISK_RETENTION_DAYS = 400
 FOLDER_MIN_KB = 50 * 1024           # folders below 50 MB are not stored
 FOLDER_KEEP = 300
 
@@ -85,7 +85,7 @@ def disk_snapshot() -> None:
                 if p.get("mount") and p.get("total"):
                     conn.execute("INSERT OR REPLACE INTO disk_daily (day, mount, used, total) VALUES (?, ?, ?, ?)",
                                  (day, p["mount"], p["used"], p["total"]))
-        conn.execute("DELETE FROM disk_daily WHERE day < ?", (_day(time.time() - DISK_RETENTION_DAYS * 86400),))
+        conn.execute("DELETE FROM disk_daily WHERE day < ?", (_day(time.time() - retention.seconds("disk")),))
         done_today = conn.execute("SELECT 1 FROM folder_sizes WHERE day = ? LIMIT 1", (day,)).fetchone()
     if not done_today and not _du_lock.locked():
         threading.Thread(target=_folder_snapshot, daemon=True).start()
@@ -111,7 +111,7 @@ def _folder_snapshot() -> None:
         with _conn() as conn:
             conn.executemany("INSERT OR REPLACE INTO folder_sizes (day, path, kb) VALUES (?, ?, ?)",
                              [(day, path, kb) for kb, path in rows[:FOLDER_KEEP]])
-            conn.execute("DELETE FROM folder_sizes WHERE day < ?", (_day(time.time() - DISK_RETENTION_DAYS * 86400),))
+            conn.execute("DELETE FROM folder_sizes WHERE day < ?", (_day(time.time() - retention.seconds("disk")),))
         logger.info(f"Folder sizes stored ({len(rows)} folders)")
     except (OSError, subprocess.SubprocessError) as e:
         logger.warning(f"Folder size snapshot failed: {e}")
@@ -323,6 +323,13 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Events (webhooks): {e}")
 
+    try:
+        import backups
+        for e in backups.events_since(since):
+            out.append(_ev(e["ts"], e["level"], "backup", e["title"], e.get("detail", ""), "/system#backups"))
+    except Exception as e:
+        logger.warning(f"Events (backups): {e}")
+
     devices = list((settings_store.get("lan_devices", {}) or {}).values())
     if devices:
         first_scan = min(d.get("first_seen", now) for d in devices)
@@ -368,6 +375,19 @@ def status_summary() -> Dict[str, Any]:
             add("info", f"Garantie von {it['name']} endet in {it['warranty_days']} Tagen", "/doku#inventar")
     except Exception as e:
         logger.warning(f"Status (warranty): {e}")
+
+    try:
+        import backups
+        for b in backups.alerts():
+            add(b["level"], b["text"], "/system#backups")
+    except Exception as e:
+        logger.warning(f"Status (backups): {e}")
+    try:
+        import domains
+        for d in domains.alerts():
+            add(d["level"], d["text"], "/doku#domains")
+    except Exception as e:
+        logger.warning(f"Status (domains): {e}")
 
     for disk in storage.overview()["disks"]:
         for p in disk["partitions"]:

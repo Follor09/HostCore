@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import history
 
-RETENTION_DAYS = 180
 MAX_ROWS = 20000
 
 # (method, path regex) -> (category, label). The first match wins.
@@ -99,6 +98,21 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/exchange$", "files", "Austausch-Link erstellt"),
     ("POST", r"^/api/fleet/apt$", "system", "Updates auf mehreren Pis gestartet"),
     ("POST", r"^/api/settings/mcp$", "settings", "MCP-Server eingestellt"),
+    ("POST", r"^/api/settings/mcp/approval$", "settings", "MCP-Freigaben eingestellt"),
+    ("POST", r"^/api/mcp/approvals/[^/]+/approve$", "security", "MCP-Aktion freigegeben"),
+    ("POST", r"^/api/mcp/approvals/[^/]+/deny$", "security", "MCP-Aktion abgelehnt"),
+    ("POST", r"^/api/settings/email$", "settings", "E-Mail-Benachrichtigungen eingestellt"),
+    ("POST", r"^/api/settings/email/test$", "settings", "Test-E-Mail gesendet"),
+    ("POST", r"^/api/settings/retention$", "settings", "Datenaufbewahrung geändert"),
+    ("POST", r"^/api/settings/retention/cleanup$", "settings", "Alte Daten aufgeräumt"),
+    ("POST", r"^/api/backups$", "settings", "Backup-Überwachung angelegt"),
+    ("POST", r"^/api/backups/[^/]+/check$", "system", "Backup geprüft"),
+    ("POST", r"^/api/backups/[^/]+/delete$", "settings", "Backup-Überwachung entfernt"),
+    ("POST", r"^/api/backups/[^/]+$", "settings", "Backup-Überwachung geändert"),
+    ("POST", r"^/api/docs/domains/check$", "network", "Domains geprüft"),
+    ("POST", r"^/api/docs/domains/[^/]+/delete$", "settings", "Domain entfernt"),
+    ("POST", r"^/api/docs/domains(/[^/]+)?$", "settings", "Domain gespeichert"),
+    ("POST", r"^/api/containers/images/source$", "settings", "Release-Quelle eines Images gesetzt"),
     ("POST", r"^/api/wiki$", "files", "Wiki-Seite angelegt"),
     ("POST", r"^/api/wiki/[^/]+$", "files", "Wiki-Seite geändert"),
     ("POST", r"^/api/wiki/[^/]+/delete$", "files", "Wiki-Seite gelöscht"),
@@ -164,8 +178,17 @@ def record(user: str, ip: str, method: str, path: str, status: int, detail: str 
         conn.execute("INSERT INTO audit (ts, user, ip, category, action, path, detail, status) VALUES (?,?,?,?,?,?,?,?)",
                       (now, user or "", ip or "", kind[0], kind[1], path, (detail or "")[:300], status))
         if now % 50 == 0:  # occasional cleanup
-            conn.execute("DELETE FROM audit WHERE ts < ?", (now - RETENTION_DAYS * 86400,))
-            conn.execute("DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ?", (MAX_ROWS,))
+            cleanup(conn)
+
+
+def cleanup(conn=None) -> None:
+    """Entries older than the retention "audit" (Einstellungen -> Datenaufbewahrung)."""
+    import retention
+    if conn is None:
+        with _conn() as c:
+            return cleanup(c)
+    conn.execute("DELETE FROM audit WHERE ts < ?", (int(time.time()) - retention.seconds("audit"),))
+    conn.execute("DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ?", (MAX_ROWS,))
 
 
 def entries(query: str = "", category: str = "", limit: int = 200, before: int = 0) -> Dict[str, Any]:

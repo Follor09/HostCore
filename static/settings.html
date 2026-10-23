@@ -52,7 +52,9 @@
       <a href="#remote" data-perm="users.manage">Remote-Pis</a>
       <a href="#netbox" data-perm="settings.manage">NetBox</a>
       <a href="#mcp" data-perm="users.manage">MCP-Server</a>
+      <a href="#mcp-aktivitaet">MCP-Aktivität</a>
       <a href="#webhooks" data-perm="settings.manage">Webhooks</a>
+      <a href="#email" data-perm="settings.manage">E-Mail</a>
       <a href="#sprache">Sprache</a>
       <a href="#darstellung">Darstellung</a>
       <a href="#wetter" data-perm="settings.manage">Wetter</a>
@@ -65,6 +67,7 @@
       <a href="#freigaben" data-perm="files.share">Freigaben</a>
       <a href="#auto-update" data-perm="settings.manage">Auto-Update</a>
       <a href="#verlauf" data-perm="settings.manage">Verlauf</a>
+      <a href="#datenaufbewahrung" data-perm="settings.manage">Datenaufbewahrung</a>
       <a href="#system">System</a>
     </nav>
 
@@ -280,6 +283,40 @@
         </details>
       </section>
 
+      <section class="glass-card settings-section" id="mcp-aktivitaet">
+        <div class="section-head">
+          <h2>MCP-Aktivität</h2>
+          <span class="health-tag" id="mcpa-pending" hidden></span>
+        </div>
+        <p class="section-desc">Aktionen, die Claude über den MCP ausführen möchte und die eine Freigabe brauchen, sowie das Protokoll aller Werkzeug-Aufrufe. Freigeben darf der zugeordnete Benutzer selbst oder ein Administrator – nie Claude.</p>
+        <h3 class="subhead">Offene Freigaben</h3>
+        <div class="mcpa-approvals" id="mcpa-approvals"></div>
+        <div data-perm="users.manage">
+          <h3 class="subhead">Freigabe verlangen für</h3>
+          <form class="mcpa-approval-form" id="mcpa-form" autocomplete="off">
+            <label class="toggle-label"><input type="checkbox" id="mcpa-enabled"> Ausgewählte Aktionen erst nach Freigabe ausführen</label>
+            <div class="mcpa-tools" id="mcpa-tools"></div>
+            <label class="fw-field mcpa-wait"><span>Claude wartet bis zu (Sekunden)</span><input type="number" id="mcpa-wait" min="10" max="240" value="60"></label>
+            <p class="field-hint">Kommt die Freigabe später, ruft Claude das Werkzeug mit denselben Parametern erneut auf; eine Freigabe gilt 15 Minuten und einmal. Mit eingeschalteten E-Mail-Benachrichtigungen kommt zu jeder Anfrage eine Mail.</p>
+            <div class="remote-form-actions"><button type="submit" class="btn-primary">Speichern</button></div>
+          </form>
+          <p class="form-msg" id="mcpa-msg" role="status"></p>
+          <h3 class="subhead">Werkzeug-Aufrufe</h3>
+          <div class="mcpa-stats" id="mcpa-stats"></div>
+          <form class="log-filters" id="mcpa-filters" autocomplete="off">
+            <input type="search" id="mcpa-q" placeholder="Parameter, Fehler …" spellcheck="false" aria-label="Filter">
+            <select id="mcpa-tool" aria-label="Werkzeug"><option value="">Alle Werkzeuge</option></select>
+            <select id="mcpa-user" aria-label="Benutzer"><option value="">Alle Benutzer</option></select>
+            <select id="mcpa-status" aria-label="Ergebnis">
+              <option value="">Alle Ergebnisse</option>
+              <option value="ok">Erfolgreich</option>
+              <option value="error">Fehler</option>
+            </select>
+          </form>
+          <div class="table-scroll"><table class="data-table mcpa-table" id="mcpa-table"></table></div>
+        </div>
+      </section>
+
       <section class="glass-card settings-section" id="webhooks" data-perm="settings.manage">
         <h2>Webhooks</h2>
         <p class="section-desc">Eigene Adressen, an die andere Dienste Meldungen schicken – Uptime Kuma, Watchtower/Shoutrrr, GitHub oder eigene Skripte. Jede Meldung erscheint in den Ereignissen und im Wochenbericht; die Stufe (OK, Hinweis, Warnung, Kritisch) wird aus der Meldung erkannt oder fest vorgegeben. Höchstens 60 Meldungen pro Minute und Webhook.</p>
@@ -307,6 +344,61 @@
             <li>GitHub: Repository → Settings → Webhooks, Content type „application/json“ (nur erreichbar, wenn der Pi von außen erreichbar ist).</li>
           </ol>
         </details>
+      </section>
+
+      <section class="glass-card settings-section" id="email" data-perm="settings.manage">
+        <div class="section-head">
+          <h2>E-Mail-Benachrichtigungen</h2>
+          <span class="health-tag" id="email-state">–</span>
+        </div>
+        <p class="section-desc">Neue Warnungen und kritische Ereignisse, eine Tagesübersicht mit fälligen Erinnerungen und Fristen, der Wochenbericht und MCP-Freigaben per E-Mail über deinen SMTP-Server.</p>
+        <form class="remote-form email-form" id="email-form" autocomplete="off">
+          <label class="toggle-label email-wide"><input type="checkbox" id="em-enabled"> E-Mails verschicken</label>
+          <label class="fw-field"><span>SMTP-Server</span><input type="text" id="em-host" placeholder="smtp.example.com" spellcheck="false"></label>
+          <label class="fw-field"><span>Port</span><input type="number" id="em-port" min="1" max="65535" value="587"></label>
+          <label class="fw-field"><span>Verschlüsselung</span>
+            <select id="em-security">
+              <option value="starttls">STARTTLS (Port 587)</option>
+              <option value="ssl">SSL/TLS (Port 465)</option>
+              <option value="none">Keine (nur im Heimnetz)</option>
+            </select>
+          </label>
+          <label class="fw-field"><span>Benutzername</span><input type="text" id="em-user" spellcheck="false" autocomplete="off"></label>
+          <label class="fw-field"><span>Passwort</span><input type="password" id="em-pass" autocomplete="new-password"></label>
+          <label class="fw-field"><span>Absender</span><input type="email" id="em-sender" placeholder="picore@example.com" spellcheck="false"></label>
+          <label class="fw-field"><span>Absendername</span><input type="text" id="em-sender-name" value="PiCore" maxlength="60"></label>
+          <label class="fw-field email-wide"><span>Empfänger (mehrere mit Komma)</span><input type="text" id="em-to" spellcheck="false"></label>
+          <label class="fw-field email-wide"><span>Dashboard-Adresse für Links in den Mails</span><input type="text" id="em-url" placeholder="http://192.168.178.10:8000" spellcheck="false"></label>
+          <h3 class="subhead email-wide">Was verschickt wird</h3>
+          <div class="email-wide email-what">
+            <div class="email-row">
+              <span class="email-row-label">Ereignisse</span>
+              <select id="em-level" aria-label="Ereignisse">
+                <option value="critical">Nur kritische</option>
+                <option value="warning">Warnungen und kritische</option>
+                <option value="off">Keine</option>
+              </select>
+            </div>
+            <div class="email-row">
+              <label class="toggle-label"><input type="checkbox" id="em-daily"> Tagesübersicht um</label>
+              <select id="em-daily-hour" aria-label="Uhrzeit"></select>
+            </div>
+            <div class="email-row">
+              <label class="toggle-label"><input type="checkbox" id="em-weekly"> Wochenbericht am</label>
+              <select id="em-weekly-day" aria-label="Wochentag"></select>
+              <select id="em-weekly-hour" aria-label="Uhrzeit"></select>
+            </div>
+            <label class="toggle-label"><input type="checkbox" id="em-approvals"> MCP-Freigaben sofort melden</label>
+          </div>
+          <div class="remote-form-actions">
+            <button type="button" class="btn-secondary" data-test="test">Test-Mail</button>
+            <button type="button" class="btn-secondary" data-test="daily">Tagesübersicht jetzt</button>
+            <button type="button" class="btn-secondary" data-test="weekly">Wochenbericht jetzt</button>
+            <button type="submit" class="btn-primary">Speichern</button>
+          </div>
+        </form>
+        <p class="form-msg" id="email-msg" role="status"></p>
+        <dl class="kv-grid" id="email-info"></dl>
       </section>
 
       <section class="glass-card settings-section" id="sprache">
@@ -598,6 +690,24 @@
         </div>
       </section>
 
+      <section class="glass-card settings-section" id="datenaufbewahrung" data-perm="settings.manage">
+        <div class="section-head">
+          <h2>Datenaufbewahrung</h2>
+          <span class="field-hint" id="ret-total"></span>
+        </div>
+        <p class="section-desc">Wie lange aufgezeichnete Daten bleiben und wie viele Versionen behalten werden. Älteres wird stündlich gelöscht; „Jetzt aufräumen“ macht das sofort und gibt den Platz der Datenbank frei. Diese Werte gelten für den gerade gewählten Pi.</p>
+        <form class="retention-form" id="ret-form" autocomplete="off">
+          <div class="retention-grid" id="ret-items"></div>
+          <div class="remote-form-actions">
+            <button type="button" class="btn-secondary" id="ret-cleanup">Jetzt aufräumen</button>
+            <button type="submit" class="btn-primary">Speichern</button>
+          </div>
+        </form>
+        <p class="form-msg" id="ret-msg" role="status"></p>
+        <h3 class="subhead">Speicherbedarf</h3>
+        <div class="table-scroll"><table class="data-table" id="ret-stores"></table></div>
+      </section>
+
       <!-- System -->
       <section class="glass-card settings-section" id="system">
         <h2>System</h2>
@@ -620,6 +730,9 @@
   <script src="/static/exchange-settings.js"></script>
   <script src="/static/mcp-settings.js"></script>
   <script src="/static/webhooks-settings.js"></script>
+  <script src="/static/mcp-activity.js"></script>
+  <script src="/static/email-settings.js"></script>
+  <script src="/static/retention-settings.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>

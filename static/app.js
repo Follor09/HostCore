@@ -2896,6 +2896,7 @@
     nvme: { title: 'NVMe-Temperatur', unit: '°C', series: [{ key: 'nvme_temp', label: 'NVMe', color: 'var(--accent-violet)', area: true }], peak: 'nvme_temp_max' }
   };
 
+  const HISTORY_SPAN = { '24h': 86400, '7d': 7 * 86400, '30d': 30 * 86400 };
   const historyState = { range: '24h', metric: 'cpu', iface: '', data: null, layout: null };
   const hEls = {};
 
@@ -2992,7 +2993,9 @@
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
     const now = Math.floor(Date.now() / 1000);
-    const span = data.range === '7d' ? 7 * 86400 : 86400;
+    const span = HISTORY_SPAN[data.range] || 86400;
+    const r30 = document.getElementById('history-range-30d');
+    if (r30) r30.hidden = (data.retention_days || 7) < 30 && data.range !== '30d';
     const x0 = now - span;
     const x = ts => pad.l + (ts - x0) / span * iw;
 
@@ -3033,9 +3036,9 @@
 
     // X labels: every 3h (24h) or at each midnight (7d)
     const xTicks = [];
-    if (data.range === '7d') {
+    if (data.range !== '24h') {
       const d = new Date(x0 * 1000); d.setHours(24, 0, 0, 0);
-      const everyDays = iw < 420 ? 2 : 1;  // narrow (phone): every other day so labels don't collide
+      const everyDays = data.range === '30d' ? (iw < 420 ? 10 : 5) : iw < 420 ? 2 : 1;  // narrow (phone): every other day so labels don't collide
       for (let t = d.getTime() / 1000; t < now; t += 86400 * everyDays) xTicks.push([t, new Date(t * 1000).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })]);
     } else {
       const everyHours = iw < 420 ? 6 : 3;
@@ -3136,7 +3139,7 @@
     tt.innerHTML = '';
     const time = document.createElement('div');
     time.className = 'tt-time';
-    time.textContent = fmtTime(best.ts, historyState.range === '7d');
+    time.textContent = fmtTime(best.ts, historyState.range !== '24h');
     tt.appendChild(time);
     const row = (value, label, s) => {
       const r = document.createElement('div');
@@ -3177,7 +3180,7 @@
     const body = table.createTBody();
     [...data.points].reverse().forEach(p => {
       const tr = body.insertRow();
-      [fmtTime(p.ts, historyState.range === '7d'), ...cfg.series.map(s => fmtValue(historyState.metric, p[s.key])),
+      [fmtTime(p.ts, historyState.range !== '24h'), ...cfg.series.map(s => fmtValue(historyState.metric, p[s.key])),
        ...(cfg.peak ? [fmtValue(historyState.metric, p[cfg.peak])] : [])].forEach(v => { tr.insertCell().textContent = v; });
     });
   }
@@ -3187,7 +3190,7 @@
     const ifaceSelect = document.getElementById('history-iface');
     if (ifaceSelect) ifaceSelect.hidden = historyState.metric !== 'net' || ifaceSelect.options.length < 2;
     const ifaceNote = historyState.metric === 'net' && historyState.iface ? ` (${historyState.iface})` : '';
-    hEls.subtitle.textContent = `${cfg.title}${ifaceNote} · ${historyState.range === '7d' ? 'letzte 7 Tage' : 'letzte 24 Stunden'}`;
+    hEls.subtitle.textContent = `${cfg.title}${ifaceNote} · ${{ '7d': 'letzte 7 Tage', '30d': 'letzte 30 Tage' }[historyState.range] || 'letzte 24 Stunden'}`;
     hEls.svg.setAttribute('aria-label', `Verlaufsdiagramm ${cfg.title}`);
     renderHistoryChart();
     renderHistoryTable();
@@ -3223,7 +3226,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem('historyView') || '{}');
       if (HISTORY_METRICS[saved.metric]) historyState.metric = saved.metric;
-      if (saved.range === '24h' || saved.range === '7d') historyState.range = saved.range;
+      if (HISTORY_SPAN[saved.range]) historyState.range = saved.range;
     } catch (e) { /* storage unavailable */ }
 
     const bindSegmented = (id, attr, onSelect) => {

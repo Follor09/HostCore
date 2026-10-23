@@ -55,7 +55,13 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/settings/netbox(/test|/delete)?$", "settings.manage"),
 
     # --- MCP server (OAuth via Pocket ID; the connection settings are admin-only)
-    ("*", r"^/api/settings/mcp$", "users.manage"),
+    ("*", r"^/api/settings/mcp(/approval|/calls)?$", "users.manage"),
+    ("GET", r"^/api/mcp/approvals$", "login"),
+    ("POST", r"^/api/mcp/approvals/[^/]+/(approve|deny)$", "login"),   # own requests; others need users.manage (checked there)
+    ("*", r"^/api/settings/(email|email/test|retention|retention/cleanup)$", "settings.manage"),
+    ("GET", r"^/api/backups$", "system.view"),
+    ("POST", r"^/api/backups(/.*)?$", "settings.manage"),
+    ("POST", r"^/api/containers/images/source$", "services.control"),
     ("*", r"^/api/settings/webhooks(/.*)?$", "settings.manage"),
 
     # --- Remote Pis: switching is for everyone logged in, managing them for admins

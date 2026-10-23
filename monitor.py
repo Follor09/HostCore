@@ -16,6 +16,7 @@ Everything lives in history.db next to the metrics.
 
 import logging
 import re
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -31,11 +32,8 @@ import systools
 
 logger = logging.getLogger("pi_dashboard.monitor")
 
-RETENTION_DAYS = 90            # throttling events + service periods
-TRAFFIC_RETENTION_DAYS = 730
-PROC_RETENTION = 7 * 86400
+RETENTION_DAYS = 730          # upper limit for the throttling / uptime views (actual: retention "uptime")
 PROC_KEEP = 12                 # programs stored per sample (top by CPU + top by RAM)
-IFACE_RETENTION = history.RETENTION_SECONDS
 GAP_SECONDS = 3 * 60           # longer without a sample = dashboard was off
 
 THROTTLE_BITS = {              # kind: (bit active now, bit "has occurred" since boot)
@@ -211,7 +209,7 @@ def interfaces() -> List[str]:
     with connect() as conn:
         rows = conn.execute("""SELECT iface, SUM(down + up) AS total FROM iface_samples
                                WHERE ts >= ? GROUP BY iface HAVING total > 0 ORDER BY total DESC""",
-                            (int(time.time()) - IFACE_RETENTION,)).fetchall()
+                            (int(time.time()) - history.retention_seconds(),)).fetchall()
     return [r[0] for r in rows]
 
 
@@ -411,18 +409,49 @@ class Monitor:
                 except Exception as e:
                     logger.warning(f"GeoIP refresh failed: {e}")
                 try:
+                    import backups
+                    backups.check_if_due()
+                except Exception as e:
+                    logger.warning(f"Backup check failed: {e}")
+                try:
+                    import domains
+                    threading.Thread(target=domains.check_if_due, daemon=True).start()
+                except Exception as e:
+                    logger.warning(f"Domain check failed: {e}")
+                try:
                     import files
                     files.trash_purge()
                 except Exception as e:
                     logger.warning(f"Trash purge failed: {e}")
-                cutoff = now - RETENTION_DAYS * 86400
-                conn.execute("DELETE FROM throttle_events WHERE end < ?", (cutoff,))
-                conn.execute("DELETE FROM service_periods WHERE end < ?", (cutoff,))
-                conn.execute("DELETE FROM iface_samples WHERE ts < ?", (now - IFACE_RETENTION,))
-                conn.execute("DELETE FROM proc_samples WHERE ts < ?", (now - PROC_RETENTION,))
-                conn.execute("DELETE FROM sensor_samples WHERE ts < ?", (now - IFACE_RETENTION,))
-                conn.execute("DELETE FROM traffic_daily WHERE day < ?",
-                             (time.strftime("%Y-%m-%d", time.localtime(now - TRAFFIC_RETENTION_DAYS * 86400)),))
+                cleanup(conn)
+
+def cleanup(conn=None) -> None:
+    """Drop everything older than the limits under Einstellungen -> Datenaufbewahrung."""
+    import retention
+    if conn is None:
+        with connect() as c:
+            return cleanup(c)
+    now = int(time.time())
+    metrics = now - retention.seconds("metrics")
+    cutoff = now - retention.seconds("uptime")
+    conn.execute("DELETE FROM throttle_events WHERE end < ?", (cutoff,))
+    conn.execute("DELETE FROM service_periods WHERE end < ?", (cutoff,))
+    conn.execute("DELETE FROM samples WHERE ts < ?", (metrics,))
+    conn.execute("DELETE FROM iface_samples WHERE ts < ?", (metrics,))
+    conn.execute("DELETE FROM proc_samples WHERE ts < ?", (metrics,))
+    conn.execute("DELETE FROM sensor_samples WHERE ts < ?", (metrics,))
+    conn.execute("DELETE FROM traffic_daily WHERE day < ?",
+                 (time.strftime("%Y-%m-%d", time.localtime(now - retention.seconds("traffic"))),))
+    try:
+        conn.execute("DELETE FROM container_samples WHERE ts < ?", (metrics,))
+    except Exception:
+        pass  # table created on the first container sample
+    try:
+        day = time.strftime("%Y-%m-%d", time.localtime(now - retention.seconds("disk")))
+        conn.execute("DELETE FROM disk_daily WHERE day < ?", (day,))
+        conn.execute("DELETE FROM folder_sizes WHERE day < ?", (day,))
+    except Exception:
+        pass
 
 
 def clear() -> None:

@@ -48,6 +48,7 @@
       <a href="#runbooks">Runbooks</a>
       <a href="#steckbriefe">Steckbriefe</a>
       <a href="#vertraege">Verträge &amp; Abos</a>
+      <a href="#domains">Domains</a>
       <a href="#befehle">Befehle</a>
       <a href="#kosten">Kosten</a>
     </nav>
@@ -156,6 +157,21 @@
         </form>
         <div class="docs-form" id="ct-form-wrap" hidden></div>
         <div class="table-scroll"><table class="data-table docs-table" id="ct-table"></table></div>
+      </section>
+
+      <!-- Domains -->
+      <section class="glass-card settings-section" id="domains">
+        <div class="section-head">
+          <h2>Domains</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="dm-summary"></span>
+            <button data-perm="notes.edit" class="btn-secondary" id="dm-check" type="button">Jetzt prüfen</button>
+            <button data-perm="notes.edit" class="btn-primary" id="dm-add" type="button">Domain hinzufügen</button>
+          </div>
+        </div>
+        <p class="section-desc">Eigene Domains mit Ablaufdatum, Registrar und Nameservern – einmal täglich per RDAP (dem Nachfolger von WHOIS) abgefragt. Einige Registries wie DENIC (.de) veröffentlichen kein Ablaufdatum; dann das Verlängerungsdatum von Hand eintragen. Rechtzeitig vor Ablauf erscheint eine Warnung in der Statusübersicht und in der Tagesübersicht per E-Mail.</p>
+        <div class="docs-form" id="dm-form-wrap" hidden></div>
+        <div class="table-scroll"><table class="data-table docs-table" id="dm-table"></table></div>
       </section>
 
       <!-- Befehle -->

@@ -73,6 +73,10 @@ import reminders
 import maintenance
 import docs
 import autoupdate
+import backups
+import domains
+import notify
+import retention
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -91,11 +95,13 @@ async def lifespan(app: FastAPI):
     history_task = asyncio.create_task(history.background_sampler())
     health_task = asyncio.create_task(healthchecks.background_checker())
     autoupdate_task = asyncio.create_task(autoupdate.background_runner())
+    notify_task = asyncio.create_task(notify.background_runner())
     if not AGENT:
         await mcp_server.reload()
     yield
     await mcp_server.shutdown()
     autoupdate_task.cancel()
+    notify_task.cancel()
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
@@ -1614,6 +1620,138 @@ async def api_settings_mcp_save(payload: dict, request: Request):
     return await mcp_server.reload()
 
 
+@app.post("/api/settings/mcp/approval")
+async def api_settings_mcp_approval(payload: dict, request: Request):
+    """Which MCP actions wait for a confirmation (no restart of the MCP server needed)."""
+    request.state.audit_detail = f"{'an' if payload.get('enabled') else 'aus'} · {len(payload.get('tools') or [])} Werkzeuge"
+    try:
+        await asyncio.to_thread(mcp_server.save_approval, payload)
+    except mcp_server.McpConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return mcp_server.public()
+
+
+@app.get("/api/settings/mcp/calls")
+async def api_settings_mcp_calls(tool: str = "", user: str = "", status: str = "", q: str = "", limit: int = 200):
+    return await asyncio.to_thread(mcp_server.calls, tool, user, status, q, limit)
+
+
+@app.get("/api/mcp/approvals")
+async def api_mcp_approvals(request: Request):
+    user = request.state.user or ""
+    return mcp_server.approvals(user, auth.can(user, "users.manage"))
+
+
+@app.post("/api/mcp/approvals/{approval_id}/{decision}")
+async def api_mcp_approval_decide(approval_id: str, decision: str, request: Request):
+    if getattr(request.state, "via_mcp", False):
+        raise HTTPException(status_code=403, detail="Freigaben nur im Dashboard, nicht über den MCP.")
+    if decision not in ("approve", "deny"):
+        raise HTTPException(status_code=404, detail="Unbekannte Entscheidung.")
+    user = request.state.user or ""
+    try:
+        a = mcp_server.decide(approval_id, decision == "approve", user, auth.can(user, "users.manage"))
+    except mcp_server.McpConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    request.state.audit_detail = f"{a['tool']} · {a['user']} · {a['summary']}"[:250]
+    return mcp_server.approvals(user, auth.can(user, "users.manage"))
+
+
+# ---------------------------------------------------------------------------
+# E-mail notifications
+# ---------------------------------------------------------------------------
+@app.get("/api/settings/email")
+async def api_settings_email():
+    return notify.public()
+
+
+@app.post("/api/settings/email")
+async def api_settings_email_save(payload: dict, request: Request):
+    request.state.audit_detail = f"{'an' if payload.get('enabled') else 'aus'} · {payload.get('host', '')}"[:250]
+    try:
+        return await asyncio.to_thread(notify.save, payload)
+    except notify.NotifyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/email/test")
+async def api_settings_email_test(payload: dict = None):
+    kind = (payload or {}).get("kind", "test")
+    try:
+        if kind == "weekly":
+            subject, text, body = await asyncio.to_thread(notify.weekly_content)
+            await asyncio.to_thread(notify.send, subject, text, body)
+        elif kind == "daily":
+            items = await asyncio.to_thread(notify.deadlines)
+            text, body = notify._render("Tagesübersicht (Vorschau)", "So sieht die tägliche Übersicht heute aus.",
+                                        [("Fällig und bald fällig", items or [("good", "Heute ist nichts fällig.", "")])], "/")
+            await asyncio.to_thread(notify.send, "[PiCore] Tagesübersicht (Vorschau)", text, body)
+        else:
+            await asyncio.to_thread(notify.send_test)
+    except notify.NotifyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return notify.public()
+
+
+# ---------------------------------------------------------------------------
+# Data retention
+# ---------------------------------------------------------------------------
+@app.get("/api/settings/retention")
+async def api_settings_retention():
+    return await asyncio.to_thread(retention.overview)
+
+
+@app.post("/api/settings/retention")
+async def api_settings_retention_save(payload: dict, request: Request):
+    request.state.audit_detail = ", ".join(f"{k}={v}" for k, v in payload.items())[:250]
+    try:
+        return await asyncio.to_thread(retention.save, payload)
+    except retention.RetentionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/retention/cleanup")
+async def api_settings_retention_cleanup():
+    return await asyncio.to_thread(retention.cleanup_now)
+
+
+# ---------------------------------------------------------------------------
+# Backup check (per Pi)
+# ---------------------------------------------------------------------------
+def _backup_call(fn, *args):
+    try:
+        return fn(*args)
+    except backups.BackupError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/backups")
+async def api_backups():
+    return await asyncio.to_thread(backups.overview)
+
+
+@app.post("/api/backups")
+async def api_backups_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_backup_call, backups.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/backups/{job_id}")
+async def api_backups_update(job_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_backup_call, backups.save, job_id, payload, request.state.user or "")
+
+
+@app.post("/api/backups/{job_id}/check")
+async def api_backups_check(job_id: str):
+    return await asyncio.to_thread(backups.start_check, job_id)
+
+
+@app.post("/api/backups/{job_id}/delete")
+async def api_backups_delete(job_id: str):
+    return await asyncio.to_thread(backups.delete, job_id)
+
+
 @app.post("/api/terminal/ticket")
 async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     """Re-check the password before handing out a one-time terminal ticket.
@@ -2442,6 +2580,22 @@ async def api_container_images_check():
     return imagecheck.start_check()
 
 
+@app.get("/api/containers/images/releases")
+async def api_container_image_releases(ref: str, refresh: bool = False):
+    try:
+        return await asyncio.to_thread(imagecheck.releases, ref, refresh)
+    except (ValueError, httpx.HTTPError) as e:
+        raise HTTPException(status_code=400, detail=str(e) or "GitHub nicht erreichbar.")
+
+
+@app.post("/api/containers/images/source")
+async def api_container_image_source(payload: dict):
+    try:
+        return await asyncio.to_thread(imagecheck.set_source, str(payload.get("repo", "")), str(payload.get("github", "")))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 def _appstore_call(fn, *args):
     try:
         return fn(*args)
@@ -2679,6 +2833,40 @@ async def get_docs_page():
     return _serve_page("docs.html")
 
 
+def _domain_call(fn, *args):
+    try:
+        return fn(*args)
+    except domains.DomainError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/docs/domains")
+async def api_docs_domains():
+    return await asyncio.to_thread(domains.overview)
+
+
+@app.post("/api/docs/domains")
+async def api_docs_domains_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_domain_call, domains.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/docs/domains/check")
+async def api_docs_domains_check():
+    return await asyncio.to_thread(domains.start_check)
+
+
+@app.post("/api/docs/domains/{domain_id}")
+async def api_docs_domains_update(domain_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_domain_call, domains.save, domain_id, payload, request.state.user or "")
+
+
+@app.post("/api/docs/domains/{domain_id}/delete")
+async def api_docs_domains_delete(domain_id: str):
+    return await asyncio.to_thread(domains.delete, domain_id)
+
+
 @app.get("/api/docs/inventory")
 async def api_docs_inventory():
     return await asyncio.to_thread(docs.inventory)
@@ -2780,6 +2968,11 @@ def _wiki_call(fn, *args, **kwargs):
 @app.get("/api/wiki")
 async def api_wiki_pages():
     return await asyncio.to_thread(wiki.pages)
+
+
+@app.get("/api/wiki/templates")
+async def api_wiki_templates():
+    return await asyncio.to_thread(wiki.templates)
 
 
 @app.get("/api/wiki/{page_id}")

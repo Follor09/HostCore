@@ -221,3 +221,85 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
   side.addEventListener('click', e => { if (e.target.closest('a.side-item[href]:not([target])')) closeDrawer(); });
 })();
+
+/**
+ * MCP approvals on every page: a bar at the bottom as soon as Claude waits for a confirmation
+ * (approve / deny right there, details under Einstellungen -> MCP-Aktivität).
+ */
+(function () {
+  'use strict';
+
+  const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
+  let bar = null;
+  let seen = '';
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  async function decide(id, decision) {
+    try {
+      const res = await fetch(`/api/mcp/approvals/${id}/${decision}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      render(await res.json());
+    } catch (e) { /* next poll */ }
+  }
+
+  function render(d) {
+    const open = (d && d.items || []).filter(a => a.status === 'pending');
+    if (!open.length || location.hash === '#mcp-aktivitaet') {
+      if (bar) bar.hidden = true;
+      return;
+    }
+    if (!bar) {
+      bar = el('div', 'mcp-approval-bar');
+      bar.setAttribute('role', 'alert');
+      document.body.appendChild(bar);
+    }
+    const a = open[0];
+    const key = open.map(x => x.id).join(',');
+    bar.hidden = false;
+    if (key === seen) return;
+    seen = key;
+    bar.innerHTML = '';
+    const text = el('div', 'mcp-approval-text');
+    text.appendChild(el('strong', '', t('Claude wartet auf Freigabe')));
+    const what = el('span', '', `${a.tool} · ${a.summary}`);
+    what.setAttribute('data-no-i18n', '');
+    text.appendChild(what);
+    if (open.length > 1) text.appendChild(el('span', 'field-hint', `+${open.length - 1} ${t('weitere')}`));
+    const ok = el('button', 'btn-primary', t('Freigeben'));
+    const no = el('button', 'btn-danger', t('Ablehnen'));
+    const more = el('a', 'btn-secondary', t('Details'));
+    more.href = '/settings#mcp-aktivitaet';
+    [ok, no].forEach(b => { b.type = 'button'; });
+    ok.addEventListener('click', () => { ok.disabled = true; decide(a.id, 'approve'); });
+    no.addEventListener('click', () => { no.disabled = true; decide(a.id, 'deny'); });
+    const actions = el('div', 'mcp-approval-actions');
+    actions.append(ok, no, more);
+    bar.append(text, actions);
+  }
+
+  async function poll() {
+    if (document.hidden) return;
+    try {
+      const res = await fetch('/api/mcp/approvals');
+      if (!res.ok) return;
+      const d = await res.json();
+      if (!d.enabled && !d.pending) return;
+      render(d);
+    } catch (e) { /* offline */ }
+  }
+
+  async function start() {
+    if (window.PiAuth) await window.PiAuth.ready;
+    if (window.PiAuth && !window.PiAuth.user) return;
+    poll();
+    setInterval(poll, 10000);
+    window.addEventListener('hashchange', poll);
+  }
+
+  start();
+})();

@@ -17,12 +17,12 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+import history
 import homelab
 
 logger = logging.getLogger("pi_dashboard.containers")
 
 CACHE_TTL = 8
-STATS_RETENTION = 7 * 86400
 _cache: Dict[str, Any] = {}
 _lock = threading.Lock()
 
@@ -704,7 +704,7 @@ def sample(conn, now: int) -> None:
     if rows:
         conn.executemany("INSERT INTO container_samples VALUES (?,?,?,?,?,?,?)", rows)
     if now % 3600 < 60:
-        conn.execute("DELETE FROM container_samples WHERE ts < ?", (now - STATS_RETENTION,))
+        conn.execute("DELETE FROM container_samples WHERE ts < ?", (now - history.retention_seconds(),))
 
 
 def _pod_group(name: str) -> str:

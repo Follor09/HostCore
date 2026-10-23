@@ -78,6 +78,7 @@
   // View
   // ---------------------------------------------------------------------------
   function showView() {
+    $('wiki-templates').hidden = true;
     $('wiki-empty').hidden = !!current;
     $('wiki-view').hidden = !current;
     $('wiki-form').hidden = true;
@@ -201,8 +202,42 @@
     if (mode === 'preview') { $('wiki-preview').innerHTML = ''; $('wiki-preview').appendChild(md($('wiki-f-content').value)); }
   }
 
+  // ---------------------------------------------------------------------------
+  // Templates for new pages
+  // ---------------------------------------------------------------------------
+  const fill = (text, vars) => text.replace(/\{\{\s*(titel|datum|benutzer)\s*\}\}/gi, (m, k) => (vars[k.toLowerCase()] ?? m));
+
+  async function chooseTemplate() {
+    let list = [];
+    try { list = (await api('/api/wiki/templates')).templates; } catch (err) { toast(err.message, 'error'); }
+    $('wiki-empty').hidden = true;
+    $('wiki-view').hidden = true;
+    $('wiki-form').hidden = true;
+    $('wiki-templates').hidden = false;
+    const grid = $('wiki-template-grid');
+    grid.innerHTML = '';
+    const vars = { datum: new Date().toLocaleDateString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      benutzer: (window.PiAuth && window.PiAuth.user) || '' };
+    [{ id: '', title: 'Leere Seite', description: 'Ohne Gliederung beginnen', content: '', folder: '' }, ...list].forEach(tpl => {
+      const card = el('button', `wiki-template${tpl.own ? ' own' : ''}`);
+      card.type = 'button';
+      const name = el('span', 'wiki-template-name', tpl.own ? tpl.title : t(tpl.title));
+      if (tpl.own) name.setAttribute('data-no-i18n', '');
+      card.append(name, el('span', 'field-hint', t(tpl.description)));
+      if (tpl.folder) {
+        const f = el('span', 'wiki-template-folder', `${t('Ordner')}: ${tpl.folder}`);
+        card.appendChild(f);
+      }
+      card.addEventListener('click', () => {
+        startEdit({ title: '', folder: tpl.own ? '' : tpl.folder, content: fill(tpl.content || '', vars), template: true });
+      });
+      grid.appendChild(card);
+    });
+  }
+
   function startEdit(page) {
     editing = page || {};
+    $('wiki-templates').hidden = true;
     $('wiki-empty').hidden = true;
     $('wiki-view').hidden = true;
     $('wiki-form').hidden = false;
@@ -224,6 +259,7 @@
   async function save(e) {
     e.preventDefault();
     const body = { title: $('wiki-f-title').value.trim(), folder: $('wiki-f-folder').value.trim(), content: $('wiki-f-content').value };
+    if (!editing.id && body.folder.split('/')[0] !== 'Vorlagen') body.content = fill(body.content, { titel: body.title });
     try {
       const page = editing.id ? await api(`/api/wiki/${editing.id}`, { ...body, base: editing.updated }) : await api('/api/wiki', body);
       editing = null;
@@ -246,7 +282,8 @@
       $('user-chip').hidden = false;
     } catch (e) { /* ignore */ }
     $('wiki-q').addEventListener('input', renderTree);
-    $('wiki-new').addEventListener('click', () => startEdit({}));
+    $('wiki-new').addEventListener('click', chooseTemplate);
+    $('wiki-tpl-cancel').addEventListener('click', showView);
     $('wiki-edit').addEventListener('click', () => startEdit(current));
     $('wiki-history').addEventListener('click', () => panel(historyPanel));
     $('wiki-attach').addEventListener('click', () => panel(attachPanel));
