@@ -147,43 +147,120 @@ def _link(path: str) -> str:
     return f"{base}{path}" if base and path.startswith("/") else ""
 
 
-def _render(title: str, intro: str, sections: List[Tuple[str, List[Tuple[str, str, str]]]], footer_link: str = "") -> Tuple[str, str]:
-    """Plain text + simple HTML. sections: (heading, [(level, text, link path)])."""
-    text = [title, "=" * len(title), ""]
+COLORS = {"critical": "#dc2626", "warning": "#d97706", "good": "#059669", "info": "#64748b"}
+OVERALL = {"critical": ("Kritisch", "#dc2626"), "warning": ("Warnungen", "#d97706"), "info": ("Hinweise", "#0891b2"),
+           "good": ("Alles in Ordnung", "#059669")}
+FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+
+
+def _render(title: str, intro: str, sections: List[Tuple[str, List[tuple]]], footer_link: str = "",
+            tiles: Optional[List[Tuple[str, str, str, str]]] = None, overall: str = "") -> Tuple[str, str]:
+    """Plain text + HTML mail (tables and inline styles, so Outlook, Gmail and Apple Mail show the same).
+    sections: (heading, [(level, text, link path[, value on the right])]); tiles: (label, value, sub, level)."""
+    e = html.escape
+    host = _hostname()
+    # ---- plain text
+    text = [title, "=" * len(title)]
     if intro:
-        text += [intro, ""]
-    parts = [f'<h1 style="font-size:18px;margin:0 0 6px">{html.escape(title)}</h1>']
-    if intro:
-        parts.append(f'<p style="margin:0 0 14px;color:#4a5568">{html.escape(intro)}</p>')
-    colors = {"critical": "#c53030", "warning": "#b7791f", "good": "#2f855a", "info": "#4a5568"}
+        text.append(intro)
+    text.append("")
+    if overall in OVERALL:
+        text += [f"Zustand: {OVERALL[overall][0]}", ""]
+    for label, value, sub, _ in tiles or []:
+        text.append(f"{label}: {value}{f' ({sub})' if sub else ''}")
+    if tiles:
+        text.append("")
     for heading, lines in sections:
         if not lines:
             continue
         text += [heading, "-" * len(heading)]
-        parts.append(f'<h2 style="font-size:14px;margin:16px 0 6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px">{html.escape(heading)}</h2>'
-                     '<table style="border-collapse:collapse;width:100%;font-size:13px">')
-        for level, line, path in lines:
+        for line in lines:
+            level, msg, path = line[0], line[1], line[2]
+            value = line[3] if len(line) > 3 else ""
             url = _link(path) if path else ""
             label = LEVEL_LABEL.get(level, "")
-            text.append(f"- {f'[{label}] ' if label and level != 'info' else ''}{line}{f'  {url}' if url else ''}")
-            cell = html.escape(line)
-            if url:
-                cell = f'<a href="{html.escape(url)}" style="color:#2b6cb0;text-decoration:none">{cell}</a>'
-            tag = (f'<span style="display:inline-block;min-width:62px;color:{colors.get(level, "#4a5568")};font-weight:600">'
-                   f'{html.escape(label)}</span>') if label and level != "info" else ""
-            parts.append(f'<tr><td style="padding:4px 0;border-bottom:1px solid #f1f5f9">{tag}{cell}</td></tr>')
-        parts.append("</table>")
+            text.append(f"- {f'[{label}] ' if label and level not in ('info', 'good') else ''}{msg}{f'  {value}' if value else ''}"
+                        f"{f'  <{url}>' if url else ''}")
         text.append("")
     link = _link(footer_link or "/")
     if link:
-        text.append(f"Dashboard: {link}")
-        parts.append(f'<p style="margin-top:18px;font-size:12px;color:#718096"><a href="{html.escape(link)}" style="color:#2b6cb0">Im Dashboard öffnen</a></p>')
-    host = _hostname()
+        text.append(f"Im Dashboard: {link}")
     text.append(f"-- PiCore auf {host}")
-    parts.append(f'<p style="font-size:11px;color:#a0aec0;margin-top:8px">PiCore auf {html.escape(host)}</p>')
-    body = ('<!doctype html><html><body style="margin:0;background:#f7fafc">'
-            '<div style="max-width:640px;margin:0 auto;padding:20px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
-            'color:#1a202c;background:#ffffff">' + "".join(parts) + "</div></body></html>")
+
+    # ---- HTML
+    parts = []
+    pill = ""
+    if overall in OVERALL:
+        name, color = OVERALL[overall]
+        pill = (f'<td align="right" style="vertical-align:top"><span style="display:inline-block;padding:5px 12px;border-radius:999px;'
+                f'background:{color};color:#ffffff;font-size:12px;font-weight:600;white-space:nowrap">{e(name)}</span></td>')
+    parts.append(
+        '<tr><td class="pad" style="background:#0f172a;padding:22px 28px;border-radius:14px 14px 0 0">'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td>'
+        '<div style="font-size:11px;letter-spacing:2px;font-weight:700;color:#22d3ee">PICORE</div>'
+        f'<div style="font-size:22px;font-weight:700;color:#ffffff;margin-top:6px">{e(title)}</div>'
+        f'<div style="font-size:13px;color:#94a3b8;margin-top:4px">{e(intro or host)}</div>'
+        f'</td>{pill}</tr></table></td></tr>')
+    body_rows = []
+    if tiles:
+        cells = []
+        for label, value, sub, level in tiles:
+            color = COLORS.get(level, "#cbd5e1") if level else "#cbd5e1"
+            sub_html = f'<div style="font-size:12px;color:#64748b;margin-top:2px">{e(sub)}</div>' if sub else ""
+            cells.append(
+                f'<td class="tile" width="33%" style="padding:6px;vertical-align:top">'
+                f'<div style="border:1px solid #e2e8f0;border-top:3px solid {color};border-radius:10px;padding:12px 14px;background:#ffffff">'
+                f'<div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">{e(label)}</div>'
+                f'<div style="font-size:20px;font-weight:700;color:#0f172a;margin-top:4px">{e(value)}</div>'
+                f'{sub_html}'
+                '</div></td>')
+        rows = ["".join(cells[i:i + 3]) for i in range(0, len(cells), 3)]
+        body_rows.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed">'
+                         + "".join(f"<tr>{r}</tr>" for r in rows) + "</table>")
+    for heading, lines in sections:
+        if not lines:
+            continue
+        body_rows.append(f'<div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;'
+                         f'margin:22px 0 8px">{e(heading)}</div>')
+        trs = []
+        for n, line in enumerate(lines):
+            level, msg, path = line[0], line[1], line[2]
+            value = line[3] if len(line) > 3 else ""
+            url = _link(path) if path else ""
+            dot = COLORS.get(level, "#94a3b8")
+            label = LEVEL_LABEL.get(level, "") if level in ("warning", "critical") else ""
+            cell = e(msg)
+            if url:
+                cell = f'<a href="{e(url)}" style="color:#0f172a;text-decoration:none">{cell}</a>'
+            if label:
+                cell += f' <span style="font-size:11px;font-weight:600;color:{dot}">{e(label)}</span>'
+            border = "" if n == len(lines) - 1 else "border-bottom:1px solid #f1f5f9;"
+            trs.append(f'<tr><td width="18" style="padding:9px 0;{border}vertical-align:top">'
+                       f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{dot};margin-top:5px"></span></td>'
+                       f'<td style="padding:9px 8px 9px 0;{border}font-size:14px;color:#0f172a;line-height:1.45">{cell}</td>'
+                       f'<td align="right" style="padding:9px 0;{border}font-size:13px;color:#475569;white-space:nowrap;vertical-align:top;'
+                       f'font-variant-numeric:tabular-nums">{e(value)}</td></tr>')
+        body_rows.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+                         'style="border:1px solid #e2e8f0;border-radius:10px;padding:2px 14px;background:#ffffff">' + "".join(trs) + "</table>")
+    if link:
+        body_rows.append(f'<div style="margin:26px 0 4px;text-align:center"><a href="{e(link)}" style="display:inline-block;background:#0891b2;'
+                         'color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:9px">'
+                         'Im Dashboard öffnen</a></div>')
+    parts.append('<tr><td class="pad" style="background:#f8fafc;padding:22px 28px 26px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 14px 14px">'
+                 + "".join(body_rows) + "</td></tr>")
+    settings = _link("/settings#email")
+    footer = f"PiCore auf {e(host)}"
+    if settings:
+        footer += f' · <a href="{e(settings)}" style="color:#64748b">Benachrichtigungen einstellen</a>'
+    parts.append(f'<tr><td style="padding:16px 8px;text-align:center;font-size:12px;color:#94a3b8">{footer}</td></tr>')
+    body = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">'
+            '<style>@media (max-width:540px){.tile{display:block!important;width:100%!important;box-sizing:border-box;padding:4px 0!important}'
+            '.pad{padding-left:16px!important;padding-right:16px!important}.outer{padding:12px 6px!important}}</style></head>'
+            f'<body style="margin:0;padding:0;background:#e2e8f0;font-family:{FONT}">'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e2e8f0"><tr><td class="outer" align="center" style="padding:24px 12px">'
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;font-family:{FONT}">'
+            + "".join(parts) + "</table></td></tr></table></body></html>")
     return "\n".join(text), body
 
 
@@ -273,10 +350,11 @@ def _event_mail(now: int) -> None:
     if new:
         new.sort(key=lambda e: e["ts"])
         worst = max(new, key=lambda e: LEVELS[e["level"]])
-        lines = [(e["level"], f"{_fmt_ts(e['ts'])}  {e['title']}{f' – ' + e['detail'] if e.get('detail') else ''}", e.get("link", ""))
+        lines = [(e["level"], f"{e['title']}{f' – ' + e['detail'] if e.get('detail') else ''}", e.get("link", ""), _fmt_ts(e["ts"]))
                  for e in new]
         subject = f"[PiCore] {worst['title']}" if len(new) == 1 else f"[PiCore] {len(new)} neue Ereignisse ({LEVEL_LABEL[worst['level']]})"
-        text, body = _render("Neue Ereignisse", f"Seit {_fmt_ts(since)} auf {_hostname()}:", [("Ereignisse", lines)], "/system#ereignisse")
+        text, body = _render("Neue Ereignisse", f"{_hostname()} · seit {_fmt_ts(since)}", [("Ereignisse", lines)], "/system#ereignisse",
+                             overall=worst["level"])
         if not _send_quiet(subject, text, body):
             return  # try again next round
     _set_state(last_event_ts=now)
@@ -322,8 +400,9 @@ def _daily_mail() -> bool:
     items = deadlines()
     if not items:
         return True
-    text, body = _render("Tagesübersicht", f"Fällige Erinnerungen und Fristen am {time.strftime('%d.%m.%Y')}.",
-                         [("Fällig und bald fällig", items)], "/")
+    worst = max((LEVELS.get(i[0], 0) for i in items), default=0)
+    text, body = _render("Tagesübersicht", f"{_hostname()} · {time.strftime('%d.%m.%Y')}",
+                         [("Fällig und bald fällig", items)], "/", overall=["good", "info", "warning", "critical"][worst])
     n = len(items)
     return _send_quiet(f"[PiCore] Tagesübersicht: {n} {'Punkt' if n == 1 else 'Punkte'}", text, body)
 
@@ -332,40 +411,63 @@ def weekly_content() -> Tuple[str, str, str]:
     import insights
     rep = insights.weekly_report()
     m = rep["metrics"]
-    fmt = lambda v, unit="": "–" if v is None else f"{v:g}{unit}"
-    figures = [("info", f"CPU im Schnitt {fmt(m['cpu_avg'], ' %')}, höchstens {fmt(m['cpu_max'], ' %')}", ""),
-               ("info", f"Temperatur im Schnitt {fmt(m['temp_avg'], ' °C')}, höchstens {fmt(m['temp_max'], ' °C')}", ""),
-               ("info", f"Arbeitsspeicher im Schnitt {fmt(m['ram_avg'], ' %')}, höchstens {fmt(m['ram_max'], ' %')}", "")]
-    if m.get("power_avg") is not None:
-        figures.append(("info", f"Leistungsaufnahme im Schnitt {fmt(m['power_avg'], ' W')}", ""))
-    ev = rep.get("events", {})
-    figures.append(("warning" if ev.get("critical") else "info",
-                    f"Ereignisse: {ev.get('critical', 0)} kritisch, {ev.get('warning', 0)} Warnungen", "/system#ereignisse"))
-    avail = []
+    num = lambda v, unit="", d=1: "–" if v is None else f"{v:.{d}f}".replace(".", ",") + unit
+
+    # Availability: services and web checks
+    avail, values = [], []
     for s in rep.get("services", []):
         if s["uptime"] is not None and not s["never_up"]:
-            avail.append(("good" if s["uptime"] >= 99.9 else "warning" if s["uptime"] >= 99 else "critical",
-                          f"{s['name']}: {s['uptime']:.2f} % ({s['outages']} Ausfälle)", "/system#verfuegbarkeit"))
+            values.append(s["uptime"])
+            avail.append(("good" if s["uptime"] >= 99.9 else "warning" if s["uptime"] >= 99 else "critical", s["name"],
+                          "/system#verfuegbarkeit", f"{num(s['uptime'], ' %', 2)}" + (f" · {s['outages']} Ausf." if s["outages"] else "")))
     for w in rep.get("web_services", []):
         if w["uptime"] is not None:
-            avail.append(("good" if w["uptime"] >= 99.9 else "warning" if w["uptime"] >= 99 else "critical",
-                          f"{w['name']}: {w['uptime']:.2f} %", "/settings#web-dienste"))
-    changes = [("info", f"{_fmt_ts(j['ts'])}  {j['title']} ({j['category']})", "/doku#tagebuch") for j in rep.get("journal", [])[:15]]
-    changes += [("info", f"{_fmt_ts(c['ts'])}  {c['action']}{' – ' + c['detail'] if c.get('detail') else ''}", "/system#aktivitaet")
-                for c in rep.get("changes", [])[:15]]
-    status = [(i["level"], i["text"], i.get("link", "") if i.get("link", "").startswith("/") else "")
-              for i in rep.get("status", {}).get("items", []) if i["level"] != "good"]
+            values.append(w["uptime"])
+            avail.append(("good" if w["uptime"] >= 99.9 else "warning" if w["uptime"] >= 99 else "critical", w["name"],
+                          "/settings#web-dienste", num(w["uptime"], " %", 2)))
+    avail.sort(key=lambda a: -LEVELS.get(a[0], 0))
+    worst_up = min(values) if values else None
+    ev = rep.get("events", {})
     logins = rep.get("logins", {})
-    security = [("warning" if logins.get("failed") else "info",
-                 f"Dashboard-Anmeldungen: {logins.get('ok', 0)} erfolgreich, {logins.get('failed', 0)} fehlgeschlagen", "/system#aktivitaet")]
+    temp_max = m.get("temp_max")
+    tiles = [
+        ("Verfügbarkeit", num(worst_up, " %", 2) if worst_up is not None else "–", "schlechtester Dienst" if values else "keine Dienste",
+         "" if worst_up is None else "good" if worst_up >= 99.9 else "warning" if worst_up >= 99 else "critical"),
+        ("Ereignisse", f"{ev.get('critical', 0)} / {ev.get('warning', 0)}", "kritisch / Warnungen",
+         "critical" if ev.get("critical") else "warning" if ev.get("warning") else "good"),
+        ("Anmeldungen", f"{logins.get('failed', 0)}", f"fehlgeschlagen · {logins.get('ok', 0)} erfolgreich",
+         "warning" if logins.get("failed") else "good"),
+        ("CPU", num(m.get("cpu_avg"), " %"), f"Spitze {num(m.get('cpu_max'), ' %')}", ""),
+        ("Temperatur", num(temp_max, " °C"), f"höchstens · Ø {num(m.get('temp_avg'), ' °C')}",
+         "" if temp_max is None else "critical" if temp_max >= 80 else "warning" if temp_max >= 70 else "good"),
+        ("Arbeitsspeicher", num(m.get("ram_avg"), " %"), f"Ø · Spitze {num(m.get('ram_max'), ' %')}", ""),
+    ]
+    if m.get("power_avg") is not None:
+        tiles.append(("Leistung", num(m["power_avg"], " W", 2), "im Schnitt", ""))
+    traffic = rep.get("traffic") or {}
+    if traffic.get("rx") or traffic.get("tx"):
+        gb = lambda b: f"{b / 1e9:.1f}".replace(".", ",") + " GB"
+        tiles.append(("Datenverbrauch", gb((traffic.get("rx") or 0) + (traffic.get("tx") or 0)),
+                      f"↓ {gb(traffic.get('rx') or 0)} · ↑ {gb(traffic.get('tx') or 0)}", ""))
+
+    status_items = rep.get("status", {}).get("items", [])
+    status = [(i["level"], i["text"], i.get("link", "") if i.get("link", "").startswith("/") else "")
+              for i in status_items if i["level"] != "good"]
+    overall = rep.get("status", {}).get("level", "good")
+    security = []
     if logins.get("ssh_failed"):
-        security.append(("warning" if logins["ssh_failed"] >= 20 else "info", f"Fehlgeschlagene SSH-Anmeldungen: {logins['ssh_failed']}", "/system#ssh"))
+        security.append(("warning" if logins["ssh_failed"] >= 20 else "info", "Fehlgeschlagene SSH-Anmeldungen", "/system#ssh", str(logins["ssh_failed"])))
     for d in rep.get("new_devices", [])[:10]:
         security.append(("info", f"Neues Gerät: {d}", "/system#geraete"))
+    dated = [(j["ts"], ("info", f"{j['title']} ({j['category']})", "/doku#tagebuch", _fmt_ts(j["ts"]))) for j in rep.get("journal", [])[:15]]
+    dated += [(c["ts"], ("info", f"{c['action']}{' – ' + c['detail'] if c.get('detail') else ''}", "/system#aktivitaet", _fmt_ts(c["ts"])))
+              for c in rep.get("changes", [])[:15]]
+    changes = [c for _, c in sorted(dated, key=lambda x: -x[0])]
+    top = [("info", h["label"], "/system#ressourcen", f"{num(h['cpu_avg'], ' %')} CPU") for h in rep.get("top_cpu", [])[:5]]
     period = f"{time.strftime('%d.%m.', time.localtime(rep['from']))} – {time.strftime('%d.%m.%Y', time.localtime(rep['to']))}"
-    text, body = _render("Wochenbericht", f"{_hostname()}, {period}.",
-                         [("Aktueller Zustand", status), ("Kennzahlen", figures), ("Verfügbarkeit", avail),
-                          ("Sicherheit", security), ("Änderungen", changes)], "/report")
+    text, body = _render("Wochenbericht", f"{_hostname()} · {period}",
+                         [("Was gerade Aufmerksamkeit braucht", status), ("Verfügbarkeit", avail), ("Sicherheit", security),
+                          ("Änderungen", changes[:20]), ("Größte CPU-Verbraucher", top)], "/report", tiles=tiles, overall=overall)
     return f"[PiCore] Wochenbericht {period}", text, body
 
 
