@@ -28,7 +28,7 @@
 
   async function api(path, body) {
     const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (res.status === 401) { location.href = '/login'; throw new Error('Nicht angemeldet.'); }
+    if (res.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; throw new Error('Nicht angemeldet.'); }
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.detail || `Fehler ${res.status}`);
     return json;
@@ -277,7 +277,7 @@
     if (window.PiAuth) await window.PiAuth.ready;
     try {
       const status = await (await fetch('/api/auth/status')).json();
-      if (!status.user) { location.href = '/login'; return; }
+      if (!status.user) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
       $('user-name').textContent = status.user;
       $('user-chip').hidden = false;
     } catch (e) { /* ignore */ }

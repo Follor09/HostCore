@@ -72,6 +72,13 @@
       const notice = document.getElementById('login-notice');
       const submit = document.getElementById('login-submit');
 
+      // Where to go after signing in: the page that sent us here (only paths of this dashboard)
+      function nextTarget() {
+        const next = new URLSearchParams(location.search).get('next') || '/';
+        if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\') || next.startsWith('/login')) return '/';
+        return next + location.hash;
+      }
+
       function showError(msg) {
         errorBox.textContent = msg;
         errorBox.hidden = !msg;
@@ -111,7 +118,7 @@
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.detail || 'Anmeldung fehlgeschlagen.');
           try { localStorage.setItem('loginUser', user.value.trim()); } catch (e) { /* ignore */ }
-          location.replace('/');
+          location.replace(nextTarget());
         } catch (err) {
           showError(err.message);
           pass.value = '';

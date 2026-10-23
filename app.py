@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
+from urllib.parse import quote
 
 import system_info
 import services_manager
@@ -273,6 +274,10 @@ async def require_login(request: Request, call_next):
         if not (perm is None and is_read and auth.public_view()):
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Nicht angemeldet."}, status_code=401)
+            # Back to this page after signing in (the browser keeps the #section across the redirect)
+            target = path + (f"?{request.url.query}" if request.url.query else "")
+            if request.method == "GET" and path not in ("/", "/login"):
+                return RedirectResponse(f"/login?next={quote(target, safe='')}", status_code=303)
             return RedirectResponse("/login", status_code=303)
     elif perm not in (None, "login") and not auth.can(user, perm):
         label = next((p[1] for p in auth.PERMISSIONS if p[0] == perm), perm)
@@ -292,10 +297,18 @@ class LoginRequest(BaseModel):
     remember: bool = False
 
 
+def _safe_next(target: str) -> str:
+    """Only paths of this dashboard - never another site (open redirect)."""
+    target = target or "/"
+    if not target.startswith("/") or target.startswith("//") or "\\" in target or target.startswith("/login"):
+        return "/"
+    return target
+
+
 @app.get("/login")
-async def login_page(request: Request):
+async def login_page(request: Request, next: str = ""):
     if request.state.user:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(_safe_next(next), status_code=303)
     return _serve_page("login.html")
 
 

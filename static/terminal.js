@@ -141,7 +141,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: $('term-password').value, container })
       });
-      if (res.status === 401) { location.href = '/login'; return; }
+      if (res.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Terminal konnte nicht geöffnet werden.');
       connect(data.ticket);
@@ -158,7 +158,7 @@
   async function init() {
     try {
       const status = await (await fetch('/api/auth/status')).json();
-      if (!status.user) { location.href = '/login'; return; }
+      if (!status.user) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
       $('user-name').textContent = status.user;
       $('user-chip').hidden = false;
     } catch (e) { /* ignore */ }

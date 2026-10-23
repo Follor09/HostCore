@@ -176,7 +176,7 @@
   async function load() {
     try {
       const res = await fetch('/api/report');
-      if (res.status === 401) { location.href = '/login'; return; }
+      if (res.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || `Fehler ${res.status}`);
       render(data);

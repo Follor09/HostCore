@@ -2065,7 +2065,7 @@
     };
 
     state.ws.onclose = function (evt) {
-      if (evt && evt.code === 4401) { location.href = '/login'; return; }
+      if (evt && evt.code === 4401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
       state.connected = false;
       if (els.wsStatusText) els.wsStatusText.textContent = 'Verbindung getrennt';
       if (els.wsStatusChip) {
@@ -3556,7 +3556,7 @@
   window.fetch = async (...args) => {
     const res = await nativeFetch(...args);
     // The notes card is private even in public view: it shows its own hint instead
-    if (res.status === 401 && !/^\/api\/(auth\/|notes|actions|events|disk-forecast)/.test(String(args[0]))) location.href = '/login';
+    if (res.status === 401 && !/^\/api\/(auth\/|notes|actions|events|disk-forecast)/.test(String(args[0]))) location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`;
     return res;
   };
 

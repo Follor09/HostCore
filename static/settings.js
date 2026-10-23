@@ -32,7 +32,7 @@
       body: JSON.stringify(body)
     });
     if (res.status === 401) {
-      location.href = '/login';
+      location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`;
       throw new Error('Nicht angemeldet.');
     }
     const json = await res.json().catch(() => ({}));

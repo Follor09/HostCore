@@ -42,7 +42,7 @@
     const res = await fetch(path, body === undefined ? {} : {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
-    if (res.status === 401) { location.href = '/login'; throw new Error('Nicht angemeldet.'); }
+    if (res.status === 401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; throw new Error('Nicht angemeldet.'); }
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.detail || `Fehler ${res.status}`);
     return json;
