@@ -609,6 +609,13 @@ def _rp(request: Request) -> tuple:
     if not host or not re.match(r"^[A-Za-z0-9.\-\[\]:]{1,260}$", host):
         raise HTTPException(status_code=400, detail="Unbekannte Adresse.")
     rp_id = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]")[0].strip("[")
+    # Prefer the Origin the browser sends: behind a proxy that is not listed as trusted the
+    # scheme (or port) seen here differs from the page's, and the signed origin would never match.
+    # Only taken when it names the same host, so it cannot widen what the passkey is bound to.
+    origin = (request.headers.get("origin") or "").strip().rstrip("/")
+    m = re.match(r"^(https?)://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.\-]+)(:\d{1,5})?$", origin)
+    if m and m.group(2).strip("[]").lower() == rp_id.lower():
+        return rp_id, origin
     return rp_id, f"{websec.scheme(request)}://{host}"
 
 
