@@ -103,6 +103,26 @@
             return [u.security_count ? { level: 'warning', text: `${n(u.security_count, 'Sicherheitsupdate', 'Sicherheitsupdates')}` }
               : u.count ? { level: 'info', text: `${n(u.count, 'Update', 'Updates')} verfügbar` } : { level: 'good', text: 'System aktuell' },
             ...(u.reboot_required ? [{ level: 'info', text: 'Neustart nötig' }] : [])];
+          } },
+        { id: 'software', label: 'Schwachstellen & Support', desc: 'Bekannte Sicherheitslücken und Support-Ende der Software', sections: ['schwachstellen', 'lebenszyklus'],
+          facts: async () => {
+            const out = [];
+            const [vu, eol] = await Promise.allSettled([get('/api/vulns'), get('/api/eol')]);
+            if (vu.status === 'fulfilled' && vu.value.checked) {
+              const v = vu.value;
+              const serious = v.packages.serious_fixable + v.images.reduce((s, i) => s + (i.serious_fixable || 0), 0);
+              out.push(serious ? { level: 'warning', text: n(serious, 'schwere Lücke mit Update', 'schwere Lücken mit Update') }
+                : { level: 'good', text: 'Keine schweren Lücken mit Update' });
+            }
+            if (eol.status === 'fulfilled' && eol.value.checked) {
+              const items = eol.value.items;
+              const ended = items.filter(i => i.state === 'expired').length;
+              const soon = items.filter(i => i.state === 'critical' || i.state === 'warning').length;
+              out.push(ended ? { level: 'critical', text: n(ended, 'Komponente ohne Support', 'Komponenten ohne Support') }
+                : soon ? { level: 'warning', text: n(soon, 'Support-Ende in 90 Tagen', 'Support-Enden in 90 Tagen') }
+                  : { level: 'good', text: 'Alles mit Support' });
+            }
+            return out;
           } }
       ]
     },
@@ -127,7 +147,15 @@
             if (mail.status === 'fulfilled' && mail.value.enabled) out.push(mail.value.last_error ? { level: 'warning', text: 'E-Mail-Versand gestört' } : { level: 'good', text: 'E-Mail aktiv' });
             return out;
           } },
-        { id: 'system', label: 'System & Daten', desc: 'Auto-Update, Verlauf, Datenaufbewahrung, API und Systeminfo', sections: ['auto-update', 'verlauf', 'datenaufbewahrung', 'api', 'system'] }
+        { id: 'system', label: 'System & Daten', desc: 'Auto-Update, Verlauf, Datenaufbewahrung, Selbstdiagnose, API und Systeminfo', sections: ['auto-update', 'verlauf', 'datenaufbewahrung', 'selbstdiagnose', 'api', 'system'],
+          facts: async () => {
+            const d = await get('/api/selftest');
+            if (!d.checked) return [];
+            const c = d.counts;
+            return [c.critical ? { level: 'critical', text: `Selbstdiagnose: ${n(c.critical, 'Problem', 'Probleme')}` }
+              : c.warning ? { level: 'warning', text: `Selbstdiagnose: ${n(c.warning, 'Warnung', 'Warnungen')}` }
+                : { level: 'good', text: 'Selbstdiagnose ohne Befund' }];
+          } }
       ]
     },
     '/containers': {

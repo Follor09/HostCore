@@ -4,7 +4,8 @@ E-mail notifications via SMTP (Einstellungen -> E-Mail-Benachrichtigungen):
 - Events: new warnings / critical events from the event feed (outages, failed web checks,
   throttling, overdue backups, webhooks ...), collected into one mail every few minutes.
 - Daily overview: due reminders and upcoming deadlines (contracts to cancel, warranties,
-  domains, overdue backups) - only sent when there is something to say.
+  domains, overdue backups, end of support, open vulnerabilities) - only sent when there is something
+  to say.
 - Weekly report: the most important figures of /report.
 - MCP approvals: a mail as soon as a MCP action waits for confirmation.
 
@@ -393,6 +394,12 @@ def deadlines() -> List[Tuple[str, str, str]]:
             out.append((b["level"], b["text"], "/system#backups"))
     except Exception as e:
         logger.warning(f"Deadlines (backups): {e}")
+    for mod, link in (("eol", "/system#lebenszyklus"), ("vulns", "/system#schwachstellen")):
+        try:
+            for a in __import__(mod).alerts():
+                out.append((a["level"], a["text"], link))
+        except Exception as e:
+            logger.warning(f"Deadlines ({mod}): {e}")
     return out
 
 

@@ -68,6 +68,7 @@
       <a href="#auto-update" data-perm="settings.manage">Auto-Update</a>
       <a href="#verlauf" data-perm="settings.manage">Verlauf</a>
       <a href="#datenaufbewahrung" data-perm="settings.manage">Datenaufbewahrung</a>
+      <a href="#selbstdiagnose" data-perm="settings.manage">Selbstdiagnose</a>
       <a href="#system">System</a>
     </nav>
 
@@ -709,6 +710,18 @@
         <div class="table-scroll"><table class="data-table" id="ret-stores"></table></div>
       </section>
 
+      <section class="glass-card settings-section" id="selbstdiagnose" data-perm="settings.manage">
+        <div class="section-head">
+          <h2>Selbstdiagnose</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="st-summary"></span>
+            <button type="button" class="btn-primary" id="st-run">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">Prüft die Installation des Dashboards selbst: Dienst und Auto-Update, sudo-Regeln, Rechte der Dateien mit Zugangsdaten, Datenbank, Python-Pakete, Uhrzeit, Docker- und Kubernetes-Zugriff, Remote-Pis und E-Mail. Zu jedem Problem steht, wie es sich beheben lässt. Läuft zusätzlich einmal täglich; Probleme erscheinen in der Statusübersicht. Gilt für den gerade gewählten Pi.</p>
+        <div class="st-groups" id="st-groups"></div>
+      </section>
+
       <section class="glass-card settings-section" id="api">
         <h2>API</h2>
         <p class="section-desc">Alle Schnittstellen des Dashboards mit Parametern und nötiger Berechtigung – zum Nachschlagen und Ausprobieren, für eigene Skripte und Automationen.</p>
@@ -740,6 +753,7 @@
   <script src="/static/mcp-activity.js"></script>
   <script src="/static/email-settings.js"></script>
   <script src="/static/retention-settings.js"></script>
+  <script src="/static/selftest-settings.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

@@ -32,6 +32,8 @@ def set(key: str, value: Any) -> None:  # noqa: A001 - mirrors get()
         data = _read()
         data[key] = value
         tmp = SETTINGS_FILE + ".tmp"
-        with open(tmp, "w") as f:
+        # Owner only: holds mail, NetBox, MCP and backup credentials
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, SETTINGS_FILE)

@@ -324,7 +324,8 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
         logger.warning(f"Events (webhooks): {e}")
 
     for mod, cat, link in (("anomalies", "anomaly", "/system#auffaelligkeiten"), ("dnswatch", "network", "/system#dns-ueberwachung"),
-                           ("incidents", "incident", "/doku#stoerungen")):
+                           ("incidents", "incident", "/doku#stoerungen"), ("vulns", "security", "/system#schwachstellen"),
+                           ("eol", "system", "/system#lebenszyklus")):
         try:
             for e in __import__(mod).events_since(since):
                 out.append(_ev(e["ts"], e["level"], cat, e["title"], e.get("detail", ""), link))
@@ -399,7 +400,8 @@ def status_summary() -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Status (backups): {e}")
     for mod, fn, link in (("anomalies", "active", "/system#auffaelligkeiten"), ("dnswatch", "alerts", "/system#dns-ueberwachung"),
-                          ("incidents", "open_alerts", "/doku#stoerungen")):
+                          ("incidents", "open_alerts", "/doku#stoerungen"), ("vulns", "alerts", "/system#schwachstellen"),
+                          ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose")):
         try:
             for a in getattr(__import__(mod), fn)():
                 add(a.get("level", "warning"), a["text"], link)

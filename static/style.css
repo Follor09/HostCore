@@ -11183,3 +11183,38 @@ tr.cost-sum td { font-weight: 700; border-top: 1px solid var(--border-subtle); }
   border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px; }
 .lat-chart .axis-label, .cap-svg .axis-label { font-size: 10px; }
 .lat-chart { max-height: 200px; }
+
+/* System: vulnerabilities & end of life */
+.vu-tiles { margin-bottom: 4px; }
+.vu-table td.warn { color: var(--accent-amber); font-weight: 600; }
+.vu-detail-row td { background: rgba(var(--shade-rgb), 0.15); }
+.vu-cves { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vu-cves li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 0.82rem; }
+.vu-cves li.ignored { opacity: 0.6; }
+.vu-cves a.mono, .vu-cves span.mono { font-size: 0.8rem; }
+.vu-flag { font-size: 0.74rem; color: var(--text-dim); }
+.vu-flag.fix { color: var(--accent-amber); }
+.vu-pkg { color: var(--text-muted); word-break: break-all; }
+.vu-title { flex-basis: 100%; color: var(--text-muted); font-size: 0.78rem; }
+.vu-accept { display: inline-flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.vu-accept input { font-size: 0.8rem; color: var(--text-main); background: rgba(var(--shade-rgb), 0.3); border: 1px solid var(--border-subtle);
+  border-radius: 8px; padding: 5px 8px; min-width: 220px; }
+.vu-image-details summary, .vu-ignored-wrap summary { cursor: pointer; font-size: 0.82rem; color: var(--text-muted); }
+.vu-ignored-wrap { margin-top: 14px; }
+.vu-images .backup-target { font-family: var(--font-body); }
+#eol-table .ctr-sub { display: block; }
+
+/* Settings: self-test */
+.st-groups { display: flex; flex-direction: column; gap: 6px; }
+.st-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.st-item { display: flex; flex-direction: column; gap: 4px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--border-subtle);
+  background: rgba(var(--shade-rgb), 0.15); }
+.st-item.critical { border-color: rgba(244, 63, 94, 0.5); }
+.st-item.warning { border-color: rgba(245, 158, 11, 0.5); }
+.st-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.st-title { font-weight: 600; color: var(--text-main); font-size: 0.9rem; }
+.st-detail { font-size: 0.82rem; color: var(--text-muted); word-break: break-word; }
+.st-fix { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.st-cmd { font-size: 0.78rem; padding: 4px 8px; border-radius: 6px; background: rgba(var(--shade-rgb), 0.35); color: var(--text-main);
+  word-break: break-all; max-width: 100%; }
+@media (max-width: 480px) { .vu-accept { margin-left: 0; } .vu-accept input { min-width: 0; width: 100%; } }

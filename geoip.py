@@ -43,7 +43,11 @@ def _connect() -> sqlite3.Connection:
 
 
 def installed() -> bool:
-    return os.path.exists(DB_PATH)
+    # An empty file (left behind by an aborted copy or a stray sqlite3.connect) is no database
+    try:
+        return os.path.getsize(DB_PATH) > 0
+    except OSError:
+        return False
 
 
 def _meta() -> Dict[str, str]:
@@ -171,7 +175,7 @@ def start_download() -> Dict[str, Any]:
 def remove() -> Dict[str, Any]:
     if _state["running"]:
         raise RuntimeError("Download läuft gerade.")
-    if installed():
+    if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
     lookup.cache_clear()
     _countries_cache.clear()

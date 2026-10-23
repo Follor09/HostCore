@@ -85,6 +85,9 @@ import stacktemplates
 import domains
 import notify
 import retention
+import vulns
+import eol
+import selftest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -1803,6 +1806,58 @@ async def api_backups_check(job_id: str):
 @app.post("/api/backups/{job_id}/delete")
 async def api_backups_delete(job_id: str):
     return await asyncio.to_thread(backups.delete, job_id)
+
+
+# ---------------------------------------------------------------------------
+# Vulnerabilities, end of life, self-test (per Pi)
+# ---------------------------------------------------------------------------
+@app.get("/api/vulns")
+async def api_vulns():
+    return await asyncio.to_thread(vulns.overview)
+
+
+@app.post("/api/vulns/scan")
+async def api_vulns_scan():
+    return await asyncio.to_thread(vulns.start_scan)
+
+
+@app.post("/api/vulns/ignore")
+async def api_vulns_ignore(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('id', '')} {'aus' if payload.get('ignore') is False else 'akzeptiert'}"[:120]
+    try:
+        return await asyncio.to_thread(vulns.ignore, payload.get("id", ""), payload.get("note", ""), request.state.user or "",
+                                       payload.get("ignore") is not False)
+    except vulns.VulnError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/eol")
+async def api_eol():
+    return await asyncio.to_thread(eol.overview)
+
+
+@app.post("/api/eol/check")
+async def api_eol_check():
+    return await asyncio.to_thread(eol.start_check)
+
+
+@app.get("/api/selftest")
+async def api_selftest():
+    return await asyncio.to_thread(selftest.overview)
+
+
+@app.post("/api/selftest/run")
+async def api_selftest_run():
+    return await asyncio.to_thread(selftest.start)
+
+
+@app.post("/api/selftest/repair")
+async def api_selftest_repair(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("id", ""))[:40]
+    try:
+        return await asyncio.to_thread(selftest.repair, str(payload.get("id", "")))
+    except (selftest.RepairError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/terminal/ticket")

@@ -69,6 +69,8 @@
       <a data-perm="logs.view" href="#logs">Logs</a>
       <a href="#pakete">Paketverwaltung</a>
       <a href="#aufraeumen">Aufräumen</a>
+      <a href="#schwachstellen">Schwachstellen</a>
+      <a href="#lebenszyklus">Lebenszyklus</a>
       <a data-perm="security.view" href="#aktivitaet">Aktivität</a>
     </nav>
 
@@ -884,6 +886,50 @@
           <button data-perm="system.config" class="btn-danger" id="cleanup-all">Alles aufräumen</button>
         </div>
       </section>
+      <!-- Schwachstellen -->
+      <section class="glass-card settings-section" id="schwachstellen">
+        <div class="section-head">
+          <h2>Schwachstellen</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="vu-summary"></span>
+            <button data-perm="settings.manage" class="btn-secondary" id="vu-scan" type="button">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">Bekannte Sicherheitslücken (CVE) in den installierten Paketen und den Images laufender Container – einmal täglich mit niedriger Priorität geprüft. Wichtig sind vor allem schwere Lücken, für die es schon ein Update gibt. Einzelne Lücken lassen sich mit Begründung als akzeptiert markieren; sie zählen dann nicht mehr für Warnungen.</p>
+        <div class="bench-values ssh-stats vu-tiles" id="vu-tiles"></div>
+        <h3 class="subhead">Pakete</h3>
+        <form class="log-filters" id="vu-filter">
+          <select id="vu-show" aria-label="Anzeigen">
+            <option value="fixable">Mit Update</option>
+            <option value="serious">Schwer (hoch/kritisch)</option>
+            <option value="all">Alle</option>
+          </select>
+          <input type="search" id="vu-query" placeholder="Paket oder CVE suchen…" autocomplete="off" spellcheck="false" aria-label="Suchbegriff">
+        </form>
+        <div class="vu-packages" id="vu-packages"></div>
+        <h3 class="subhead">Container-Images</h3>
+        <div class="vu-images" id="vu-images"></div>
+        <details class="vu-ignored-wrap" id="vu-ignored-wrap" hidden>
+          <summary>Akzeptierte Lücken</summary>
+          <div class="table-scroll"><table class="data-table" id="vu-ignored"></table></div>
+        </details>
+        <p class="field-hint" id="vu-hint"></p>
+      </section>
+
+      <!-- Lebenszyklus -->
+      <section class="glass-card settings-section" id="lebenszyklus">
+        <div class="section-head">
+          <h2>Lebenszyklus</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="eol-summary"></span>
+            <button data-perm="settings.manage" class="btn-secondary" id="eol-check" type="button">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">Wie lange Betriebssystem, Kernel, Python, Docker, Kubernetes und die Images laufender Container (postgres, redis, nginx …) noch Sicherheitsupdates bekommen. Warnung 90 Tage, kritisch 30 Tage vor dem Ende – in den Ereignissen, der Statusübersicht und der täglichen E-Mail. Daten von endoflife.date, einmal täglich.</p>
+        <div class="table-scroll"><table class="data-table" id="eol-table"></table></div>
+        <p class="field-hint" id="eol-hint"></p>
+      </section>
+
       <!-- Aktivität -->
       <section data-perm="security.view" class="glass-card settings-section" id="aktivitaet">
         <h2>Aktivität</h2>
@@ -914,6 +960,7 @@
   <script src="/static/system.js"></script>
   <script src="/static/netbox.js"></script>
   <script src="/static/backups.js"></script>
+  <script src="/static/software.js"></script>
   <script src="/static/system-extra.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>

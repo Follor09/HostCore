@@ -76,6 +76,10 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("*", r"^/api/settings/(email|email/test|retention|retention/cleanup)$", "settings.manage"),
     ("GET", r"^/api/backups$", "system.view"),
     ("POST", r"^/api/backups(/.*)?$", "settings.manage"),
+    ("GET", r"^/api/(vulns|eol)$", "system.view"),
+    ("POST", r"^/api/(vulns/(scan|ignore)|eol/check)$", "settings.manage"),
+    ("GET", r"^/api/selftest$", "settings.manage"),
+    ("POST", r"^/api/selftest/(run|repair)$", "settings.manage"),
     ("POST", r"^/api/containers/images/source$", "services.control"),
     ("*", r"^/api/settings/webhooks(/.*)?$", "settings.manage"),
 
