@@ -37,6 +37,8 @@
     m.value = match || '';
     m.spellcheck = false;
     m.className = 'mcp-match';
+    m.autocomplete = 'picore-identity';
+    m.setAttribute('data-lpignore', 'true');
     const sel = el('select', 'mcp-user');
     users.forEach(u => { const o = el('option', '', u); o.value = u; sel.appendChild(o); });
     if (user) sel.value = user;

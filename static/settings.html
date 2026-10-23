@@ -203,7 +203,7 @@
         <form class="remote-form" id="remote-form" autocomplete="off">
           <label class="fw-field"><span>Name</span><input type="text" id="remote-name" maxlength="40" placeholder="z.B. Pi Garage" required></label>
           <label class="fw-field"><span>Adresse</span><input type="text" id="remote-url" placeholder="http://192.168.178.50:8000" spellcheck="false" required></label>
-          <label class="fw-field remote-token"><span>Token</span><input type="password" id="remote-token" placeholder="vom Agent (./agent.sh token)" spellcheck="false" required></label>
+          <label class="fw-field remote-token"><span>Token</span><input type="password" id="remote-token" placeholder="vom Agent (./agent.sh token)" spellcheck="false" required autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
           <div class="remote-form-actions">
             <button type="button" class="btn-secondary" id="remote-test">Verbindung testen</button>
             <button type="submit" class="btn-primary">Hinzufügen</button>
@@ -227,7 +227,7 @@
         <p class="field-hint" id="nb-current"></p>
         <form class="remote-form" id="nb-form" autocomplete="off">
           <label class="fw-field"><span>Adresse</span><input type="text" id="nb-url" placeholder="https://netbox.home.arpa" spellcheck="false" required></label>
-          <label class="fw-field remote-token"><span>API-Token</span><input type="password" id="nb-token" placeholder="NetBox → Profil → API-Tokens" spellcheck="false"></label>
+          <label class="fw-field remote-token"><span>API-Token</span><input type="password" id="nb-token" placeholder="NetBox → Profil → API-Tokens" spellcheck="false" autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
           <label class="toggle-label nb-insecure"><input type="checkbox" id="nb-insecure"> Zertifikat nicht prüfen (selbst signiert)</label>
           <div class="remote-form-actions">
             <button type="button" class="btn-secondary" id="nb-test">Verbindung testen</button>
@@ -257,8 +257,8 @@
           <label class="toggle-label mcp-wide"><input type="checkbox" id="mcp-enabled"> MCP-Server einschalten</label>
           <label class="fw-field mcp-wide"><span>Öffentliche Adresse</span><input type="text" id="mcp-base" placeholder="https://picore-mcp.example.com" spellcheck="false"></label>
           <label class="fw-field mcp-wide"><span>Pocket-ID-Adresse</span><input type="text" id="mcp-issuer" placeholder="https://id.example.com" spellcheck="false"></label>
-          <label class="fw-field"><span>Client-ID</span><input type="text" id="mcp-client" spellcheck="false"></label>
-          <label class="fw-field"><span>Client-Secret</span><input type="password" id="mcp-secret" spellcheck="false"></label>
+          <label class="fw-field"><span>Client-ID</span><input type="text" id="mcp-client" spellcheck="false" autocomplete="picore-client-id" data-lpignore="true"></label>
+          <label class="fw-field"><span>Client-Secret</span><input type="password" id="mcp-secret" spellcheck="false" autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
           <label class="toggle-label mcp-wide"><input type="checkbox" id="mcp-consent" checked> Vor der Anmeldung eine Bestätigungsseite zeigen (empfohlen)</label>
           <div class="mcp-wide">
             <h3 class="subhead">Zuordnung Pocket ID → Dashboard-Benutzer</h3>
@@ -354,7 +354,7 @@
         <p class="section-desc">Neue Warnungen und kritische Ereignisse, eine Tagesübersicht mit fälligen Erinnerungen und Fristen, der Wochenbericht und MCP-Freigaben per E-Mail über deinen SMTP-Server.</p>
         <form class="remote-form email-form" id="email-form" autocomplete="off">
           <label class="toggle-label email-wide"><input type="checkbox" id="em-enabled"> E-Mails verschicken</label>
-          <label class="fw-field"><span>SMTP-Server</span><input type="text" id="em-host" placeholder="smtp.example.com" spellcheck="false"></label>
+          <label class="fw-field"><span>SMTP-Server</span><input type="text" id="em-host" placeholder="smtp.example.com" spellcheck="false" autocomplete="picore-smtp-host"></label>
           <label class="fw-field"><span>Port</span><input type="number" id="em-port" min="1" max="65535" value="587"></label>
           <label class="fw-field"><span>Verschlüsselung</span>
             <select id="em-security">
@@ -364,12 +364,12 @@
             </select>
           </label>
           <label class="toggle-label email-wide"><input type="checkbox" id="em-insecure"> Zertifikat nicht prüfen (selbst signiertes Zertifikat des Mailservers – die Verbindung bleibt verschlüsselt)</label>
-          <label class="fw-field"><span>Benutzername</span><input type="text" id="em-user" spellcheck="false" autocomplete="off"></label>
-          <label class="fw-field"><span>Passwort</span><input type="password" id="em-pass" autocomplete="new-password"></label>
-          <label class="fw-field"><span>Absender</span><input type="email" id="em-sender" placeholder="picore@example.com" spellcheck="false"></label>
-          <label class="fw-field"><span>Absendername</span><input type="text" id="em-sender-name" value="PiCore" maxlength="60"></label>
-          <label class="fw-field email-wide"><span>Empfänger (mehrere mit Komma)</span><input type="text" id="em-to" spellcheck="false"></label>
-          <label class="fw-field email-wide"><span>Dashboard-Adresse für Links in den Mails</span><input type="text" id="em-url" placeholder="http://192.168.178.10:8000" spellcheck="false"></label>
+          <label class="fw-field"><span>Benutzername</span><input type="text" id="em-user" spellcheck="false" autocomplete="picore-smtp-user" data-lpignore="true" data-1p-ignore></label>
+          <label class="fw-field"><span>Passwort</span><input type="password" id="em-pass" autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
+          <label class="fw-field"><span>Absender</span><input type="text" inputmode="email" id="em-sender" placeholder="picore@example.com" spellcheck="false" autocomplete="picore-smtp-from" data-lpignore="true"></label>
+          <label class="fw-field"><span>Absendername</span><input type="text" id="em-sender-name" value="PiCore" maxlength="60" autocomplete="picore-smtp-name"></label>
+          <label class="fw-field email-wide"><span>Empfänger (mehrere mit Komma)</span><input type="text" inputmode="email" id="em-to" spellcheck="false" autocomplete="picore-smtp-to" data-lpignore="true"></label>
+          <label class="fw-field email-wide"><span>Dashboard-Adresse für Links in den Mails</span><input type="text" id="em-url" placeholder="http://192.168.178.10:8000" spellcheck="false" autocomplete="picore-dashboard-url"></label>
           <h3 class="subhead email-wide">Was verschickt wird</h3>
           <div class="email-wide email-what">
             <div class="email-row">
