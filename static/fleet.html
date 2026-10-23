@@ -56,10 +56,31 @@
         <button class="btn-secondary" id="fleet-update" type="button" disabled>Paketlisten aktualisieren</button>
         <button class="btn-primary" id="fleet-upgrade" type="button" disabled>Update &amp; Upgrade installieren</button>
       </div>
-      <div class="table-scroll">
-        <table class="data-table" id="fleet-table"></table>
-      </div>
       <div class="fleet-results" id="fleet-results"></div>
+      <div class="table-scroll">
+        <table class="data-table fleet-table" id="fleet-table"></table>
+      </div>
+    </section>
+
+    <section class="glass-card settings-section" id="fleet-pending" data-perm="updates.install" hidden>
+      <div class="section-head">
+        <h2>Ausstehende Updates der Auswahl</h2>
+        <div class="head-tools">
+          <span class="field-hint" id="fp-summary"></span>
+        </div>
+      </div>
+      <p class="section-desc">Welche Pakete auf den ausgewählten Pis aktualisiert werden müssen – zusammengefasst, mit den betroffenen Pis. Ausgewählte Pakete werden auf jedem Pi aktualisiert, der sie braucht (nur neuere Versionen schon installierter Pakete, nichts kommt neu hinzu).</p>
+      <form class="log-filters" id="fp-filters" autocomplete="off">
+        <input type="search" id="fp-q" placeholder="Paket filtern …" spellcheck="false" aria-label="Paket filtern">
+        <label class="toggle-label"><input type="checkbox" id="fp-security"> Nur Sicherheitsupdates</label>
+      </form>
+      <div class="fleet-pending-actions">
+        <button class="btn-secondary" id="fp-all" type="button">Alle markieren</button>
+        <button class="btn-secondary" id="fp-none" type="button">Keine</button>
+        <button class="btn-primary" id="fp-run" type="button" disabled>Ausgewählte aktualisieren</button>
+        <span class="field-hint" id="fp-busy"></span>
+      </div>
+      <div class="table-scroll"><table class="data-table fleet-pkg-table" id="fp-table"></table></div>
     </section>
   </main>
 

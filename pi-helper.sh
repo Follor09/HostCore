@@ -13,7 +13,8 @@
 #                         ports: 443, 6000:6010 or a list like 80,443 (lists/ranges need tcp/udp)
 #   pi-helper.sh ufw-logging <off|low|medium>
 #   pi-helper.sh connections                     all sockets with their processes (ss -tunap)
-#   pi-helper.sh apt-pkg <install|remove> <pkg>...   starts apt as its own unit (survives dashboard restarts)
+#   pi-helper.sh apt-pkg <install|remove|upgrade> <pkg>...   starts apt as its own unit (survives dashboard restarts);
+#                                                    upgrade = only newer versions of installed packages
 #   pi-helper.sh geoblock-status
 #   pi-helper.sh geoblock-apply < networks      one CIDR per line (IPv4 + IPv6), loaded into ipsets
 #   pi-helper.sh geoblock-clear
@@ -231,8 +232,9 @@ case "$CMD" in
     apt-pkg|apt-pkg-run)
         ACTION="${1:-}"
         [ $# -gt 0 ] && shift
-        [[ "$ACTION" =~ ^(install|remove)$ ]] || die "Unbekannte Aktion."
-        [ $# -ge 1 ] && [ $# -le 20 ] || die "1–20 Pakete angeben."
+        [[ "$ACTION" =~ ^(install|remove|upgrade)$ ]] || die "Unbekannte Aktion."
+        MAX=20; [ "$ACTION" = upgrade ] && MAX=200
+        [ $# -ge 1 ] && [ $# -le $MAX ] || die "1–$MAX Pakete angeben."
         for P in "$@"; do
             [[ "$P" =~ ^[a-z0-9][a-z0-9+.-]{0,62}(:(arm64|armhf|all))?$ ]] || die "Ungültiger Paketname: $P"
         done
@@ -278,7 +280,11 @@ case "$CMD" in
         chmod 644 "$STATUS"
         echo "▶ apt-get $ACTION $PKGS" >> "$LOG"
         set +e
-        apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$ACTION" -- "$@" >> "$LOG" 2>&1
+        if [ "$ACTION" = upgrade ]; then
+            apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install --only-upgrade -- "$@" >> "$LOG" 2>&1
+        else
+            apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$ACTION" -- "$@" >> "$LOG" 2>&1
+        fi
         RC=$?
         set -e
         STATE_WORD=$([ $RC -eq 0 ] && echo done || echo failed)

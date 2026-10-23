@@ -11038,3 +11038,35 @@ tr.cost-sum td { font-weight: 700; border-top: 1px solid var(--border-subtle); }
 @media (max-width: 640px) {
   .pg-grid { grid-template-columns: 1fr; }
 }
+
+/* Fleet: pending packages and apt output per Pi */
+.fleet-layout { display: flex; flex-direction: column; gap: 20px; }
+.fleet-tag-btn { cursor: pointer; border: none; font: inherit; }
+.fleet-tag-btn.open { box-shadow: inset 0 0 0 1px currentColor; }
+.fleet-upd { white-space: nowrap; }
+.fleet-log-btn { margin-left: 8px; }
+.fleet-detail-row > td { padding: 4px 12px 14px 44px !important; background: rgba(var(--shade-rgb), 0.12); white-space: normal; }
+.fleet-pkgs, .fleet-log { display: flex; flex-direction: column; gap: 8px; font-family: var(--font-body); position: sticky; left: 44px; }
+.fleet-pkg-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fleet-pkg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; align-items: center; }
+.fleet-pkg-scroll { max-height: 360px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 10px; }
+.fleet-pkg-table { font-family: var(--font-body); }
+.fleet-pkg-table th:first-child, .fleet-pkg-table td:first-child { width: 34px; }
+.fleet-pkg-table td { padding-top: 6px; padding-bottom: 6px; }
+.fleet-pkg-table input[type="checkbox"] { width: auto; }
+.fleet-ver { font-size: 0.8rem; color: var(--text-muted); }
+.fleet-ver.new { color: var(--text-main); }
+.fleet-pis { display: flex; flex-wrap: wrap; gap: 4px; }
+.fleet-job-title { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-main); }
+.fleet-log .text-btn { margin-left: auto; }
+.fleet-log-pre { margin: 0; max-height: 320px; overflow: auto; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-subtle);
+  background: var(--surface-code, rgba(var(--shade-rgb), 0.45)); font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-main); white-space: pre-wrap; word-break: break-word; }
+#fp-filters .toggle-label { display: flex; align-items: center; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
+#fp-filters .toggle-label input { width: auto; }
+.fleet-pkg-actions .field-hint { flex-basis: 100%; text-align: right; }
+@media (max-width: 640px) {
+  .fleet-detail-row > td { padding-left: 12px !important; }
+  .fleet-pkgs, .fleet-log { left: 12px; }
+  .fleet-pkg-actions { margin-left: 0; }
+}
+.fleet-pending-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }

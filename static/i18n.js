@@ -2500,7 +2500,36 @@
     'E-Mail aktiv': 'E-mail active',
     'Docker nicht verfügbar': 'Docker not available',
     'Kein Cluster erreichbar': 'No cluster reachable',
-    'Alle Images aktuell': 'All images up to date'
+    'Alle Images aktuell': 'All images up to date',
+    'Ausstehende Updates der Auswahl': 'Pending updates of the selection',
+    'Welche Pakete auf den ausgewählten Pis aktualisiert werden müssen – zusammengefasst, mit den betroffenen Pis. Ausgewählte Pakete werden auf jedem Pi aktualisiert, der sie braucht (nur neuere Versionen schon installierter Pakete, nichts kommt neu hinzu).': 'Which packages need updating on the selected Pis – merged, with the Pis affected. Chosen packages are upgraded on every Pi that needs them (only newer versions of installed packages, nothing new is added).',
+    'Paket filtern …': 'Filter packages …',
+    'Nur Sicherheitsupdates': 'Security updates only',
+    'Alle markieren': 'Select all',
+    'Ausgewählte aktualisieren': 'Upgrade selected',
+    'Pis': 'Pis',
+    'Pakete auswählen': 'Choose packages',
+    'Alle installieren': 'Install all',
+    'Wirklich aktualisieren?': 'Really upgrade?',
+    'Upgrade starten?': 'Start upgrade?',
+    'Keine ausstehenden Pakete.': 'No pending packages.',
+    'Nur die ersten 500 Pakete werden angezeigt.': 'Only the first 500 packages are shown.',
+    'Paketlisten vom': 'Package lists from',
+    'Protokoll anzeigen': 'Show output',
+    'Pakete anzeigen': 'Show packages',
+    'Lade Protokoll…': 'Loading output…',
+    'Kein Lauf': 'No run',
+    'beendet': 'finished',
+    'Schließen': 'Close',
+    'Noch keine Ausgabe.': 'No output yet.',
+    'Pakete werden aktualisiert…': 'Upgrading packages…',
+    'Auf den ausgewählten Pis ist alles aktuell.': 'Everything is up to date on the selected Pis.',
+    'apt ist hier nicht verfügbar oder antwortet nicht.': 'apt is not available here or not answering.',
+    'apt ist auf diesem Gerät nicht verfügbar.': 'apt is not available on this device.',
+    'Unbekannter Pi.': 'Unknown Pi.',
+    'Keine gültigen Pakete.': 'No valid packages.',
+    'Pakete auf mehreren Pis aktualisiert': 'Packages upgraded on several Pis',
+    'Einzelne Pakete aktualisieren': 'Upgrade single packages'
   };
 
   // ---------------------------------------------------------------------------
@@ -2954,7 +2983,13 @@
     [/^(\d+) Kündigungsfristen? in 30 Tagen$/, (m, n) => `${n} cancellation ${plural(n, 'deadline', 'deadlines')} within 30 days`],
     [/^(\d+) (Vertrag|Verträge) · (.+) \/ Monat$/, (m, n, w, c) => `${n} ${plural(n, 'contract', 'contracts')} · ${c} / month`],
     [/^(\d+) (Domain läuft|Domains laufen) bald ab$/, (m, n) => `${n} ${plural(n, 'domain expires', 'domains expire')} soon`],
-    [/^(\d+) Domains? in Ordnung$/, (m, n) => `${n} ${plural(n, 'domain', 'domains')} fine`]
+    [/^(\d+) Domains? in Ordnung$/, (m, n) => `${n} ${plural(n, 'domain', 'domains')} fine`],
+    [/^(\d+) ausgewählte aktualisieren$/, 'Upgrade $1 selected'],
+    [/^(\d+) Pakete? auf (\d+) Pis? aktualisieren$/, (m, n, p) => `Upgrade ${n} ${plural(n, 'package', 'packages')} on ${p} ${plural(p, 'Pi', 'Pis')}`],
+    [/^(\d+) Pakete auf (\d+) Pis? · (\d+) Sicherheit$/, (m, n, p, s) => `${n} packages on ${p} ${plural(p, 'Pi', 'Pis')} · ${s} security`],
+    [/^(\d+) Pakete? werden aktualisiert$/, (m, n) => `${n} ${plural(n, 'package is', 'packages are')} being upgraded`],
+    [/^Auf (.+) läuft gerade apt – danach geht es weiter\.$/, 'apt is running on $1 right now – try again afterwards.'],
+    [/^App-Store: (.+)$/, 'App store: $1']
   ];
 
   function translateDynamic(s) {

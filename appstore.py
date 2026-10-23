@@ -336,8 +336,17 @@ def _lsio_app(i: Dict[str, Any], arch: str) -> Optional[Dict[str, Any]]:
 def _apps() -> List[Dict[str, Any]]:
     data = _catalog_data()
     arch = _arch()
-    lsio = [a for a in (_lsio_app(i, arch) for i in (data or {}).get("images", [])) if a]
-    return CURATED + sorted(lsio, key=lambda a: -(a["pulls"] or 0))
+    lsio = []
+    for i in (data or {}).get("images", []):
+        # One entry with an unexpected shape must not take the whole store down
+        try:
+            a = _lsio_app(i, arch) if isinstance(i, dict) else None
+        except Exception as e:
+            logger.warning(f"App store: skipping {i.get('name', '?') if isinstance(i, dict) else '?'} ({type(e).__name__}: {e})")
+            a = None
+        if a:
+            lsio.append(a)
+    return CURATED + sorted(lsio, key=lambda a: -(a["pulls"] or 0) if isinstance(a["pulls"], (int, float)) else 0)
 
 
 def _app(app_id: str) -> Dict[str, Any]:
@@ -414,9 +423,16 @@ def _installed() -> Dict[str, Dict[str, Any]]:
 
 
 def catalog() -> Dict[str, Any]:
-    forget_missing()
+    installed: Dict[str, Dict[str, Any]] = {}
+    installed_error = ""
+    try:
+        forget_missing()
+        installed = _installed()
+    except Exception as e:   # e.g. docker compose not answering: the catalog still works
+        logger.warning(f"App store: installed apps unknown ({type(e).__name__}: {e})")
+        installed_error = f"Installierte Apps nicht ermittelbar ({type(e).__name__})."
     by_app: Dict[str, List[Dict[str, Any]]] = {}
-    for name, info in _installed().items():
+    for name, info in installed.items():
         s = info.get("stack")
         by_app.setdefault(info.get("app", ""), []).append({
             "name": name, "ports": info.get("ports", {}), "open": info.get("open"),
@@ -436,7 +452,7 @@ def catalog() -> Dict[str, Any]:
             groups.append(g)
     return {"apps": apps, "dir": APPS_DIR, "docker": bool(shutil.which("docker")), "groups": groups, "arch": _arch(),
             "catalog": {"fetched": data.get("fetched"), "count": sum(1 for a in apps if a["source"] == "lsio"),
-                        "loading": _state["loading"], "error": _state["error"]}}
+                        "loading": _state["loading"], "error": _state["error"] or installed_error}}
 
 
 def form(app_id: str) -> Dict[str, Any]:

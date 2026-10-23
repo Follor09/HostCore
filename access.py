@@ -24,7 +24,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/flotte$", "system.view"),
     ("GET", r"^/werkzeuge$", "login"),
     ("GET", r"^/api/fleet$", "system.view"),
-    ("POST", r"^/api/fleet/apt$", "updates.install"),
+    ("POST", r"^/api/fleet/(apt|packages)$", "updates.install"),
+    ("GET", r"^/api/fleet/job$", "system.view"),
     ("GET", r"^/terminal$", "terminal"),
     ("GET", r"^/settings$", "login"),
 

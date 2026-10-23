@@ -235,7 +235,7 @@ class McpDispatch:
 APPROVAL_TOOLS = {
     "service_action": "Dienste starten/stoppen", "container_action": "Container starten/stoppen",
     "stack_action": "Compose-Stacks", "kube_restart": "Kubernetes neu starten", "kube_scale": "Kubernetes skalieren",
-    "apt_run": "apt-Updates", "fleet_apt": "apt auf mehreren Pis", "packages": "Pakete installieren/entfernen",
+    "apt_run": "apt-Updates", "fleet_apt": "apt auf mehreren Pis", "fleet_upgrade_packages": "Einzelne Pakete aktualisieren", "packages": "Pakete installieren/entfernen",
     "system_power": "Neustart & Herunterfahren", "firewall": "Firewall ändern", "run_quick_action": "Schnellaktionen",
     "wake_on_lan": "Wake-on-LAN", "maintenance_window": "Wartungsfenster", "write_file": "Dateien schreiben",
     "move_to_trash": "Dateien löschen", "delete_task": "Aufgaben löschen", "write_notes": "Notizen ändern",
@@ -710,8 +710,23 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
         return await _api("POST", "/api/fleet/apt", body={"ids": ids, "mode": mode})
 
     @mcp.tool
-    async def packages(action: Literal["install", "remove"], names: List[str], host: Host = None) -> dict:
-        """Install or remove apt packages (protected base packages are refused)."""
+    async def fleet_upgrade_packages(targets: Dict[str, List[str]]) -> dict:
+        """Upgrade chosen packages (only newer versions of installed ones) per Pi: {'pi-name' or 'local': ['pkg', ...]}.
+        The pending packages per Pi are in fleet_overview (field packages)."""
+        import remotes
+        ids: Dict[str, List[str]] = {}
+        for h, names in targets.items():
+            if h in ("", "local"):
+                ids[""] = names
+                continue
+            r = next((x for x in remotes._all() if h in (x["id"], x["name"])), None)
+            if r:
+                ids[r["id"]] = names
+        return await _api("POST", "/api/fleet/packages", body={"targets": ids})
+
+    @mcp.tool
+    async def packages(action: Literal["install", "remove", "upgrade"], names: List[str], host: Host = None) -> dict:
+        """Install or remove apt packages, or upgrade only these installed ones (protected base packages are refused)."""
         return await _api("POST", "/api/packages/run", body={"names": names, "action": action}, host=host or "")
 
     @mcp.tool

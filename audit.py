@@ -97,6 +97,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/boards/restore$", "settings", "Board-Stand wiederhergestellt"),
     ("POST", r"^/api/exchange$", "files", "Austausch-Link erstellt"),
     ("POST", r"^/api/fleet/apt$", "system", "Updates auf mehreren Pis gestartet"),
+    ("POST", r"^/api/fleet/packages$", "system", "Pakete auf mehreren Pis aktualisiert"),
     ("POST", r"^/api/settings/mcp$", "settings", "MCP-Server eingestellt"),
     ("POST", r"^/api/settings/mcp/approval$", "settings", "MCP-Freigaben eingestellt"),
     ("POST", r"^/api/mcp/approvals/[^/]+/approve$", "security", "MCP-Aktion freigegeben"),

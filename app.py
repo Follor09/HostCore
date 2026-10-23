@@ -921,6 +921,27 @@ class FleetAptRequest(BaseModel):
     mode: str = "upgrade"
 
 
+class FleetPackagesRequest(BaseModel):
+    targets: dict   # {pi id ("" = this Pi): [package names]}
+
+
+@app.post("/api/fleet/packages")
+async def api_fleet_packages(req: FleetPackagesRequest, request: Request):
+    targets = {str(k): [str(n) for n in (v or [])] for k, v in req.targets.items()}
+    request.state.audit_detail = f"{sum(len(v) for v in targets.values())} Pakete · {len(targets)} Pis"
+    return await fleet.upgrade_packages(targets, request.state.user or "")
+
+
+@app.get("/api/fleet/job")
+async def api_fleet_job(id: str = ""):
+    try:
+        return await fleet.job_log(id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Nicht erreichbar ({type(e).__name__})")
+
+
 @app.post("/api/fleet/apt")
 async def api_fleet_apt(req: FleetAptRequest, request: Request):
     request.state.audit_detail = f"{req.mode} · {len(req.ids)} Pis"
@@ -2148,6 +2169,8 @@ def _pkg_call(fn, *args):
         raise HTTPException(status_code=400, detail=str(e))
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="apt antwortet nicht.")
+    except FileNotFoundError:
+        raise HTTPException(status_code=400, detail="apt ist auf diesem Gerät nicht verfügbar.")
 
 
 @app.get("/api/packages")
@@ -2617,7 +2640,11 @@ class AppInstallRequest(BaseModel):
 
 @app.get("/api/appstore")
 async def api_appstore():
-    return await asyncio.to_thread(appstore.catalog)
+    try:
+        return await asyncio.to_thread(appstore.catalog)
+    except Exception as e:
+        logger.exception("App store catalog failed")
+        raise HTTPException(status_code=500, detail=f"App-Store: {type(e).__name__}: {e}"[:300])
 
 
 @app.post("/api/appstore/refresh")

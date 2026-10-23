@@ -260,6 +260,8 @@ Einrichtung: in Pocket ID einen OIDC-Client mit der angezeigten Callback-URL (`h
 
 Dieser Pi und alle Remote-Pis in einer Tabelle: erreichbar oder nicht, Dashboard-Version (und ob ein Update wartet), ausstehende Paket-Updates mit Sicherheits-Updates und „Neustart nötig“, Temperatur, CPU, RAM, Speicher und Laufzeit; aktualisiert sich alle 30 Sekunden. Mehrere Pis auswählen und **Paketlisten aktualisieren** oder **Update & Upgrade installieren** für alle gleichzeitig starten – jeder Pi führt es in seinem eigenen apt-Dienst aus (Berechtigung „Updates installieren“).
 
+
+**Paket-Updates im Detail:** Ein Klick auf die Update-Zahl eines Pis zeigt seine ausstehenden Pakete (installierte → neue Version, Sicherheitsupdates markiert); einzelne Pakete lassen sich gezielt aktualisieren (`apt-get install --only-upgrade`, es kommt nichts Neues dazu) oder alles auf einmal. Sind mehrere Pis ausgewählt, fasst **„Ausstehende Updates der Auswahl“** alle Pakete zusammen – mit den Pis, die sie brauchen, Filter und „Nur Sicherheitsupdates“; ausgewählte Pakete werden auf jedem betroffenen Pi aktualisiert. „Protokoll“ zeigt die Ausgabe des laufenden bzw. letzten apt-Laufs jedes Pis live.
 ### 🧮 IT-Toolbox (`/werkzeuge`)
 
 Alltagshelfer, die nur im Browser rechnen (nichts geht an den Pi oder ins Internet): **Netzwerk-Rechner** für IPv4 und IPv6 (Netz, Maske, Broadcast, Host-Bereich, Anzahl, Art der Adresse; in Teilnetze aufteilen; prüfen, ob eine IP im Netz liegt), **Base64** (auch URL-sicher), **URL-Kodierung**, **JSON** formatieren/verkleinern/prüfen mit Zeile und Spalte, **Hashes** (MD5, SHA-1, SHA-256), **JWT lesen** mit Ablaufzeit, **Passwort- und UUID-Generator**, **Zeitstempel** umrechnen und **Cron-Ausdrücke** in Worten erklärt mit den nächsten Ausführungen.

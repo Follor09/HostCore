@@ -107,13 +107,16 @@ def show(name: str) -> Dict[str, Any]:
 
 
 def simulate(action: str, names: List[str]) -> Dict[str, Any]:
-    """What apt would do - runs without root (apt-get -s)."""
-    if action not in ("install", "remove"):
+    """What apt would do - runs without root (apt-get -s). "upgrade" = only newer versions of
+    installed packages (apt-get install --only-upgrade), e.g. from the fleet's update list."""
+    if action not in ("install", "remove", "upgrade"):
         raise PackageError("Unbekannte Aktion.")
     names = [n for n in names if n]
-    if not 1 <= len(names) <= 20 or not all(NAME.match(n) for n in names):
-        raise PackageError("1–20 gültige Paketnamen angeben.")
-    res = _run(["apt-get", "-s", action, "--", *names], timeout=60)
+    limit = 200 if action == "upgrade" else 20
+    if not 1 <= len(names) <= limit or not all(NAME.match(n) for n in names):
+        raise PackageError(f"1–{limit} gültige Paketnamen angeben.")
+    cmd = ["install", "--only-upgrade"] if action == "upgrade" else [action]
+    res = _run(["apt-get", "-s", *cmd, "--", *names], timeout=60)
     out = res.stdout + res.stderr
     lists: Dict[str, List[str]] = {"install": [], "remove": [], "upgrade": []}
     for line in out.splitlines():
