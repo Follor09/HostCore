@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const state = { user: null, group: null, groupName: null, perms: new Set(), loaded: false, totp: false };
+  const state = { user: null, group: null, groupName: null, perms: new Set(), loaded: false, totp: false, passkeys: 0 };
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   let resolveReady;
   const ready = new Promise(r => { resolveReady = r; });
@@ -39,6 +39,7 @@
       state.groupName = s.group_name || null;
       state.perms = new Set(s.permissions || []);
       state.totp = !!s.totp;
+      state.passkeys = s.passkeys || 0;
       state.loaded = true;
       const doIt = () => {
         apply();
@@ -69,6 +70,22 @@
     return e;
   }
 
+  // passkey.js is only loaded when a confirmation with a passkey is offered
+  let passkeyLib = null;
+  function loadPasskey() {
+    if (window.PiPasskey) return Promise.resolve(window.PiPasskey);
+    if (!passkeyLib) {
+      passkeyLib = new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = '/static/passkey.js';
+        sc.onload = () => resolve(window.PiPasskey);
+        sc.onerror = reject;
+        document.head.appendChild(sc);
+      });
+    }
+    return passkeyLib;
+  }
+
   function confirmDialog(message) {
     if (pending) return pending;
     pending = new Promise(resolve => {
@@ -95,6 +112,23 @@
       const err = el('p', 'form-msg error');
       err.hidden = true;
       card.appendChild(err);
+      if (state.passkeys && window.isSecureContext && window.PublicKeyCredential) {
+        const pk = el('button', 'btn-secondary reauth-passkey', t('Mit Passkey bestätigen'));
+        pk.type = 'button';
+        pk.addEventListener('click', async () => {
+          pk.disabled = true;
+          err.hidden = true;
+          try {
+            await (await loadPasskey()).confirm();
+            done(true);
+          } catch (ex) {
+            err.textContent = ex.message;
+            err.hidden = false;
+            pk.disabled = false;
+          }
+        });
+        card.appendChild(pk);
+      }
       const buttons = el('div', 'modal-buttons');
       const cancel = el('button', 'btn-cancel', t('Abbrechen'));
       cancel.type = 'button';
@@ -166,5 +200,5 @@
 
   window.PiAuth = { can, apply, ready, get user() { return state.user; }, get group() { return state.group; },
                     get groupName() { return state.groupName; }, get loaded() { return state.loaded; },
-                    get totp() { return state.totp; }, confirm: confirmDialog };
+                    get totp() { return state.totp; }, get passkeys() { return state.passkeys; }, confirm: confirmDialog };
 })();

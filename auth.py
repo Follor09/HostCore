@@ -13,7 +13,9 @@ Login, users and permission groups for the dashboard.
   a session version: a new password or "log out everywhere" bumps it and ends only that
   user's sessions. Every session is also listed in sessions.json (device, IP, last use)
   and can be ended on its own. There is always at least one active administrator.
-- Optional two-factor login (TOTP app + single-use recovery codes, see totp.py).
+- Optional two-factor login (TOTP app + single-use recovery codes, see totp.py) and passkeys
+  (webauthn.py) - a passkey counts as both factors.
+- Optional e-mail address per user for "Passwort vergessen" (single-use link, 30 minutes).
 - Passwords: at least 10 characters, not a well-known one, not the username.
 - Failed logins are rate-limited per client IP and per account.
 
@@ -361,7 +363,8 @@ def user_info(username: str) -> Optional[Dict[str, Any]]:
     u = cfg["users"][name]
     return {"username": name, "group": u["group"], "disabled": bool(u.get("disabled")),
             "created": u.get("created"), "changed": u.get("changed"),
-            "expires": u.get("expires"), "expired": _expired(u), "totp": bool((u.get("totp") or {}).get("enabled"))}
+            "expires": u.get("expires"), "expired": _expired(u), "totp": bool((u.get("totp") or {}).get("enabled")),
+            "passkeys": len(u.get("passkeys") or []), "email": u.get("email", "")}
 
 
 def list_users() -> List[Dict[str, Any]]:
@@ -729,6 +732,163 @@ def totp_disable(username: str) -> None:
         _save_config(cfg)
 
 
+def reset_factors(username: str) -> None:
+    """Lost phone / key: two-factor login and all passkeys off (set up again at the next login)."""
+    totp_disable(username)
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if name:
+            cfg["users"][name].pop("passkeys", None)
+            _save_config(cfg)
+
+
+# ---------------------------------------------------------------------------
+# Passkeys
+# ---------------------------------------------------------------------------
+MAX_PASSKEYS = 10
+
+
+def passkey_handle(username: str) -> str:
+    """The stable WebAuthn user handle of an account (created on first use)."""
+    import webauthn
+    cfg = load_config() or {}
+    name = _find(cfg, username)
+    if not name:
+        raise AuthError("Benutzer nicht gefunden.")
+    handle = cfg["users"][name].get("webauthn_id")
+    if handle:
+        return handle
+    with _lock:
+        cfg = _cfg_for_write()
+        u = cfg["users"][name]
+        u.setdefault("webauthn_id", webauthn.user_handle())
+        _save_config(cfg)
+        return u["webauthn_id"]
+
+
+def passkeys(username: str) -> List[Dict[str, Any]]:
+    cfg = load_config() or {}
+    name = _find(cfg, username)
+    keys = (cfg.get("users", {}).get(name or "", {}).get("passkeys") or [])
+    return [{k: p.get(k) for k in ("id", "name", "created", "last_used", "rp_id", "transports")} for p in keys]
+
+
+def add_passkey(username: str, cred: Dict[str, Any], label: str) -> None:
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if not name:
+            raise AuthError("Benutzer nicht gefunden.")
+        keys = cfg["users"][name].setdefault("passkeys", [])
+        if len(keys) >= MAX_PASSKEYS:
+            raise AuthError(f"Höchstens {MAX_PASSKEYS} Passkeys pro Konto.")
+        if any(k["id"] == cred["id"] for u in cfg["users"].values() for k in (u.get("passkeys") or [])):
+            raise AuthError("Dieser Passkey ist schon hinterlegt.")
+        keys.append({**cred, "name": (label or "Passkey").strip()[:60]})
+        _save_config(cfg)
+
+
+def remove_passkey(username: str, cred_id: str) -> None:
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        u = cfg["users"].get(name or "", {})
+        before = len(u.get("passkeys") or [])
+        u["passkeys"] = [k for k in (u.get("passkeys") or []) if k["id"] != cred_id]
+        if len(u["passkeys"]) == before:
+            raise AuthError("Passkey nicht gefunden.")
+        _save_config(cfg)
+
+
+def find_passkey(cred_id: str) -> Optional[tuple]:
+    """(username, stored credential, user handle) for webauthn.verify_authentication - active users only."""
+    cfg = load_config() or {}
+    for name, u in cfg.get("users", {}).items():
+        for k in u.get("passkeys") or []:
+            if k["id"] == cred_id and _usable(u):
+                return name, k, u.get("webauthn_id", "")
+    return None
+
+
+def passkey_used(username: str, cred_id: str, sign_count: int) -> None:
+    with _lock:
+        cfg = _cfg_for_write()
+        for k in cfg["users"].get(username, {}).get("passkeys") or []:
+            if k["id"] == cred_id:
+                k.update(sign_count=sign_count, last_used=int(time.time()))
+        _save_config(cfg)
+
+
+# ---------------------------------------------------------------------------
+# E-mail address and "Passwort vergessen"
+# ---------------------------------------------------------------------------
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
+RESET_TTL = 1800
+
+
+def set_email(username: str, email: str) -> None:
+    email = (email or "").strip()
+    if email and not EMAIL_RE.match(email):
+        raise AuthError("Ungültige E-Mail-Adresse.")
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if not name:
+            raise AuthError("Benutzer nicht gefunden.")
+        if email:
+            cfg["users"][name]["email"] = email
+        else:
+            cfg["users"][name].pop("email", None)
+        _save_config(cfg)
+
+
+def find_by_login(value: str) -> Optional[str]:
+    """Username for "Passwort vergessen": the username or the e-mail address (case-insensitive)."""
+    cfg = load_config() or {}
+    name = _find(cfg, value)
+    if name:
+        return name
+    want = (value or "").strip().casefold()
+    return next((u for u, d in cfg.get("users", {}).items() if want and (d.get("email") or "").casefold() == want), None)
+
+
+def create_reset(username: str) -> str:
+    """A single-use token for the reset link (only its hash is stored)."""
+    token = secrets.token_urlsafe(32)
+    with _lock:
+        cfg = _cfg_for_write()
+        cfg["users"][username]["reset"] = {"hash": hashlib.sha256(token.encode()).hexdigest(), "expires": int(time.time()) + RESET_TTL}
+        _save_config(cfg)
+    return token
+
+
+def reset_user(token: str) -> Optional[str]:
+    """Who the token belongs to, if it is still valid."""
+    h = hashlib.sha256((token or "").encode()).hexdigest()
+    cfg = load_config() or {}
+    for name, u in cfg.get("users", {}).items():
+        r = u.get("reset") or {}
+        if r.get("hash") and hmac.compare_digest(r["hash"], h) and r.get("expires", 0) > time.time() and _usable(u):
+            return name
+    return None
+
+
+def consume_reset(token: str, password: str) -> str:
+    name = reset_user(token)
+    if not name:
+        raise AuthError("Der Link ist abgelaufen oder wurde schon benutzt.")
+    _check_password(password, name)
+    with _lock:
+        cfg = _cfg_for_write()
+        u = cfg["users"][name]
+        salt = secrets.token_bytes(16)
+        u.update(salt=salt.hex(), password_hash=_scrypt(password, salt).hex(), changed=int(time.time()), sv=u.get("sv", 1) + 1)
+        u.pop("reset", None)
+        _save_config(cfg)
+    return name
+
+
 # ---------------------------------------------------------------------------
 # Brute-force protection: 5 free attempts per IP, then a growing lockout; per account
 # 10 free attempts, then a short lockout (capped, so nobody can lock an admin out for long)
@@ -801,8 +961,8 @@ def _cli() -> int:
         if not name:
             print("❌ Benutzer nicht gefunden.")
             return 1
-        totp_disable(name)
-        print(f"✅ Zwei-Faktor-Anmeldung für '{name}' abgeschaltet – bei der nächsten Anmeldung neu einrichten.")
+        reset_factors(name)
+        print(f"✅ Zwei-Faktor-Anmeldung und Passkeys für '{name}' entfernt – bei der nächsten Anmeldung neu einrichten.")
         return 0
 
     if args.cmd in ("status", "users"):

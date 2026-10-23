@@ -977,8 +977,15 @@
 
       <!-- Aktivität -->
       <section data-perm="security.view" class="glass-card settings-section" id="aktivitaet">
-        <h2>Aktivität</h2>
-        <p class="section-desc">Wer wann was im Dashboard gemacht hat: Anmeldungen, Updates, Dienste, Firewall, beendete Prozesse, Downloads … (180 Tage).</p>
+        <div class="section-head">
+          <h2>Aktivität</h2>
+          <div class="head-tools">
+            <button class="btn-secondary" id="activity-verify" type="button">Integrität prüfen</button>
+            <a class="btn-secondary" id="activity-export" href="/api/tools/activity/export" download>Export (CSV)</a>
+          </div>
+        </div>
+        <p class="section-desc">Wer wann was im Dashboard gemacht hat: Anmeldungen, Updates, Dienste, Firewall, beendete Prozesse, Downloads … (180 Tage). Jeder Eintrag ist mit dem vorherigen verkettet (SHA-256): nachträgliches Ändern oder Löschen fällt bei der Prüfung auf. Die tägliche E-Mail enthält den aktuellen Stand der Kette als Nachweis.</p>
+        <div class="audit-verify" id="activity-integrity" hidden></div>
         <form class="log-filters" id="activity-form">
           <select id="activity-category" aria-label="Bereich">
             <option value="">Alle Bereiche</option>

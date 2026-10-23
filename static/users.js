@@ -108,6 +108,11 @@
       n.setAttribute('data-no-i18n', '');
       name.appendChild(n);
       if (self) name.append(' ', el('span', 'health-tag good', 'Du'));
+      if (u.email) {
+        const mail = el('span', 'ctr-sub', u.email);
+        mail.setAttribute('data-no-i18n', '');
+        name.appendChild(mail);
+      }
 
       const groupCell = row.insertCell();
       const select = el('select', 'inline-select');
@@ -134,14 +139,16 @@
         status.append(' ', until);
       }
       if (u.totp) status.append(' ', el('span', 'health-tag', '2FA'));
+      if (u.passkeys) status.append(' ', el('span', 'health-tag', 'Passkey'));
       row.insertCell().textContent = u.created ? new Date(u.created * 1000).toLocaleDateString(LOCALE) : '–';
 
       const actions = row.insertCell();
       actions.className = 'row-action user-actions';
       actions.appendChild(button('Passwort', 'btn-secondary', () => openPasswordRow(row, u)));
+      actions.appendChild(button('E-Mail', 'btn-secondary', () => openEmailRow(row, u)));
       actions.appendChild(button('Abmelden', 'btn-secondary', () =>
         run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { logout: true }), `${u.username} wurde auf allen Geräten abgemeldet.`)));
-      if (u.totp && !self) {
+      if ((u.totp || u.passkeys) && !self) {
         actions.appendChild(confirmButton('Zwei-Faktor zurücksetzen', 'Sicher?', 'btn-secondary', () =>
           run(api(`/api/users/${encodeURIComponent(u.username)}/2fa-reset`, {}), `${u.username}: ${t('Zwei-Faktor-Anmeldung zurückgesetzt.')}`)));
       }
@@ -170,6 +177,32 @@
       sel.appendChild(o);
     });
     sel.value = state.groups.some(g => g.id === keep) ? keep : 'user';
+  }
+
+  function openEmailRow(row, u) {
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('password-row')) { next.remove(); return; }
+    const tr = el('tr', 'password-row');
+    const td = el('td');
+    td.colSpan = 5;
+    const form = el('form', 'inline-form password-form');
+    const input = el('input');
+    input.type = 'email';
+    input.value = u.email || '';
+    input.placeholder = 'name@example.com';
+    input.setAttribute('aria-label', `E-Mail-Adresse von ${u.username}`);
+    const save = el('button', 'btn-primary', 'Speichern');
+    save.type = 'submit';
+    const hint = el('span', 'field-hint', 'Für „Passwort vergessen“. Leer lassen zum Entfernen.');
+    form.append(input, save, hint);
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (await run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { email: input.value.trim() }), `${u.username}: E-Mail gespeichert.`)) tr.remove();
+    });
+    td.appendChild(form);
+    tr.appendChild(td);
+    row.after(tr);
+    input.focus();
   }
 
   function openPasswordRow(row, u) {

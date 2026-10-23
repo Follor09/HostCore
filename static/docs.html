@@ -51,6 +51,7 @@
       <a href="#domains">Domains</a>
       <a href="#befehle">Befehle</a>
       <a href="#kosten">Kosten</a>
+      <a href="#aenderungen">Änderungen</a>
     </nav>
 
     <div class="settings-sections">
@@ -219,6 +220,21 @@
         <div class="cost-legend"><span class="c-power">Strom</span><span class="c-contracts">Verträge &amp; Abos</span><span class="c-hardware">Hardware-Käufe</span></div>
         <div class="cost-details" id="cost-details"></div>
       </section>
+
+      <!-- Änderungen -->
+      <section class="glass-card settings-section" id="aenderungen">
+        <div class="section-head">
+          <h2>Änderungen</h2>
+          <select id="ver-kind" aria-label="Bereich">
+            <option value="">Alle Bereiche</option>
+          </select>
+        </div>
+        <p class="section-desc">Jede Änderung an Inventar, Verträgen, Befehlen, Betriebstagebuch, Runbooks, Steckbriefen und Wissensseiten wird als Version aufbewahrt – wer was wann geändert hat, Vergleich mit der Fassung davor und Wiederherstellen, auch für gelöschte Einträge. Aufbewahrung unter Einstellungen → Datenaufbewahrung.</p>
+        <h3 class="subhead">Gelöscht</h3>
+        <div id="ver-deleted"></div>
+        <h3 class="subhead">Zuletzt geändert</h3>
+        <div id="ver-recent"></div>
+      </section>
     </div>
   </main>
 
@@ -229,6 +245,8 @@
   <script src="/static/hosts.js"></script>
   <script src="/static/docs.js"></script>
   <script src="/static/incidents.js"></script>
+  <script src="/static/diff.js"></script>
+  <script src="/static/docs-versions.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

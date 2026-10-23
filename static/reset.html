@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="referrer" content="no-referrer">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <script src="/static/theme.js"></script>
+  <title>Neues Passwort | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber login-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <main class="login-wrap">
+    <form class="glass-card login-card" id="reset-form" novalidate>
+      <div class="login-brand">
+        <div class="card-icon-pill icon-cyan">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        </div>
+        <div>
+          <h1>Neues Passwort</h1>
+          <p class="card-subtitle" id="reset-sub">Prüfe den Link…</p>
+        </div>
+      </div>
+      <div id="reset-fields" hidden>
+        <label class="login-field">
+          <span>Neues Passwort (mind. 10 Zeichen)</span>
+          <input type="password" id="reset-pass" autocomplete="new-password" required>
+        </label>
+        <label class="login-field">
+          <span>Neues Passwort wiederholen</span>
+          <input type="password" id="reset-pass2" autocomplete="new-password" required>
+        </label>
+        <p class="field-hint">Danach sind alle Geräte abgemeldet. Eine eingerichtete Zwei-Faktor-Anmeldung bleibt bestehen.</p>
+        <button type="submit" class="login-submit" id="reset-submit">Passwort speichern</button>
+      </div>
+      <div class="login-error" id="reset-error" role="alert" hidden></div>
+      <a class="login-public" href="/login">Zur Anmeldung →</a>
+    </form>
+  </main>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/reset.js"></script>
+</body>
+</html>

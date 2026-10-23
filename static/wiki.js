@@ -138,7 +138,19 @@
       restore.addEventListener('click', async () => {
         try { const o = await fetchOld(); startEdit({ ...current, title: o.title, content: o.content }); toast(t('Alte Version im Editor – zum Übernehmen speichern.')); } catch (err) { toast(err.message, 'error'); }
       });
-      row.append(label, show, restore);
+      // What changed from this version to the current page
+      const diff = el('button', 'text-btn', t('Unterschiede'));
+      diff.type = 'button';
+      diff.hidden = !window.PiDiff;
+      diff.addEventListener('click', async () => {
+        try {
+          const o = await fetchOld();
+          box.innerHTML = '';
+          box.appendChild(window.PiDiff.renderLines(`# ${o.title}\n${o.content}`, `# ${current.title}\n${current.content}`));
+          box.hidden = false;
+        } catch (err) { toast(err.message, 'error'); }
+      });
+      row.append(label, show, diff, restore);
       p.append(row, box);
     });
   }

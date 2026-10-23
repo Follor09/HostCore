@@ -5,20 +5,47 @@ A middleware in app.py records every changing request (POST) plus file downloads
 terminal sessions automatically. The action label comes from the path (ACTIONS below);
 endpoints can add details via `request.state.audit_detail`. Stored in history.db,
 kept for 180 days (at most 20 000 entries).
+
+Tamper evident: every entry carries the SHA-256 of its content and of the entry before it (a hash
+chain). Changing or deleting an entry in the middle breaks the chain; cleaning up old entries
+keeps the hash of the last removed one as the new start. Once a day the newest hash is noted
+("checkpoint", also in the daily e-mail), so cutting off the newest entries shows up as well.
 """
 
+import csv
+import hashlib
+import io
+import json
 import re
 import sqlite3
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import history
 
 MAX_ROWS = 20000
+GENESIS = "picore-audit-v1"
+HEADS_KEY = "audit_checkpoints"
+_chain_lock = threading.Lock()
 
 # (method, path regex) -> (category, label). The first match wins.
 ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/auth/login$", "login", "Anmeldung"),
+    ("POST", r"^/api/auth/passkey/login$", "login", "Anmeldung mit Passkey"),
+    ("POST", r"^/api/auth/reauth$", "security", "Erneut bestätigt"),
+    ("POST", r"^/api/auth/passkey/register$", "security", "Passkey angelegt"),
+    ("POST", r"^/api/auth/passkeys/[^/]+/delete$", "security", "Passkey entfernt"),
+    ("POST", r"^/api/auth/2fa/enable$", "security", "Zwei-Faktor eingerichtet"),
+    ("POST", r"^/api/auth/2fa/disable$", "security", "Zwei-Faktor abgeschaltet"),
+    ("POST", r"^/api/auth/2fa/recovery$", "security", "Neue Wiederherstellungscodes"),
+    ("POST", r"^/api/auth/forgot$", "security", "Passwort-Zurücksetzen angefordert"),
+    ("POST", r"^/api/auth/reset$", "security", "Passwort per E-Mail-Link gesetzt"),
+    ("POST", r"^/api/auth/email$", "settings", "E-Mail-Adresse geändert"),
+    ("POST", r"^/api/(auth|security)/sessions/[^/]+/revoke$", "security", "Sitzung beendet"),
+    ("POST", r"^/api/users/[^/]+/2fa-reset$", "security", "Zwei-Faktor zurückgesetzt"),
+    ("POST", r"^/api/security$", "security", "Sicherheitseinstellungen geändert"),
+    ("POST", r"^/api/versions/\d+/restore$", "settings", "Doku-Version wiederhergestellt"),
     ("POST", r"^/api/auth/logout$", "login", "Abmeldung"),
     ("POST", r"^/api/settings/account$", "settings", "Eigenes Passwort geändert"),
     ("POST", r"^/api/settings/logout-all$", "security", "Alle Benutzer abgemeldet"),
@@ -160,7 +187,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("WS", r"^/ws/terminal$", "security", "Terminal-Sitzung"),
 ]
 # Frequent, harmless requests that would flood the log
-IGNORE = [r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$", r"^/api/appstore/refresh$", r"^/api/kanban", r"^/api/reminders", r"^/api/docs/"]
+IGNORE = [r"^/api/auth/passkey/(login|register)/options$", r"^/api/auth/2fa/setup$", r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$", r"^/api/appstore/refresh$", r"^/api/kanban", r"^/api/reminders", r"^/api/docs/"]
 
 CATEGORIES = {"login": "Anmeldung", "settings": "Einstellungen", "system": "System",
               "security": "Sicherheit", "network": "Netzwerk", "files": "Dateien"}
@@ -172,7 +199,28 @@ def _conn() -> sqlite3.Connection:
         id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, user TEXT, ip TEXT,
         category TEXT, action TEXT, path TEXT, detail TEXT, status INTEGER)""")
     conn.execute("CREATE INDEX IF NOT EXISTS audit_ts ON audit (ts)")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(audit)")}
+    if "hash" not in cols:
+        conn.execute("ALTER TABLE audit ADD COLUMN prev TEXT")
+        conn.execute("ALTER TABLE audit ADD COLUMN hash TEXT")
+    conn.execute("CREATE TABLE IF NOT EXISTS audit_meta (key TEXT PRIMARY KEY, value TEXT)")
     return conn
+
+
+def _digest(prev: str, row: tuple) -> str:
+    """row: ts, user, ip, category, action, path, detail, status"""
+    body = json.dumps([prev, *row], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def _meta(conn, key: str) -> str:
+    r = conn.execute("SELECT value FROM audit_meta WHERE key = ?", (key,)).fetchone()
+    return r[0] if r else ""
+
+
+def _head(conn) -> str:
+    r = conn.execute("SELECT hash FROM audit WHERE hash IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    return r[0] if r else (_meta(conn, "anchor") or GENESIS)
 
 
 def classify(method: str, path: str) -> Optional[Tuple[str, str]]:
@@ -191,9 +239,11 @@ def record(user: str, ip: str, method: str, path: str, status: int, detail: str 
     if not kind:
         return
     now = int(time.time())
-    with _conn() as conn:
-        conn.execute("INSERT INTO audit (ts, user, ip, category, action, path, detail, status) VALUES (?,?,?,?,?,?,?,?)",
-                      (now, user or "", ip or "", kind[0], kind[1], path, (detail or "")[:300], status))
+    row = (now, user or "", ip or "", kind[0], kind[1], path, (detail or "")[:300], int(status or 0))
+    with _chain_lock, _conn() as conn:
+        prev = _head(conn)
+        conn.execute("INSERT INTO audit (ts, user, ip, category, action, path, detail, status, prev, hash) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                     (*row, prev, _digest(prev, row)))
         if now % 50 == 0:  # occasional cleanup
             cleanup(conn)
 
@@ -202,10 +252,18 @@ def cleanup(conn=None) -> None:
     """Entries older than the retention "audit" (Einstellungen -> Datenaufbewahrung)."""
     import retention
     if conn is None:
-        with _conn() as c:
+        with _chain_lock, _conn() as c:
             return cleanup(c)
-    conn.execute("DELETE FROM audit WHERE ts < ?", (int(time.time()) - retention.seconds("audit"),))
-    conn.execute("DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ?", (MAX_ROWS,))
+    cut = conn.execute("SELECT MAX(id) FROM audit WHERE ts < ? OR id <= (SELECT MAX(id) FROM audit) - ?",
+                       (int(time.time()) - retention.seconds("audit"), MAX_ROWS)).fetchone()[0]
+    if not cut:
+        return
+    last = conn.execute("SELECT hash FROM audit WHERE id = ?", (cut,)).fetchone()
+    if last and last[0]:
+        # The chain now starts after the removed entries
+        conn.execute("INSERT OR REPLACE INTO audit_meta VALUES ('anchor', ?)", (last[0],))
+        conn.execute("INSERT OR REPLACE INTO audit_meta VALUES ('anchor_id', ?)", (str(cut),))
+    conn.execute("DELETE FROM audit WHERE id <= ?", (cut,))
 
 
 def entries(query: str = "", category: str = "", limit: int = 200, before: int = 0) -> Dict[str, Any]:
@@ -232,3 +290,77 @@ def entries(query: str = "", category: str = "", limit: int = 200, before: int =
              for i, ts, u, ip, c, a, d, s in rows]
     return {"entries": items, "total": total, "categories": CATEGORIES,
             "more": len(items) == max(1, min(limit, 500))}
+
+
+# ---------------------------------------------------------------------------
+# Integrity
+# ---------------------------------------------------------------------------
+def verify() -> Dict[str, Any]:
+    """Walk the hash chain. ok=False names the first entry that doesn't fit."""
+    with _chain_lock, _conn() as conn:
+        rows = conn.execute("SELECT id, ts, user, ip, category, action, path, detail, status, prev, hash FROM audit ORDER BY id").fetchall()
+        anchor, anchor_id = _meta(conn, "anchor"), int(_meta(conn, "anchor_id") or 0)
+    legacy = sum(1 for r in rows if not r[10])
+    chained = [r for r in rows if r[10]]
+    out: Dict[str, Any] = {"ok": True, "checked": len(chained), "legacy": legacy, "problems": [], "head": "",
+                           "since": chained[0][1] if chained else 0, "verified_at": int(time.time())}
+    expected = None
+    for i, r in enumerate(chained):
+        rid, ts, prev, h = r[0], r[1], r[9], r[10]
+        row = (r[1], r[2], r[3], r[4], r[5], r[6], r[7], int(r[8] or 0))
+        if i == 0:
+            first_ok = prev == GENESIS or bool(anchor and prev == anchor)
+            if not first_ok:
+                out["problems"].append({"id": rid, "ts": ts, "kind": "start", "text": "Anfang der Kette fehlt – ältere Einträge wurden entfernt."})
+        elif prev != expected:
+            out["problems"].append({"id": rid, "ts": ts, "kind": "gap", "text": "Davor fehlt ein Eintrag oder wurde ersetzt."})
+        if _digest(prev, row) != h:
+            out["problems"].append({"id": rid, "ts": ts, "kind": "changed", "text": "Eintrag wurde nachträglich geändert."})
+        expected = h
+        if len(out["problems"]) >= 20:
+            break
+    out["head"] = expected or ""
+    # Checkpoints: each noted head must still be in the log (unless it was cleaned up legitimately)
+    import settings_store
+    hashes = {r[10]: r[0] for r in chained}
+    for cp in settings_store.get(HEADS_KEY, []) or []:
+        if cp["id"] > anchor_id and hashes.get(cp["hash"]) != cp["id"]:
+            out["problems"].append({"id": cp["id"], "ts": cp["ts"], "kind": "cut",
+                                    "text": "Ein früher notierter Stand fehlt – Einträge wurden gelöscht oder ersetzt."})
+            break
+    out["ok"] = not out["problems"]
+    return out
+
+
+def checkpoint() -> Dict[str, Any]:
+    """Note the newest hash (daily from the monitor and with the daily e-mail)."""
+    import settings_store
+    with _chain_lock, _conn() as conn:
+        r = conn.execute("SELECT id, hash FROM audit WHERE hash IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+    if not r:
+        return {}
+    cps = settings_store.get(HEADS_KEY, []) or []
+    cp = {"id": r[0], "hash": r[1], "ts": int(time.time())}
+    if not cps or cps[-1]["id"] != r[0]:
+        settings_store.set(HEADS_KEY, (cps + [cp])[-400:])
+    return cp
+
+
+def checkpoint_if_due() -> None:
+    import settings_store
+    cps = settings_store.get(HEADS_KEY, []) or []
+    if not cps or time.time() - cps[-1]["ts"] >= 86400 - 120:
+        checkpoint()
+
+
+def export_csv() -> str:
+    with _chain_lock, _conn() as conn:
+        rows = conn.execute("SELECT id, ts, user, ip, category, action, path, detail, status, prev, hash FROM audit ORDER BY id").fetchall()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id", "time", "user", "ip", "category", "action", "path", "detail", "status", "prev_hash", "hash"])
+    for r in rows:
+        w.writerow([r[0], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r[1])), *r[2:]])
+    v = verify()
+    buf.write(f"# chain: {'ok' if v['ok'] else 'BROKEN'}; entries checked: {v['checked']}; head: {v['head']}\n")
+    return buf.getvalue()

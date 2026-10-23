@@ -270,14 +270,16 @@ def _hostname() -> str:
     return socket.gethostname()
 
 
-def send(subject: str, text: str, html_body: Optional[str] = None, cfg: Optional[Dict[str, Any]] = None) -> None:
+def send(subject: str, text: str, html_body: Optional[str] = None, cfg: Optional[Dict[str, Any]] = None,
+         to: Optional[List[str]] = None) -> None:
+    """to: own recipients (e.g. the user of a password reset) instead of the configured ones."""
     c = cfg or config()
-    if not c.get("host") or not c.get("sender") or not c.get("recipients"):
+    if not c.get("host") or not c.get("sender") or not (to or c.get("recipients")):
         raise NotifyError("SMTP-Server, Absender und Empfänger eintragen.")
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = formataddr((c.get("sender_name") or "PiCore", c["sender"]))
-    msg["To"] = ", ".join(c["recipients"])
+    msg["To"] = ", ".join(to or c["recipients"])
     msg["Message-ID"] = make_msgid(domain=c["sender"].split("@")[-1])
     msg["Date"] = datetime.datetime.now().astimezone().strftime("%a, %d %b %Y %H:%M:%S %z")
     msg.set_content(text)
@@ -409,8 +411,17 @@ def _daily_mail() -> bool:
     if not items:
         return True
     worst = max((LEVELS.get(i[0], 0) for i in items), default=0)
+    sections = [("Fällig und bald fällig", items)]
+    try:
+        # Outside witness for the tamper-evident activity log: the newest hash, kept in your mailbox
+        import audit
+        cp = audit.checkpoint()
+        if cp:
+            sections.append(("Prüfsumme Aktivitätsprotokoll", [("info", f"Eintrag {cp['id']}: {cp['hash'][:16]}…{cp['hash'][-8:]}", "/system#aktivitaet")]))
+    except Exception as e:
+        logger.warning(f"Audit checkpoint: {e}")
     text, body = _render("Tagesübersicht", f"{_hostname()} · {time.strftime('%d.%m.%Y')}",
-                         [("Fällig und bald fällig", items)], "/", overall=["good", "info", "warning", "critical"][worst])
+                         sections, "/", overall=["good", "info", "warning", "critical"][worst])
     n = len(items)
     return _send_quiet(f"[PiCore] Tagesübersicht: {n} {'Punkt' if n == 1 else 'Punkte'}", text, body)
 

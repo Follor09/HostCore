@@ -23,6 +23,7 @@ ITEMS: Dict[str, tuple] = {
     "disk": ("Speicherverlauf", "Belegung pro Tag für die Speicherprognose und große Ordner", "days", 400, 90, 1825),
     "trash": ("Papierkorb", "Gelöschte Dateien bleiben so lange wiederherstellbar", "days", 30, 1, 90),
     "wiki_versions": ("Wiki-Versionen", "Frühere Fassungen pro Wissensseite", "count", 20, 5, 100),
+    "doc_versions": ("Doku-Versionen", "Frühere und gelöschte Fassungen von Inventar, Verträgen, Befehlen, Tagebuch, Runbooks, Steckbriefen und Wiki", "days", 365, 30, 1825),
     "board_versions": ("Board-Verlauf", "Gespeicherte Stände der Startseite", "count", 60, 10, 200),
     "webhook_events": ("Webhook-Meldungen", "Zuletzt empfangene Meldungen aller Webhooks", "count", 500, 100, 5000),
     "mcp_calls": ("MCP-Aufrufe", "Protokoll der Werkzeug-Aufrufe über den MCP-Server", "count", 1000, 100, 10000),
@@ -146,6 +147,11 @@ def cleanup_now() -> Dict[str, Any]:
     files.trash_purge()
     wiki.trim_versions()
     boards.trim_history()
+    try:
+        import versions
+        versions.cleanup()
+    except Exception:
+        pass
     try:
         import webhooks
         webhooks.trim()

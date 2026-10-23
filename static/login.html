@@ -60,6 +60,19 @@
       <div class="login-error" id="login-error" role="alert" hidden></div>
 
       <button type="submit" class="login-submit" id="login-submit">Anmelden</button>
+      <button type="button" class="login-passkey" id="login-passkey" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"></circle><path d="M10.85 12.15 19 4"></path><path d="m18 5 2 2"></path><path d="m15 8 2 2"></path></svg>
+        Mit Passkey anmelden
+      </button>
+      <button type="button" class="login-forgot" id="login-forgot">Passwort vergessen?</button>
+      <div class="login-forgot-box" id="forgot-box" hidden>
+        <label class="login-field">
+          <span>Benutzername oder E-Mail-Adresse</span>
+          <input type="text" id="forgot-login" autocomplete="username" autocapitalize="none" spellcheck="false">
+        </label>
+        <button type="button" class="btn-secondary" id="forgot-send">Link per E-Mail senden</button>
+        <p class="field-hint" id="forgot-msg" role="status"></p>
+      </div>
 
       <a class="login-public" id="login-public" href="/" hidden>Nur ansehen, ohne Anmeldung →</a>
       <button type="button" class="login-lang" id="login-lang" data-no-i18n></button>
@@ -68,6 +81,7 @@
   <script src="/static/i18n.js"></script>
   <script src="/static/footer.js"></script>
 
+  <script src="/static/passkey.js"></script>
   <script src="/static/login.js"></script>
 </body>
 </html>

@@ -133,8 +133,8 @@
     '/settings': {
       title: 'Einstellungen',
       groups: [
-        { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Zwei-Faktor, Sitzungen, Benutzer, Berechtigungen, Sicherheit und Freigabe-Links',
-          sections: ['konto', 'zwei-faktor', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'freigaben'],
+        { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Zwei-Faktor, Passkeys, Sitzungen, Benutzer, Berechtigungen, Sicherheit und Freigabe-Links',
+          sections: ['konto', 'zwei-faktor', 'passkeys', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'freigaben'],
           facts: async () => {
             const out = [];
             const [tf, sec] = await Promise.allSettled([get('/api/auth/2fa'), get('/api/security')]);
@@ -238,6 +238,17 @@
             if (dm.status === 'fulfilled' && dm.value.domains.length) {
               out.push(dm.value.warnings ? { level: 'warning', text: `${n(dm.value.warnings, 'Domain läuft', 'Domains laufen')} bald ab` } : { level: 'good', text: `${n(dm.value.domains.length, 'Domain', 'Domains')} in Ordnung` });
             }
+            return out;
+          } },
+        { id: 'aenderungen', label: 'Änderungen', desc: 'Versionsverlauf, Vergleich und gelöschte Einträge', sections: ['aenderungen'],
+          facts: async () => {
+            const [rc, dl] = await Promise.allSettled([get('/api/versions/recent?limit=200'), get('/api/versions/deleted')]);
+            const out = [];
+            if (rc.status === 'fulfilled') {
+              const week = Date.now() / 1000 - 7 * 86400;
+              out.push({ level: 'info', text: n(rc.value.items.filter(i => i.ts >= week).length, 'Änderung in 7 Tagen', 'Änderungen in 7 Tagen') });
+            }
+            if (dl.status === 'fulfilled' && dl.value.items.length) out.push({ level: 'info', text: n(dl.value.items.length, 'gelöschter Eintrag', 'gelöschte Einträge') });
             return out;
           } }
       ]

@@ -60,6 +60,47 @@
     code.focus();
   }
 
+  // Passkey: no username needed (the passkey knows its account)
+  const pkBtn = document.getElementById('login-passkey');
+  pkBtn.hidden = !(window.PiPasskey && window.PiPasskey.supported());
+  pkBtn.addEventListener('click', async () => {
+    showError('');
+    pkBtn.disabled = true;
+    try {
+      const d = await window.PiPasskey.login(remember.checked);
+      try { localStorage.setItem('loginUser', d.user); } catch (e) { /* ignore */ }
+      location.replace(nextTarget());
+    } catch (err) {
+      showError(err.message);
+      pkBtn.disabled = false;
+    }
+  });
+
+  // Forgot password: always the same answer, whether the account exists or not
+  const forgotBox = document.getElementById('forgot-box');
+  document.getElementById('login-forgot').addEventListener('click', () => {
+    forgotBox.hidden = !forgotBox.hidden;
+    if (!forgotBox.hidden) {
+      document.getElementById('forgot-login').value = user.value.trim();
+      document.getElementById('forgot-login').focus();
+    }
+  });
+  document.getElementById('forgot-send').addEventListener('click', async () => {
+    const msg = document.getElementById('forgot-msg');
+    const value = document.getElementById('forgot-login').value.trim();
+    if (!value) { msg.textContent = t('Bitte Benutzername oder E-Mail-Adresse eingeben.'); return; }
+    const btn = document.getElementById('forgot-send');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: value }) });
+      const d = await res.json().catch(() => ({}));
+      msg.textContent = d.message || d.detail || t('Anfrage fehlgeschlagen.');
+    } catch (e) {
+      msg.textContent = t('Anfrage fehlgeschlagen.');
+    }
+    setTimeout(() => { btn.disabled = false; }, 5000);
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     showError('');

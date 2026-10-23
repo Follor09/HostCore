@@ -36,7 +36,7 @@ DEFAULTS: Dict[str, Any] = {
     "reauth": True, "reauth_minutes": 15,
     "reauth_perms": ["users.manage", "firewall.manage", "system.power", "updates.install", "apps.install"],
     "restrict": False, "restrict_perms": ["terminal", "users.manage", "firewall.manage", "system.power"],
-    "internal_networks": [], "notify_new_login": True, "hsts": True, "anon_rate": 120,
+    "internal_networks": [], "notify_new_login": True, "hsts": True, "anon_rate": 120, "password_reset": True,
 }
 # Home network / VPN: private ranges, CGNAT (NetBird, Tailscale), link-local, IPv6 ULA
 INTERNAL = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
@@ -278,7 +278,7 @@ def save(fields: Dict[str, Any]) -> Dict[str, Any]:
         if fields["twofa"] not in TWOFA_POLICIES:
             raise WebsecError("Unbekannte Regel.")
         c["twofa"] = fields["twofa"]
-    for key in ("reauth", "restrict", "notify_new_login", "hsts"):
+    for key in ("reauth", "restrict", "notify_new_login", "hsts", "password_reset"):
         if key in fields:
             c[key] = bool(fields[key])
     if "reauth_minutes" in fields:
@@ -319,14 +319,14 @@ def checklist(request: Any) -> List[Dict[str, Any]]:
         "Eingeschaltet – im Internet sieht so jeder Systemdaten des Pi." if auth.public_view() else "aus")
     users = auth.list_users()
     admins = [u for u in users if u["group"] == "admin" and not u["disabled"]]
-    no2fa = [u["username"] for u in admins if not u["totp"]]
+    no2fa = [u["username"] for u in admins if not u["totp"] and not u["passkeys"]]
     if c["twofa"] != "none":
         add("twofa", "ok", "Zwei-Faktor-Anmeldung", TWOFA_POLICIES[c["twofa"]])
     else:
         add("twofa", "warning" if no2fa else "ok", "Zwei-Faktor-Anmeldung",
             f"Freiwillig – ohne zweiten Faktor: {', '.join(no2fa)}. Für den öffentlichen Betrieb „Pflicht für Administratoren“ wählen."
             if no2fa else "Alle Administratoren haben sie eingerichtet.")
-    others = [u["username"] for u in users if u["group"] != "admin" and not u["disabled"] and not u["totp"]]
+    others = [u["username"] for u in users if u["group"] != "admin" and not u["disabled"] and not u["totp"] and not u["passkeys"]]
     if others and c["twofa"] != "all":
         add("twofa-users", "info", "Weitere Konten ohne zweiten Faktor", ", ".join(others[:10]) + (" …" if len(others) > 10 else ""))
     add("reauth", "ok" if c["reauth"] else "warning", "Erneute Bestätigung",
@@ -335,6 +335,17 @@ def checklist(request: Any) -> List[Dict[str, Any]]:
     add("restrict", "ok" if c["restrict"] else "info", "Kritische Bereiche nur aus Heimnetz/VPN",
         f"An – aus dem Internet gesperrt: {len(c['restrict_perms'])} Berechtigungen." if c["restrict"]
         else "Aus – Terminal, Benutzerverwaltung und Firewall sind auch aus dem Internet erreichbar (mit Login).")
+    if c["password_reset"]:
+        try:
+            import notify
+            n = notify.config()
+            ready = bool(n.get("host") and n.get("sender") and n.get("dashboard_url"))
+        except Exception:
+            ready = False
+        with_mail = sum(1 for u in users if u["email"] and not u["disabled"])
+        add("reset", "ok" if ready else "info", "Passwort vergessen",
+            f"per E-Mail-Link möglich für {with_mail} Konto/Konten mit Adresse" if ready
+            else "eingeschaltet, aber ohne Mailserver oder Dashboard-Adresse (Einstellungen → E-Mail) geht keine Mail raus.")
     add("rate", "ok" if c["anon_rate"] else "warning", "Begrenzung ohne Login",
         f"Höchstens {c['anon_rate']} Anfragen pro Minute und Adresse aus dem Internet ohne Login." if c["anon_rate"] else "Aus.")
     try:

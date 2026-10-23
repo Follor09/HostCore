@@ -7,6 +7,7 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 import asyncio
 import platform
 import re
+import threading
 import hmac
 import secrets
 import contextlib
@@ -92,6 +93,8 @@ import hardening
 import aptchangelog
 import sbom
 import websec
+import webauthn
+import versions
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -205,6 +208,21 @@ async def remote_proxy(request: Request, call_next):
             await resp.aclose()
     return StreamingResponse(body_iter(), status_code=resp.status_code, headers=keep)
 
+@app.middleware("http")
+async def version_history(request: Request, call_next):
+    """Documentation and wiki: compare the collection before and after a change and keep the versions."""
+    if request.method != "POST" or _remote_for(request):
+        return await call_next(request)
+    before = await asyncio.to_thread(versions.track_before, request.url.path)
+    response = await call_next(request)
+    if before and response.status_code < 400:
+        try:
+            await asyncio.to_thread(versions.track_after, before, getattr(request.state, "user", "") or "")
+        except Exception as e:
+            logger.warning(f"Version history failed: {e}")
+    return response
+
+
 # Serve static assets
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -217,7 +235,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # With "public view" enabled, GET requests are open and only actions need a login.
 # ---------------------------------------------------------------------------
 PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/api/about", "/favicon.ico",
-                "/status", "/api/public/status"}   # the public status page answers 404 while switched off
+                "/status", "/api/public/status", "/api/auth/passkey/login/options", "/api/auth/passkey/login",
+                "/api/auth/forgot", "/api/auth/reset", "/passwort"}   # the public status page answers 404 while switched off
 
 
 def _same_origin(request: Request) -> bool:
@@ -304,7 +323,7 @@ async def require_login(request: Request, call_next):
     if user and not getattr(request.state, "via_mcp", False):
         # Two-factor login required for this group, but not set up yet: only the setup is open
         info = auth.user_info(user)
-        if info and not info["totp"] and websec.twofa_required(info["group"]) and not _twofa_setup_path(path):
+        if info and not info["totp"] and not info["passkeys"] and websec.twofa_required(info["group"]) and not _twofa_setup_path(path):
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Bitte zuerst die Zwei-Faktor-Anmeldung einrichten.", "setup_2fa": True}, status_code=403)
             return RedirectResponse("/2fa", status_code=303)
@@ -320,7 +339,8 @@ async def require_login(request: Request, call_next):
     return await call_next(request)
 
 
-TWOFA_SETUP_PATHS = ("/2fa", "/api/auth/2fa", "/api/auth/logout", "/api/auth/status", "/api/me", "/api/about", "/api/auth/reauth")
+TWOFA_SETUP_PATHS = ("/2fa", "/api/auth/2fa", "/api/auth/logout", "/api/auth/status", "/api/me", "/api/about", "/api/auth/reauth",
+                     "/api/auth/passkey")
 
 
 def _twofa_setup_path(path: str) -> bool:
@@ -402,7 +422,8 @@ def _me(user: Optional[str]) -> dict:
     group = auth.all_groups().get(info["group"]) if info else None
     return {"user": user, "group": info["group"] if info else None, "group_name": group["name"] if group else None,
             "permissions": sorted(auth.permissions(user)) if user else [],
-            "totp": bool(info and info["totp"]), "totp_required": bool(info and websec.twofa_required(info["group"]))}
+            "totp": bool(info and info["totp"]), "totp_required": bool(info and websec.twofa_required(info["group"])),
+            "passkeys": info["passkeys"] if info else 0, "email": info["email"] if info else ""}
 
 
 @app.get("/api/auth/status")
@@ -577,6 +598,249 @@ async def api_auth_2fa_recovery(req: ConfirmRequest, request: Request):
     codes = await asyncio.to_thread(_auth_call, auth.totp_new_recovery, request.state.user)
     request.state.audit_detail = "Neue Wiederherstellungscodes"
     return {"ok": True, "recovery_codes": codes}
+
+
+# ---------------------------------------------------------------------------
+# Passkeys
+# ---------------------------------------------------------------------------
+def _rp(request: Request) -> tuple:
+    """Relying party ID (host name) and origin as the browser sees the page."""
+    host = (request.headers.get("host") or "").strip()
+    if not host or not re.match(r"^[A-Za-z0-9.\-\[\]:]{1,260}$", host):
+        raise HTTPException(status_code=400, detail="Unbekannte Adresse.")
+    rp_id = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]")[0].strip("[")
+    return rp_id, f"{websec.scheme(request)}://{host}"
+
+
+def _need_elevated(request: Request) -> Optional[JSONResponse]:
+    """Adding login methods or the reset address needs a fresh confirmation (the page's dialog asks)."""
+    if not websec.elevated_until(websec.session_key(request.cookies.get(auth.COOKIE_NAME) or "")):
+        return JSONResponse({"detail": "Bitte zur Bestätigung das Passwort erneut eingeben.", "reauth": True}, status_code=403)
+    return None
+
+
+class PasskeyRequest(BaseModel):
+    credential: dict
+    name: str = ""
+    remember: bool = False
+
+
+@app.get("/api/auth/passkeys")
+async def api_auth_passkeys(request: Request):
+    return {"passkeys": auth.passkeys(request.state.user)}
+
+
+@app.post("/api/auth/passkey/register/options")
+async def api_passkey_register_options(request: Request):
+    denied = _need_elevated(request)
+    if denied:
+        return denied
+    rp_id, origin = _rp(request)
+    user = request.state.user
+    handle = await asyncio.to_thread(auth.passkey_handle, user)
+    return webauthn.registration_options(user, handle, rp_id, origin, [p["id"] for p in auth.passkeys(user)])
+
+
+@app.post("/api/auth/passkey/register")
+async def api_passkey_register(req: PasskeyRequest, request: Request):
+    denied = _need_elevated(request)
+    if denied:
+        return denied
+    try:
+        cred = await asyncio.to_thread(webauthn.verify_registration, request.state.user, req.credential)
+    except webauthn.WebAuthnError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await asyncio.to_thread(_auth_call, auth.add_passkey, request.state.user, cred, req.name)
+    request.state.audit_detail = f"Passkey angelegt: {req.name[:40]}"
+    websec.record_event("info", f"Passkey angelegt: {request.state.user}", f"{req.name[:40]} · {websec.client_ip(request)}")
+    return {"passkeys": auth.passkeys(request.state.user)}
+
+
+@app.post("/api/auth/passkeys/{cred_id}/delete")
+async def api_passkey_delete(cred_id: str, request: Request):
+    denied = _need_elevated(request)
+    if denied:
+        return denied
+    await asyncio.to_thread(_auth_call, auth.remove_passkey, request.state.user, cred_id)
+    request.state.audit_detail = "Passkey entfernt"
+    websec.record_event("warning", f"Passkey entfernt: {request.state.user}", websec.client_ip(request))
+    return {"passkeys": auth.passkeys(request.state.user)}
+
+
+@app.post("/api/auth/passkey/login/options")
+async def api_passkey_login_options(request: Request):
+    rp_id, origin = _rp(request)
+    user = request.state.user          # set when confirming again; empty on the login page
+    allow = [p["id"] for p in auth.passkeys(user)] if user else []
+    return webauthn.authentication_options(rp_id, origin, allow, user or "")
+
+
+@app.post("/api/auth/passkey/login")
+async def api_passkey_login(req: PasskeyRequest, request: Request):
+    ip = websec.client_ip(request)
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
+    wait = auth.lockout_remaining(ip)
+    if wait:
+        raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+    try:
+        username, stored, count = await asyncio.to_thread(webauthn.verify_authentication, req.credential, auth.find_passkey)
+    except webauthn.WebAuthnError as e:
+        auth.record_failure(ip)
+        request.state.audit_detail = f"Passkey abgelehnt: {e}"
+        raise HTTPException(status_code=401, detail=str(e))
+    await asyncio.to_thread(auth.passkey_used, username, stored["id"], count)
+    auth.record_success(ip)
+    request.state.audit_user = username
+    if request.state.user == username:
+        # Confirm again (already logged in): elevate this session instead of a new login
+        until = websec.elevate(websec.session_key(request.cookies.get(auth.COOKIE_NAME) or ""))
+        request.state.audit_detail = "Erneut bestätigt (Passkey)"
+        return {"ok": True, "until": until}
+    request.state.audit_detail = f"Mit Passkey: {stored.get('name', '')[:40]}"
+    known = auth.known_ips(username)
+    response = JSONResponse({"ok": True, "user": username})
+    token = _set_session_cookie(response, request, username, req.remember)
+    websec.elevate(websec.session_key(token))
+    await asyncio.to_thread(websec.check_new_login, username, ip, known, request.headers.get("user-agent", ""))
+    return response
+
+
+# ---------------------------------------------------------------------------
+# E-mail address and "Passwort vergessen"
+# ---------------------------------------------------------------------------
+class EmailRequest(BaseModel):
+    email: str = ""
+
+
+class ForgotRequest(BaseModel):
+    login: str
+
+
+class ResetRequest(BaseModel):
+    token: str
+    password: str
+
+
+_forgot_hits: dict = {}
+
+
+@app.post("/api/auth/email")
+async def api_auth_email(req: EmailRequest, request: Request):
+    denied = _need_elevated(request)
+    if denied:
+        return denied
+    await asyncio.to_thread(_auth_call, auth.set_email, request.state.user, req.email)
+    request.state.audit_detail = "E-Mail-Adresse geändert"
+    return {"ok": True, "email": auth.user_info(request.state.user)["email"]}
+
+
+def _send_reset(username: str, ip: str) -> None:
+    import notify
+    info = auth.user_info(username)
+    base = notify.config().get("dashboard_url", "")
+    if not info or not info["email"] or not base:
+        logger.info(f"Password reset for '{username}' not sent (no e-mail address or dashboard address)")
+        return
+    token = auth.create_reset(username)
+    link = f"{base}/passwort?token={token}"
+    text = (f"Hallo {username},\n\nfür dein Konto am PiCore-Dashboard ({base}) wurde ein neues Passwort angefordert "
+            f"(von {ip}).\n\nNeues Passwort festlegen (30 Minuten gültig, einmal benutzbar):\n{link}\n\n"
+            "Warst du das nicht, ignoriere diese Mail – dein Passwort bleibt unverändert.\n")
+    try:
+        notify.send("[PiCore] Passwort zurücksetzen", text, None, to=[info["email"]])
+    except notify.NotifyError as e:
+        logger.warning(f"Password reset mail failed: {e}")
+
+
+@app.post("/api/auth/forgot")
+async def api_auth_forgot(req: ForgotRequest, request: Request):
+    """Same answer whether or not the account exists (nobody can probe for usernames)."""
+    ip = websec.client_ip(request)
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
+    if not websec.config()["password_reset"]:
+        raise HTTPException(status_code=403, detail="Zurücksetzen per E-Mail ist ausgeschaltet – bitte einen Administrator fragen.")
+    now = time.time()
+    hits = [t for t in _forgot_hits.get(ip, []) if now - t < 3600]
+    if len(hits) >= 5:
+        raise HTTPException(status_code=429, detail="Zu viele Anfragen. Bitte später noch einmal versuchen.")
+    _forgot_hits[ip] = hits + [now]
+    username = auth.find_by_login(req.login[:200])
+    request.state.audit_user = username or req.login.strip()[:32]
+    if username:
+        last = _forgot_hits.get(f"user:{username}", [0])[-1]
+        if now - last > 300:
+            _forgot_hits[f"user:{username}"] = [now]
+            await asyncio.to_thread(_send_reset, username, ip)
+            websec.record_event("info", f"Passwort-Zurücksetzen angefordert: {username}", ip)
+    return {"ok": True, "message": "Wenn es dieses Konto mit E-Mail-Adresse gibt, ist eine Mail mit einem Link unterwegs (30 Minuten gültig)."}
+
+
+@app.get("/api/auth/reset")
+async def api_auth_reset_check(token: str = ""):
+    name = auth.reset_user(token)
+    return {"valid": bool(name), "user": name or ""}
+
+
+@app.post("/api/auth/reset")
+async def api_auth_reset(req: ResetRequest, request: Request):
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
+    name = await asyncio.to_thread(_auth_call, auth.consume_reset, req.token, req.password)
+    ip = websec.client_ip(request)
+    request.state.audit_user = name
+    request.state.audit_detail = "Passwort per E-Mail-Link zurückgesetzt"
+    websec.record_event("warning", f"Passwort per E-Mail zurückgesetzt: {name}", ip)
+    import notify
+    info = auth.user_info(name)
+    if info and info["email"]:
+        def tell():
+            try:
+                notify.send("[PiCore] Dein Passwort wurde geändert",
+                            f"Hallo {name},\n\ndein Passwort am PiCore-Dashboard wurde gerade über den E-Mail-Link geändert (von {ip}). "
+                            "Alle Geräte wurden abgemeldet.\n\nWarst du das nicht, sofort einen Administrator informieren.\n", None,
+                            to=[info["email"]])
+            except notify.NotifyError:
+                pass
+        threading.Thread(target=tell, daemon=True).start()
+    return {"ok": True, "message": "Neues Passwort gespeichert – jetzt anmelden."}
+
+
+@app.get("/passwort")
+async def reset_page():
+    return _serve_page("reset.html")
+
+
+# ---------------------------------------------------------------------------
+# Version history (documentation, wiki)
+# ---------------------------------------------------------------------------
+def _version_call(fn, *args):
+    try:
+        return fn(*args)
+    except versions.VersionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/versions")
+async def api_versions(kind: str, id: str):
+    return await asyncio.to_thread(_version_call, versions.item_versions, kind, id)
+
+
+@app.get("/api/versions/deleted")
+async def api_versions_deleted(kind: str = ""):
+    return {"items": await asyncio.to_thread(versions.deleted, kind)}
+
+
+@app.get("/api/versions/recent")
+async def api_versions_recent(limit: int = 50):
+    return {"items": await asyncio.to_thread(versions.recent, limit)}
+
+
+@app.post("/api/versions/{version_id}/restore")
+async def api_versions_restore(version_id: int, request: Request):
+    request.state.audit_detail = f"Version {version_id}"
+    return await asyncio.to_thread(_version_call, versions.restore, version_id, request.state.user or "")
 
 
 @app.get("/2fa")
@@ -1653,6 +1917,7 @@ class UserUpdateRequest(BaseModel):
     password: Optional[str] = None
     logout: bool = False
     expires: Optional[int] = None    # 0 = no expiry
+    email: Optional[str] = None
 
 
 class GroupRequest(BaseModel):
@@ -1688,12 +1953,14 @@ async def api_users_create(req: UserCreateRequest, request: Request):
 
 @app.post("/api/users/{username}/update")
 async def api_users_update(username: str, req: UserUpdateRequest, request: Request):
-    changes = [k for k in ("group", "disabled", "password", "expires") if getattr(req, k) is not None] + (["logout"] if req.logout else [])
+    changes = [k for k in ("group", "disabled", "password", "expires", "email") if getattr(req, k) is not None] + (["logout"] if req.logout else [])
     request.state.audit_detail = f"{username[:32]}: {', '.join(changes)}" + (f" → {req.group}" if req.group else "")
     if username.casefold() == (request.state.user or "").casefold() and (req.disabled or (req.group and req.group != "admin")):
         raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst deaktivieren oder deine Admin-Rechte entfernen.")
     await asyncio.to_thread(_auth_call, auth.update_user, username, group=req.group, disabled=req.disabled,
                             password=req.password, logout=req.logout, expires=req.expires)
+    if req.email is not None:
+        await asyncio.to_thread(_auth_call, auth.set_email, username, req.email)
     response = JSONResponse({"users": auth.list_users(), "groups": auth.list_groups()})
     if username.casefold() == (request.state.user or "").casefold() and (req.password or req.logout):
         _set_session_cookie(response, request, request.state.user, _session_is_remembered(request))
@@ -1706,8 +1973,8 @@ async def api_users_2fa_reset(username: str, request: Request):
     name = auth.canonical_username(username)
     if not name:
         raise HTTPException(status_code=404, detail="Benutzer nicht gefunden.")
-    await asyncio.to_thread(auth.totp_disable, name)
-    request.state.audit_detail = f"{name}: Zwei-Faktor zurückgesetzt"
+    await asyncio.to_thread(auth.reset_factors, name)
+    request.state.audit_detail = f"{name}: Zwei-Faktor und Passkeys zurückgesetzt"
     websec.record_event("warning", f"Zwei-Faktor-Anmeldung zurückgesetzt: {name}", f"von {request.state.user}")
     return {"users": auth.list_users(), "groups": auth.list_groups()}
 
@@ -1782,6 +2049,18 @@ async def api_actions_stop(run_id: str):
 @app.get("/api/tools/activity")
 async def api_tools_activity(q: str = "", category: str = "", limit: int = 200, before: int = 0):
     return await asyncio.to_thread(audit.entries, q, category, limit, before)
+
+
+@app.get("/api/tools/activity/verify")
+async def api_tools_activity_verify():
+    return await asyncio.to_thread(audit.verify)
+
+
+@app.get("/api/tools/activity/export")
+async def api_tools_activity_export():
+    body = await asyncio.to_thread(audit.export_csv)
+    name = f"aktivitaet-{platform.node() or 'pi'}-{time.strftime('%Y-%m-%d')}.csv"
+    return Response(body, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/api/tools/ports")

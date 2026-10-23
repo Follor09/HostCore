@@ -445,6 +445,11 @@ class Monitor:
                         __import__(mod).check_if_due()
                     except Exception as e:
                         logger.warning(f"{mod} check failed: {e}")
+                for mod, fn in (("audit", "checkpoint_if_due"), ("versions", "cleanup")):
+                    try:
+                        getattr(__import__(mod), fn)()
+                    except Exception as e:
+                        logger.warning(f"{mod}.{fn} failed: {e}")
                 try:
                     import files
                     files.trash_purge()

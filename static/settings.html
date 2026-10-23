@@ -48,6 +48,7 @@
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#konto" class="active">Konto</a>
       <a href="#zwei-faktor">Zwei-Faktor-Anmeldung</a>
+      <a href="#passkeys">Passkeys</a>
       <a href="#sitzungen">Sitzungen</a>
       <a href="#benutzer" data-perm="users.manage">Benutzer</a>
       <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
@@ -109,6 +110,18 @@
             <button type="submit" class="btn-primary" id="account-save">Speichern</button>
           </div>
         </form>
+        <form class="settings-form" id="email-form" autocomplete="off">
+          <div class="form-grid">
+            <label class="login-field">
+              <span>E-Mail-Adresse <em>(für „Passwort vergessen“)</em></span>
+              <input type="email" id="acc-email" autocomplete="off" placeholder="name@example.com">
+            </label>
+          </div>
+          <div class="form-actions">
+            <span class="form-msg" id="email-msg" role="status"></span>
+            <button type="submit" class="btn-secondary">E-Mail speichern</button>
+          </div>
+        </form>
 
         <div class="settings-row" data-perm="users.manage">
           <div>
@@ -139,6 +152,15 @@
         </div>
         <p class="section-desc">Zusätzlich zum Passwort ein 6-stelliger Code aus einer Authenticator-App auf dem Handy. Wer dein Passwort kennt, kommt ohne das Handy nicht hinein. Für den Notfall gibt es einmalige Wiederherstellungscodes.</p>
         <div id="tf-body"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="passkeys">
+        <div class="section-head">
+          <h2>Passkeys</h2>
+          <button type="button" class="btn-primary" id="pk-add">Passkey hinzufügen</button>
+        </div>
+        <p class="section-desc">Anmelden mit Face ID, Touch ID, Windows Hello, dem Handy oder einem Sicherheitsschlüssel – ohne Passwort und Code, und sicher gegen gefälschte Anmeldeseiten. Ein Passkey zählt als Zwei-Faktor-Anmeldung. Funktioniert nur über HTTPS und unter der Adresse, unter der er angelegt wurde.</p>
+        <div id="pk-body"></div>
       </section>
 
       <section class="glass-card settings-section" id="sitzungen">
@@ -791,6 +813,7 @@
   <script src="/static/retention-settings.js"></script>
   <script src="/static/selftest-settings.js"></script>
   <script src="/static/twofa.js"></script>
+  <script src="/static/passkey.js"></script>
   <script src="/static/security-settings.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>

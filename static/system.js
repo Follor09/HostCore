@@ -1680,6 +1680,38 @@
   // ---------------------------------------------------------------------------
   const activity = { entries: [], categories: {} };
 
+  // Hash chain of the activity log: intact, or where it breaks
+  async function verifyActivity() {
+    const box = $('activity-integrity');
+    const btn = $('activity-verify');
+    btn.disabled = true;
+    box.hidden = false;
+    box.className = 'audit-verify';
+    box.textContent = 'Prüfe…';
+    try {
+      const v = await api('/api/tools/activity/verify');
+      box.innerHTML = '';
+      box.classList.add(v.ok ? 'ok' : 'broken');
+      const head = el('div', 'audit-verify-head');
+      head.append(el('span', `health-tag ${v.ok ? 'good' : 'critical'}`, v.ok ? 'Kette intakt' : 'Kette beschädigt'),
+        el('span', '', `${v.checked.toLocaleString(LOCALE)} Einträge geprüft${v.since ? ` · seit ${new Date(v.since * 1000).toLocaleString(LOCALE)}` : ''}`));
+      box.appendChild(head);
+      if (v.head) {
+        const h = el('code', 'audit-hash', v.head);
+        h.setAttribute('data-no-i18n', '');
+        box.append(el('span', 'field-hint', 'Aktueller Stand der Kette:'), h);
+      }
+      if (v.legacy) box.appendChild(el('span', 'field-hint', `${v.legacy} ältere Einträge von vor der Verkettung (nicht prüfbar).`));
+      v.problems.forEach(p => {
+        const line = el('span', 'audit-problem', `#${p.id} · ${new Date(p.ts * 1000).toLocaleString(LOCALE)} – ${p.text}`);
+        box.appendChild(line);
+      });
+    } catch (err) {
+      box.textContent = err.message;
+    }
+    btn.disabled = false;
+  }
+
   async function loadActivity(more = false) {
     const params = new URLSearchParams({ q: $('activity-query').value.trim(), category: $('activity-category').value, limit: '200' });
     if (more && activity.entries.length) params.set('before', activity.entries[activity.entries.length - 1].id);
@@ -2722,6 +2754,7 @@
     $('activity-category').addEventListener('change', () => loadActivity());
     $('activity-form').addEventListener('submit', e => { e.preventDefault(); loadActivity(); });
     $('activity-more').addEventListener('click', () => loadActivity(true));
+    $('activity-verify').addEventListener('click', verifyActivity);
     if (!window.PiAuth || window.PiAuth.can('security.view')) loadActivity();
     // Sensors: history once, live values every 5 s while the page is open
     api('/api/sensors/history').then(h => { sensorHistory = h; return refreshSensors(); }).catch(() => refreshSensors());

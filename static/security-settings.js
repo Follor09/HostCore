@@ -1,5 +1,6 @@
 /**
- * PiCore Dashboard - settings sections "Zwei-Faktor-Anmeldung" and "Sitzungen" (own account) and
+ * PiCore Dashboard - settings sections "Zwei-Faktor-Anmeldung", "Passkeys", "Sitzungen" and the e-mail
+ * address for "Passwort vergessen" (own account) and
  * "Sicherheit" (admins): checklist for running on the internet, proxy / 2FA policy / confirm
  * again / home-network-only areas, all sessions and security events.
  */
@@ -248,6 +249,7 @@
     twofa.value = d.twofa;
     field(form, 'Zwei-Faktor-Anmeldung', twofa, 'Bei Pflicht müssen betroffene Benutzer sie bei der nächsten Anmeldung einrichten, bevor sie weiterkommen. Handy verloren: Benutzer → „Zwei-Faktor zurücksetzen“ oder auf dem Pi ./set-password.sh 2fa-reset <name>.');
     const notify = toggle(form, 'Ereignis (und E-Mail) bei Anmeldung von einer neuen Adresse außerhalb des Heimnetzes', d.notify_new_login, 'notify');
+    const reset = toggle(form, '„Passwort vergessen“ per E-Mail-Link erlauben (für Konten mit hinterlegter Adresse; braucht Einstellungen → E-Mail mit Dashboard-Adresse)', d.password_reset, 'password_reset');
 
     form.appendChild(el('h3', 'subhead', t('Erneute Bestätigung')));
     const reauth = toggle(form, 'Kritische Änderungen verlangen das Passwort (und den Code) erneut', d.reauth, 'reauth');
@@ -280,7 +282,7 @@
       try {
         const r = await api('/api/security', {
           proxy: proxy.value, trusted: trusted.value, anon_rate: Number(rate.value), hsts: hsts.checked, twofa: twofa.value,
-          notify_new_login: notify.checked, reauth: reauth.checked, reauth_minutes: Number(minutes.value),
+          notify_new_login: notify.checked, password_reset: reset.checked, reauth: reauth.checked, reauth_minutes: Number(minutes.value),
           reauth_perms: checked('reauth_perms'), restrict: restrict.checked, restrict_perms: checked('restrict_perms'),
           internal_networks: internal.value
         });
@@ -307,9 +309,97 @@
     } catch (e) { /* ignore */ }
   }
 
+  // ---------------------------------------------------------------------------
+  // Passkeys and e-mail address
+  // ---------------------------------------------------------------------------
+  function renderPasskeys(list) {
+    const body = $('pk-body');
+    body.innerHTML = '';
+    const ok = window.PiPasskey && window.PiPasskey.supported();
+    $('pk-add').disabled = !ok;
+    if (!ok) body.appendChild(el('p', 'form-msg warning', t('Hier nicht verfügbar: Passkeys brauchen HTTPS (z.B. über Cloudflare) oder http://localhost.')));
+    if (!list.length) { body.appendChild(el('p', 'field-hint', t('Noch keine Passkeys.'))); return; }
+    const table = el('table', 'data-table');
+    const head = table.createTHead().insertRow();
+    ['Name', 'Adresse', 'Angelegt', 'Zuletzt benutzt', ''].forEach(h => head.appendChild(el('th', '', t(h))));
+    const tb = table.createTBody();
+    list.forEach(p => {
+      const r = tb.insertRow();
+      r.insertCell().appendChild(raw('span', '', p.name || 'Passkey'));
+      r.insertCell().appendChild(raw('span', 'mono', p.rp_id || ''));
+      r.insertCell().textContent = p.created ? fmtTs(p.created) : '';
+      r.insertCell().textContent = p.last_used ? fmtTs(p.last_used) : t('noch nie');
+      const a = r.insertCell();
+      a.className = 'row-action';
+      a.appendChild(button('Entfernen', 'text-btn danger', async b => {
+        if (!b.classList.contains('confirming')) {
+          b.classList.add('confirming');
+          b.textContent = t('Sicher?');
+          setTimeout(() => { b.classList.remove('confirming'); b.textContent = t('Entfernen'); }, 4000);
+          return;
+        }
+        try { renderPasskeys((await api(`/api/auth/passkeys/${encodeURIComponent(p.id)}/delete`, {})).passkeys); toast(t('Passkey entfernt.'), 'success'); }
+        catch (err) { toast(err.message, 'error'); }
+      }));
+    });
+    const wrap = el('div', 'table-scroll');
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+  }
+
+  async function loadPasskeys() {
+    try { renderPasskeys((await api('/api/auth/passkeys')).passkeys); } catch (e) { /* not logged in */ }
+  }
+
+  function guessName() {
+    const ua = navigator.userAgent;
+    return /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac'
+      : /Windows/.test(ua) ? 'Windows' : 'Passkey';
+  }
+
+  function initPasskeys() {
+    $('pk-add').addEventListener('click', () => {
+      const body = $('pk-body');
+      if (body.querySelector('.pk-new')) return;
+      const form = el('form', 'twofa-row pk-new');
+      const name = el('input');
+      name.type = 'text';
+      name.maxLength = 60;
+      name.value = guessName();
+      name.placeholder = t('Name, z.B. iPhone oder YubiKey');
+      const go = el('button', 'btn-primary', t('Anlegen'));
+      go.type = 'submit';
+      form.append(name, go);
+      body.prepend(form);
+      name.select();
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        go.disabled = true;
+        try {
+          renderPasskeys((await window.PiPasskey.register(name.value.trim())).passkeys);
+          toast(t('Passkey angelegt.'), 'success');
+        } catch (err) { toast(err.message, 'error'); go.disabled = false; }
+      });
+    });
+    const email = $('acc-email');
+    fetch('/api/me').then(r => r.json()).then(m => { email.value = m.email || ''; }).catch(() => {});
+    $('email-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = $('email-msg');
+      try {
+        const d = await api('/api/auth/email', { email: email.value.trim() });
+        email.value = d.email || '';
+        msg.className = 'form-msg success';
+        msg.textContent = t(d.email ? 'Gespeichert.' : 'E-Mail-Adresse entfernt.');
+      } catch (err) { msg.className = 'form-msg error'; msg.textContent = err.message; }
+    });
+  }
+
   async function init() {
     if (!$('tf-body')) return;
     if (window.PiAuth) await window.PiAuth.ready;
+    initPasskeys();
+    loadPasskeys();
     loadTwoFa();
     loadOwnSessions();
     if (can('users.manage')) loadSecurity();
