@@ -54,6 +54,7 @@
       <a data-perm="security.view" href="#firewall">Firewall</a>
       <a data-perm="security.view" href="#firewall-traffic">Firewall-Traffic</a>
       <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
+      <a data-perm="security.view" href="#haertung">Härtung</a>
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
       <a href="#backups">Backups</a>
@@ -71,6 +72,7 @@
       <a href="#aufraeumen">Aufräumen</a>
       <a href="#schwachstellen">Schwachstellen</a>
       <a href="#lebenszyklus">Lebenszyklus</a>
+      <a href="#software-inventar">Software-Inventar</a>
       <a data-perm="security.view" href="#aktivitaet">Aktivität</a>
     </nav>
 
@@ -930,6 +932,49 @@
         <p class="field-hint" id="eol-hint"></p>
       </section>
 
+      <!-- Härtung -->
+      <section data-perm="security.view" class="glass-card settings-section" id="haertung">
+        <div class="section-head">
+          <h2>Härtung</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="hd-summary"></span>
+            <button class="btn-secondary" id="hd-run" type="button">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">Die Sicherheits-Grundeinstellungen dieses Pi: SSH, Firewall, im Netz erreichbare Dienste, sudo, automatische Anmeldung und Updates. Jeder Punkt mit Bewertung und dem Befehl zur Behebung. Läuft zusätzlich einmal täglich; schwere Mängel erscheinen in der Statusübersicht.</p>
+        <div class="bench-values ssh-stats" id="hd-tiles"></div>
+        <div class="st-groups" id="hd-groups"></div>
+      </section>
+
+      <!-- Software-Inventar -->
+      <section class="glass-card settings-section" id="software-inventar">
+        <div class="section-head">
+          <h2>Software-Inventar</h2>
+          <div class="head-tools">
+            <a class="btn-secondary" id="sb-export-cdx" href="/api/sbom/export?format=cyclonedx" download>CycloneDX</a>
+            <a class="btn-secondary" id="sb-export-csv" href="/api/sbom/export?format=csv" download>CSV</a>
+          </div>
+        </div>
+        <p class="section-desc">Welche Software in welcher Version auf dem Pi läuft – Systempakete, die Python-Pakete des Dashboards und die Pakete in den Container-Images (aus der täglichen Trivy-Prüfung) – mit Lizenzen. Suche nach Name, Name und Version („openssl 3.0“) oder Lizenz; „Alle Pis“ sucht in der ganzen Flotte. Export als SBOM (CycloneDX) oder CSV.</p>
+        <div class="bench-values ssh-stats" id="sb-tiles"></div>
+        <form class="log-filters" id="sb-form">
+          <input type="search" id="sb-query" placeholder="z.B. openssl 3.0, python3, GPL-3" autocomplete="off" spellcheck="false" aria-label="Suchbegriff">
+          <select id="sb-kind" aria-label="Art">
+            <option value="">Alle Arten</option>
+            <option value="deb">Systempakete</option>
+            <option value="python">Python (Dashboard)</option>
+            <option value="image">Container</option>
+          </select>
+          <label class="sb-fleet"><input type="checkbox" id="sb-fleet"> <span>Alle Pis</span></label>
+        </form>
+        <div id="sb-results"></div>
+        <details class="vu-ignored-wrap" id="sb-licenses-wrap">
+          <summary>Lizenzen</summary>
+          <div class="table-scroll"><table class="data-table" id="sb-licenses"></table></div>
+        </details>
+        <p class="field-hint" id="sb-hint"></p>
+      </section>
+
       <!-- Aktivität -->
       <section data-perm="security.view" class="glass-card settings-section" id="aktivitaet">
         <h2>Aktivität</h2>
@@ -961,6 +1006,7 @@
   <script src="/static/netbox.js"></script>
   <script src="/static/backups.js"></script>
   <script src="/static/software.js"></script>
+  <script src="/static/hardening.js"></script>
   <script src="/static/system-extra.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>

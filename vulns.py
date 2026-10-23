@@ -174,7 +174,7 @@ def parse_trivy(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _scan_image(i: Dict[str, Any]) -> Dict[str, Any]:
     name = _image_name(i)
-    cmd = ["trivy", "image", "--quiet", "--format", "json", "--scanners", "vuln", "--skip-version-check",
+    cmd = ["trivy", "image", "--quiet", "--format", "json", "--scanners", "vuln", "--list-all-pkgs", "--skip-version-check",
            "--timeout", f"{IMAGE_TIMEOUT // 60}m", "--image-src", "docker,remote" if i["docker"] else "remote", name]
     base = {"ref": i["ref"], "image": name.split("@")[0], "users": i["users"], "checked": int(time.time())}
     try:
@@ -188,7 +188,8 @@ def _scan_image(i: Dict[str, Any]) -> Dict[str, Any]:
         data = json.loads(res.stdout or "{}")
     except ValueError:
         return {**base, "error": "Unerwartete Ausgabe von Trivy."}
-    return {**base, **parse_trivy(data), "error": ""}
+    import sbom
+    return {**base, **parse_trivy(data), "error": "", "packages": sbom.trivy_packages(data)}
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +300,16 @@ def scan() -> None:
             if res.get("error") and prev.get(i["ref"], {}).get("counts"):
                 res = {**prev[i["ref"]], "error": res["error"], "users": i["users"]}   # keep the last result
             images.append(res)
+        # The package lists go to the software inventory, not into vulns.json
+        import sbom
+        old_sbom = sbom._load_images().get("images") or {}
+        inventory = {}
+        for i in images:
+            pkgs = i.pop("packages", None)
+            if pkgs is None and i["ref"] in old_sbom:
+                pkgs = old_sbom[i["ref"]].get("packages", [])
+            inventory[i["ref"]] = {"image": i["image"], "users": i.get("users", []), "packages": pkgs or []}
+        sbom.store_images(inventory)
         new["images"] = images
     else:
         new["images"] = []

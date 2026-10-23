@@ -401,7 +401,8 @@ def status_summary() -> Dict[str, Any]:
         logger.warning(f"Status (backups): {e}")
     for mod, fn, link in (("anomalies", "active", "/system#auffaelligkeiten"), ("dnswatch", "alerts", "/system#dns-ueberwachung"),
                           ("incidents", "open_alerts", "/doku#stoerungen"), ("vulns", "alerts", "/system#schwachstellen"),
-                          ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose")):
+                          ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose"),
+                          ("hardening", "alerts", "/system#haertung")):
         try:
             for a in getattr(__import__(mod), fn)():
                 add(a.get("level", "warning"), a["text"], link)

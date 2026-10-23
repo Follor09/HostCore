@@ -88,6 +88,9 @@ import retention
 import vulns
 import eol
 import selftest
+import hardening
+import aptchangelog
+import sbom
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -1851,6 +1854,45 @@ async def api_selftest_run():
     return await asyncio.to_thread(selftest.start)
 
 
+@app.get("/api/hardening")
+async def api_hardening():
+    return await asyncio.to_thread(hardening.overview)
+
+
+@app.post("/api/hardening/run")
+async def api_hardening_run():
+    return await asyncio.to_thread(hardening.start)
+
+
+@app.get("/api/updates/changelog")
+async def api_updates_changelog(name: str, old: str = "", new: str = ""):
+    try:
+        return await asyncio.to_thread(aptchangelog.changelog, name, old, new)
+    except aptchangelog.ChangelogError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/sbom")
+async def api_sbom():
+    return await asyncio.to_thread(sbom.overview)
+
+
+@app.get("/api/sbom/search")
+async def api_sbom_search(q: str = "", kind: str = ""):
+    return await asyncio.to_thread(sbom.search, q, kind)
+
+
+@app.get("/api/sbom/export")
+async def api_sbom_export(format: str = "cyclonedx"):
+    name, media, body = await asyncio.to_thread(sbom.export, "csv" if format == "csv" else "cyclonedx")
+    return Response(body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/api/fleet/sbom")
+async def api_fleet_sbom(q: str = "", kind: str = ""):
+    return await fleet.sbom_search(q, kind)
+
+
 @app.post("/api/selftest/repair")
 async def api_selftest_repair(payload: dict, request: Request):
     request.state.audit_detail = str(payload.get("id", ""))[:40]
@@ -3283,6 +3325,22 @@ async def api_incidents_add_update(incident_id: str, payload: dict, request: Req
 @app.post("/api/incidents/{incident_id}/delete")
 async def api_incidents_delete(incident_id: str):
     return await asyncio.to_thread(incidents.delete, incident_id)
+
+
+@app.post("/api/incidents/{incident_id}/postmortem")
+async def api_incidents_postmortem(incident_id: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_incident_call, incidents.save_postmortem, incident_id, payload, request.state.user or "")
+
+
+@app.post("/api/incidents/{incident_id}/postmortem/tasks")
+async def api_incidents_postmortem_tasks(incident_id: str, request: Request):
+    return await asyncio.to_thread(_incident_call, incidents.create_tasks, incident_id, request.state.user or "")
+
+
+@app.get("/api/incidents/{incident_id}/postmortem.md")
+async def api_incidents_postmortem_md(incident_id: str):
+    text = await asyncio.to_thread(_incident_call, incidents.markdown, incident_id)
+    return Response(text, media_type="text/markdown; charset=utf-8")
 
 
 # ---------------------------------------------------------------------------

@@ -2419,7 +2419,7 @@
       : 'apt-Pakete';
 
     const head = table.createTHead().insertRow();
-    ['Paket', 'Installiert', 'Neu'].forEach(h => {
+    ['Paket', 'Installiert', 'Neu', ''].forEach(h => {
       const th = document.createElement('th');
       th.textContent = h;
       head.appendChild(th);
@@ -2430,7 +2430,7 @@
       const row = body.insertRow();
       row.className = 'empty-row';
       const td = row.insertCell();
-      td.colSpan = 3;
+      td.colSpan = 4;
       td.textContent = !up || !up.supported ? 'Nur auf Debian / Raspberry Pi OS verfügbar.' : 'Alle Pakete sind auf dem neuesten Stand.';
     }
     pkgs.forEach(p => {
@@ -2447,7 +2447,29 @@
       name.appendChild(document.createTextNode(p.name));
       const oldV = row.insertCell(); oldV.className = 'ver'; oldV.textContent = p.old;
       const newV = row.insertCell(); newV.className = 'ver'; newV.textContent = p.new;
+      const key = changeKey(p);
+      const act = row.insertCell();
+      act.className = 'pkg-changes-cell';
+      const cl = changes.data[key];
+      if (cl && !cl.error) {
+        if (cl.cves.length) act.appendChild(Object.assign(document.createElement('span'), { className: 'pkg-cve-count', textContent: `${cl.cves.length} CVE` }));
+        if (cl.reboot) act.appendChild(Object.assign(document.createElement('span'), { className: 'pkg-cve-count reboot', textContent: 'Neustart' }));
+      }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'text-btn';
+      btn.textContent = changes.open.has(key) ? 'Zuklappen' : 'Änderungen';
+      btn.addEventListener('click', () => toggleChanges(p));
+      act.appendChild(btn);
+      if (changes.open.has(key)) {
+        const dr = body.insertRow();
+        dr.className = 'pkg-changes-row';
+        const td = dr.insertCell();
+        td.colSpan = 4;
+        td.appendChild(renderChanges(changes.data[key]));
+      }
     });
+    renderChangesSummary(pkgs);
 
     const upgradeBtn = $('btn-apt-upgrade');
     const supported = up && up.supported;
@@ -2456,6 +2478,103 @@
     if (!upgradeBtn.classList.contains('confirming')) {
       upgradeBtn.textContent = up && up.count ? `Update & Upgrade installieren (${up.count})` : 'Update & Upgrade installieren';
     }
+  }
+
+  // What a pending update changes: changelog since the installed version, CVEs, services, reboot
+  const changes = { data: {}, open: new Set(), loadingAll: false };
+  const changeKey = p => `${p.name}|${p.old}|${p.new}`;
+
+  async function fetchChanges(p) {
+    const key = changeKey(p);
+    if (changes.data[key]) return changes.data[key];
+    const params = new URLSearchParams({ name: p.name, old: p.old, new: p.new });
+    try {
+      const res = await fetch(`/api/updates/changelog?${params}`);
+      const d = await res.json().catch(() => ({}));
+      changes.data[key] = res.ok ? d : { error: d.detail || `Fehler ${res.status}`, entries: [], cves: [], units: [] };
+    } catch (e) {
+      changes.data[key] = { error: 'Nicht erreichbar.', entries: [], cves: [], units: [] };
+    }
+    return changes.data[key];
+  }
+
+  async function toggleChanges(p) {
+    const key = changeKey(p);
+    if (changes.open.has(key)) { changes.open.delete(key); renderUpdatesSheet(); return; }
+    changes.open.add(key);
+    renderUpdatesSheet();
+    await fetchChanges(p);
+    renderUpdatesSheet();
+  }
+
+  function renderChanges(cl) {
+    const box = document.createElement('div');
+    box.className = 'pkg-changes';
+    const add = (cls, text) => { const e = document.createElement('div'); e.className = cls; e.textContent = text; box.appendChild(e); return e; };
+    if (!cl) { add('field-hint', 'Lade Changelog…'); return box; }
+    if (cl.error) add('field-hint', cl.error);
+    const facts = [];
+    if (cl.urgency) facts.push(`Dringlichkeit: ${cl.urgency}`);
+    if (cl.units && cl.units.length) facts.push(`Wird beim Update neu gestartet: ${cl.units.join(', ')}`);
+    if (cl.reboot) facts.push('Systemneustart danach nötig');
+    if (facts.length) add('pkg-changes-facts', facts.join(' · '));
+    if (cl.cves && cl.cves.length) {
+      const line = add('pkg-changes-cves', '');
+      cl.cves.forEach(c => {
+        const a = document.createElement('a');
+        a.href = `https://security-tracker.debian.org/tracker/${c}`;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = c;
+        a.setAttribute('data-no-i18n', '');
+        line.appendChild(a);
+      });
+    }
+    (cl.entries || []).forEach(e => {
+      const head = add('pkg-changes-head', `${e.version} · ${e.dist}${e.date ? ` · ${e.date.replace(/ [+-]\d{4}$/, '')}` : ''}`);
+      head.setAttribute('data-no-i18n', '');
+      const pre = document.createElement('pre');
+      pre.className = 'pkg-changes-text';
+      pre.setAttribute('data-no-i18n', '');
+      pre.textContent = e.text;
+      box.appendChild(pre);
+    });
+    if (!cl.error && !(cl.entries || []).length) add('field-hint', 'Keine Einträge seit der installierten Version.');
+    return box;
+  }
+
+  function renderChangesSummary(pkgs) {
+    const wrap = $('updates-changes');
+    if (!wrap) return;
+    wrap.hidden = !pkgs.length;
+    const loaded = pkgs.map(p => changes.data[changeKey(p)]).filter(Boolean);
+    const btn = $('btn-updates-changes');
+    btn.disabled = changes.loadingAll || loaded.length === pkgs.length;
+    btn.textContent = changes.loadingAll ? `Prüfe ${loaded.length} / ${pkgs.length}…` : 'Alle Änderungen prüfen';
+    if (!loaded.length) { $('updates-changes-summary').textContent = ''; return; }
+    const cves = new Set(), units = new Set();
+    let reboot = false;
+    loaded.forEach(cl => { (cl.cves || []).forEach(c => cves.add(c)); (cl.units || []).forEach(u => units.add(u)); reboot = reboot || cl.reboot; });
+    const parts = [`${cves.size} behobene CVE${cves.size === 1 ? '' : 's'}`];
+    if (units.size) parts.push(`neu gestartet werden: ${[...units].slice(0, 6).join(', ')}${units.size > 6 ? ' …' : ''}`);
+    if (reboot) parts.push('Systemneustart nötig');
+    $('updates-changes-summary').textContent = `${parts.join(' · ')}${loaded.length < pkgs.length ? ` (${loaded.length} von ${pkgs.length} Paketen geprüft)` : ''}`;
+  }
+
+  async function loadAllChanges() {
+    const pkgs = ((lastUpdates && lastUpdates.packages) || []).slice(0, 150);
+    changes.loadingAll = true;
+    renderUpdatesSheet();
+    const queue = pkgs.filter(p => !changes.data[changeKey(p)]);
+    const worker = async () => {
+      while (queue.length) {
+        await fetchChanges(queue.shift());
+        renderChangesSummary(pkgs);
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    changes.loadingAll = false;
+    renderUpdatesSheet();
   }
 
   function renderAptRun(run) {
@@ -2553,6 +2672,7 @@
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUpdatesSheet(); }
     });
     $('updates-modal-close').addEventListener('click', closeUpdatesSheet);
+    $('btn-updates-changes').addEventListener('click', loadAllChanges);
     $('updates-modal').addEventListener('click', e => { if (e.target.id === 'updates-modal') closeUpdatesSheet(); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && $('updates-modal').classList.contains('open')) closeUpdatesSheet();

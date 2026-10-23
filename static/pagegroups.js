@@ -47,10 +47,14 @@
             return [{ level: 'info', text: `${devs.filter(d => d.online).length} von ${devs.length} Geräten online` },
               ...(fresh ? [{ level: 'info', text: n(fresh, 'neues Gerät', 'neue Geräte') }] : [])];
           } },
-        { id: 'sicherheit', label: 'Sicherheit', desc: 'Firewall, Verbindungen, SSH-Anmeldungen, Aktivität', sections: ['firewall', 'firewall-traffic', 'verbindungen', 'ssh', 'aktivitaet'], perm: 'security.view',
+        { id: 'sicherheit', label: 'Sicherheit', desc: 'Firewall, Verbindungen, SSH-Anmeldungen, Härtung, Aktivität', sections: ['firewall', 'firewall-traffic', 'verbindungen', 'ssh', 'haertung', 'aktivitaet'], perm: 'security.view',
           facts: async () => {
             const out = [];
-            const [fw, ssh] = await Promise.allSettled([get('/api/tools/firewall'), get('/api/tools/ssh')]);
+            const [fw, ssh, hd] = await Promise.allSettled([get('/api/tools/firewall'), get('/api/tools/ssh'), get('/api/hardening')]);
+            if (hd.status === 'fulfilled' && hd.value.score != null) {
+              const h = hd.value;
+              out.push({ level: h.critical ? 'critical' : h.failed ? 'warning' : 'good', text: `Härtung ${h.score} %` });
+            }
             if (fw.status === 'fulfilled') {
               const f = fw.value;
               out.push(!f.installed ? { level: 'info', text: 'Firewall (ufw) nicht installiert' }
@@ -104,7 +108,7 @@
               : u.count ? { level: 'info', text: `${n(u.count, 'Update', 'Updates')} verfügbar` } : { level: 'good', text: 'System aktuell' },
             ...(u.reboot_required ? [{ level: 'info', text: 'Neustart nötig' }] : [])];
           } },
-        { id: 'software', label: 'Schwachstellen & Support', desc: 'Bekannte Sicherheitslücken und Support-Ende der Software', sections: ['schwachstellen', 'lebenszyklus'],
+        { id: 'software', label: 'Schwachstellen & Support', desc: 'Bekannte Sicherheitslücken, Support-Ende und Software-Inventar', sections: ['schwachstellen', 'lebenszyklus', 'software-inventar'],
           facts: async () => {
             const out = [];
             const [vu, eol] = await Promise.allSettled([get('/api/vulns'), get('/api/eol')]);

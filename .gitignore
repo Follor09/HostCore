@@ -24,3 +24,5 @@ wiki.json.tmp
 mcp_calls.json
 vulns.json
 vulns.json.tmp
+sbom_images.json
+sbom_images.json.tmp

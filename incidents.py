@@ -3,9 +3,14 @@ Incident management (Dokumentation -> Betrieb -> Störungen): an incident has a 
 the affected services, a status and a timeline of updates ("Ursache gefunden", "behoben" …).
 Opening and resolving become events; incidents marked public appear on the public status page
 while open and for a week after they were resolved.
+
+A resolved incident can get a post-mortem: summary, impact, root cause, what went well / badly
+and actions with owner and due date. Actions can become cards on the task board; their state
+follows the card (done when the card is in "Erledigt"). Overdue open actions reach the daily mail.
 """
 
 import datetime
+import re
 import secrets
 import threading
 import time
@@ -19,6 +24,9 @@ STATUSES = {"untersuchung": "Wird untersucht", "identifiziert": "Ursache gefunde
             "behoben": "Behoben"}
 PUBLIC_DAYS = 7
 MAX_INCIDENTS = 1000
+MAX_ACTIONS = 20
+PM_FIELDS = {"summary": 3000, "impact": 3000, "cause": 3000, "went_well": 2000, "went_badly": 2000, "lessons": 2000}
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _lock = threading.Lock()
 
 
@@ -42,14 +50,37 @@ def _ts(value: Any, default: int) -> int:
             raise IncidentError("Ungültiger Zeitpunkt.")
 
 
-def _view(i: Dict[str, Any]) -> Dict[str, Any]:
+def _cards() -> Dict[str, Dict[str, Any]]:
+    try:
+        import kanban
+        return {c["id"]: c for c in kanban.board()["cards"]}
+    except Exception:
+        return {}
+
+
+def _pm_view(pm: Optional[Dict[str, Any]], cards: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not pm:
+        return None
+    today = time.strftime("%Y-%m-%d")
+    actions = []
+    for a in pm.get("actions", []):
+        card = cards.get(a.get("card", ""))
+        done = bool(a.get("done")) or bool(card and card["column"] == "done")
+        actions.append({**a, "done": done, "card_exists": bool(card), "card_column": card["column"] if card else "",
+                        "overdue": bool(not done and a.get("due") and a["due"] < today)})
+    return {**pm, "actions": actions, "open_actions": sum(1 for a in actions if not a["done"])}
+
+
+def _view(i: Dict[str, Any], cards: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     end = i.get("resolved") or int(time.time())
     return {**i, "open": i["status"] != "behoben", "duration": end - i["started"],
-            "status_label": STATUSES[i["status"]], "severity_label": SEVERITIES[i["severity"]]}
+            "status_label": STATUSES[i["status"]], "severity_label": SEVERITIES[i["severity"]],
+            "postmortem": _pm_view(i.get("postmortem"), cards if cards is not None else _cards())}
 
 
 def overview(state: str = "") -> Dict[str, Any]:
-    items = [_view(i) for i in _items()]
+    cards = _cards()
+    items = [_view(i, cards) for i in _items()]
     items.sort(key=lambda i: (not i["open"], -i["started"]))
     if state == "open":
         items = [i for i in items if i["open"]]
@@ -59,7 +90,8 @@ def overview(state: str = "") -> Dict[str, Any]:
     except Exception:
         targets = []
     return {"incidents": items[:300], "open": sum(1 for i in items if i["open"]), "severities": SEVERITIES,
-            "statuses": STATUSES, "targets": targets}
+            "statuses": STATUSES, "targets": targets,
+            "open_actions": sum((i["postmortem"] or {}).get("open_actions", 0) for i in items)}
 
 
 def _clean(fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -118,6 +150,99 @@ def add_update(incident_id: str, status: str, text: str, user: str = "") -> Dict
         i["resolved"] = now if status == "behoben" else None
         settings_store.set(KEY, items)
     return _view(i)
+
+
+def save_postmortem(incident_id: str, fields: Dict[str, Any], user: str = "") -> Dict[str, Any]:
+    pm: Dict[str, Any] = {k: str(fields.get(k) or "").strip()[:n] for k, n in PM_FIELDS.items()}
+    actions = []
+    for a in (fields.get("actions") or [])[:MAX_ACTIONS]:
+        text = str(a.get("text") or "").strip()[:200]
+        if not text:
+            continue
+        due = str(a.get("due") or "").strip()
+        if due and not DATE_RE.match(due):
+            raise IncidentError("Termin als JJJJ-MM-TT.")
+        actions.append({"id": str(a.get("id") or "")[:12] or secrets.token_hex(4), "text": text,
+                        "owner": str(a.get("owner") or "").strip()[:60], "due": due, "done": bool(a.get("done")),
+                        "card": str(a.get("card") or "")[:12]})
+    pm["actions"] = actions
+    with _lock:
+        items = _items()
+        i = next((x for x in items if x["id"] == incident_id), None)
+        if not i:
+            raise IncidentError("Störung nicht gefunden.")
+        old = i.get("postmortem") or {}
+        pm.update(created=old.get("created") or int(time.time()), user=old.get("user") or user,
+                  updated=int(time.time()), updated_by=user)
+        i["postmortem"] = pm
+        settings_store.set(KEY, items)
+    if fields.get("create_tasks"):
+        return create_tasks(incident_id, user)
+    return _view(i)
+
+
+def create_tasks(incident_id: str, user: str = "") -> Dict[str, Any]:
+    """A task board card for every action that has none (yet), labelled "Post-Mortem"."""
+    import kanban
+    with _lock:
+        items = _items()
+        i = next((x for x in items if x["id"] == incident_id), None)
+        if not i or not i.get("postmortem"):
+            raise IncidentError("Keine Nachbetrachtung vorhanden.")
+        cards = _cards()
+        for a in i["postmortem"].get("actions", []):
+            if a.get("done") or (a.get("card") and a["card"] in cards):
+                continue
+            desc = f"Maßnahme aus der Nachbetrachtung der Störung „{i['title']}“."
+            if a.get("owner"):
+                desc += f"\nVerantwortlich: {a['owner']}"
+            try:
+                board = kanban.create({"title": a["text"][:120], "desc": desc, "labels": ["Post-Mortem"], "due": a.get("due", "")}, user)
+            except kanban.KanbanError as e:
+                raise IncidentError(str(e))
+            new = [c for c in board["cards"] if c["id"] not in cards]
+            if new:
+                a["card"] = new[0]["id"]
+                cards[new[0]["id"]] = new[0]
+        settings_store.set(KEY, items)
+    return _view(i)
+
+
+def overdue_actions() -> List[Dict[str, Any]]:
+    out = []
+    cards = _cards()
+    for i in _items():
+        pm = _pm_view(i.get("postmortem"), cards)
+        for a in (pm or {}).get("actions", []):
+            if a["overdue"]:
+                out.append({"level": "warning", "text": f"Maßnahme überfällig: {a['text']} ({i['title']})"})
+    return out
+
+
+def markdown(incident_id: str) -> str:
+    i = next((x for x in _items() if x["id"] == incident_id), None)
+    if not i:
+        raise IncidentError("Störung nicht gefunden.")
+    v = _view(i)
+    pm = v["postmortem"] or {}
+    fmt = lambda ts: time.strftime("%d.%m.%Y %H:%M", time.localtime(ts))  # noqa: E731
+    lines = [f"# Nachbetrachtung: {i['title']}", "",
+             f"- Schwere: {v['severity_label']}", f"- Beginn: {fmt(i['started'])}"]
+    if i.get("resolved"):
+        lines.append(f"- Behoben: {fmt(i['resolved'])} ({_dur(i['resolved'] - i['started'])})")
+    if i.get("services"):
+        lines.append(f"- Betroffen: {', '.join(i['services'])}")
+    for key, title in (("summary", "Zusammenfassung"), ("impact", "Auswirkung"), ("cause", "Ursache"),
+                       ("went_well", "Was gut lief"), ("went_badly", "Was schlecht lief"), ("lessons", "Erkenntnisse")):
+        if pm.get(key):
+            lines += ["", f"## {title}", "", pm[key]]
+    lines += ["", "## Ablauf", ""] + [f"- {fmt(u['ts'])} – {STATUSES.get(u['status'], u['status'])}: {u['text']}" for u in i.get("updates", [])]
+    if pm.get("actions"):
+        lines += ["", "## Maßnahmen", ""]
+        for a in pm["actions"]:
+            extra = ", ".join(filter(None, [a.get("owner"), f"bis {a['due']}" if a.get("due") else ""]))
+            lines.append(f"- [{'x' if a['done'] else ' '}] {a['text']}{f' ({extra})' if extra else ''}")
+    return "\n".join(lines) + "\n"
 
 
 def delete(incident_id: str) -> Dict[str, Any]:

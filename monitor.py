@@ -440,7 +440,7 @@ class Monitor:
                     threading.Thread(target=domains.check_if_due, daemon=True).start()
                 except Exception as e:
                     logger.warning(f"Domain check failed: {e}")
-                for mod in ("vulns", "eol", "selftest"):
+                for mod in ("vulns", "eol", "selftest", "hardening"):
                     try:
                         __import__(mod).check_if_due()
                     except Exception as e:

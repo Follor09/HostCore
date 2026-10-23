@@ -1,6 +1,7 @@
 /**
- * PiCore Dashboard - system page sections "Schwachstellen" (CVEs in packages and container images)
- * and "Lebenszyklus" (end of security support of the installed software).
+ * PiCore Dashboard - system page sections "Schwachstellen" (CVEs in packages and container images),
+ * "Lebenszyklus" (end of security support of the installed software) and "Software-Inventar"
+ * (searchable SBOM of this Pi or the whole fleet, export as CycloneDX / CSV).
  */
 (function () {
   'use strict';
@@ -357,6 +358,116 @@
     try { eolData = await api('/api/eol'); renderEol(); } catch (e) { /* no permission or offline */ }
   }
 
+  // ---------------------------------------------------------------------------
+  // Software inventory
+  // ---------------------------------------------------------------------------
+  const SB_KIND = { deb: 'Systempaket', python: 'Python', image: 'Container' };
+  let sbTimer = null;
+  let sbSeq = 0;
+
+  function renderSbomOverview(o) {
+    const tiles = $('sb-tiles');
+    tiles.innerHTML = '';
+    [['Systempakete', o.counts.deb], ['Python-Pakete', o.counts.python], ['Container-Pakete', o.trivy ? o.counts.image : '–'],
+      ['Ohne Lizenzangabe', o.unknown_license]].forEach(([label, value]) => {
+      const box = el('div', 'bench-value');
+      box.append(el('span', 'label', t(label)), raw('span', 'value', typeof value === 'number' ? value.toLocaleString(LOCALE) : value));
+      tiles.appendChild(box);
+    });
+    const table = $('sb-licenses');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Lizenz', 'Pakete'].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = table.createTBody();
+    o.licenses.forEach(l => {
+      const r = body.insertRow();
+      const name = r.insertCell();
+      const link = el('button', 'text-btn', l.name === '(unbekannt)' ? t('(unbekannt)') : l.name);
+      if (l.name !== '(unbekannt)') link.setAttribute('data-no-i18n', '');
+      link.type = 'button';
+      link.disabled = l.name === '(unbekannt)';
+      link.addEventListener('click', () => { $('sb-query').value = l.name; searchSbom(); });
+      name.appendChild(link);
+      r.insertCell().textContent = l.count.toLocaleString(LOCALE);
+    });
+    const hint = [];
+    if (!o.trivy) hint.push(t('Container-Pakete erst mit Trivy (siehe Schwachstellen).'));
+    else if (o.images_checked) hint.push(`${t('Container-Pakete vom')} ${fmtTs(o.images_checked)}`);
+    hint.push(t('Lizenzen von Systempaketen nur, wenn das Paket eine maschinenlesbare copyright-Datei hat.'));
+    $('sb-hint').textContent = hint.join(' · ');
+  }
+
+  function sbTable(items, withPi) {
+    const wrap = el('div', 'table-scroll tall');
+    const table = el('table', 'data-table');
+    const head = table.createTHead().insertRow();
+    [...(withPi ? ['Pi'] : []), 'Name', 'Version', 'Art', 'Ort', 'Lizenz'].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = table.createTBody();
+    items.forEach(p => {
+      const r = body.insertRow();
+      if (withPi) r.insertCell().appendChild(raw('span', '', p.pi));
+      r.insertCell().appendChild(raw('span', 'mono', p.name));
+      const v = r.insertCell();
+      v.className = 'mono';
+      v.appendChild(raw('span', '', p.version));
+      r.insertCell().textContent = t(SB_KIND[p.kind] || p.kind);
+      const where = r.insertCell();
+      where.appendChild(raw('span', '', p.kind === 'deb' ? (p.source && p.source !== p.name ? `${t('Quelle')}: ${p.source}` : '') : p.where || ''));
+      if (p.users && p.users.length) where.appendChild(raw('span', 'ctr-sub', p.users.join(', ')));
+      const lic = r.insertCell();
+      lic.className = 'wrap';
+      lic.appendChild(raw('span', 'field-hint', (p.licenses || []).join(', ')));
+    });
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  async function searchSbom() {
+    const q = $('sb-query').value.trim();
+    const kind = $('sb-kind').value;
+    const fleet = $('sb-fleet').checked;
+    const box = $('sb-results');
+    const seq = ++sbSeq;
+    if (!q) {
+      box.innerHTML = '';
+      box.appendChild(el('p', 'field-hint', t('Suchbegriff eingeben, um Pakete zu finden.')));
+      return;
+    }
+    box.innerHTML = '';
+    box.appendChild(el('p', 'field-hint', t('Suche…')));
+    try {
+      const params = new URLSearchParams({ q, kind });
+      if (fleet) {
+        const d = await api(`/api/fleet/sbom?${params}`);
+        if (seq !== sbSeq) return;
+        box.innerHTML = '';
+        const items = [];
+        const summary = el('div', 'sb-fleet-summary');
+        d.pis.forEach(pi => {
+          summary.appendChild(raw('span', `pg-chip${pi.error ? ' warn' : ''}`, pi.error ? `${pi.pi}: ${t(pi.error)}` : `${pi.pi}: ${pi.total}`));
+          pi.items.forEach(p => items.push({ ...p, pi: pi.pi }));
+        });
+        box.appendChild(summary);
+        if (!items.length) box.appendChild(el('p', 'field-hint', t('Keine Treffer.')));
+        else box.appendChild(sbTable(items, true));
+        return;
+      }
+      const d = await api(`/api/sbom/search?${params}`);
+      if (seq !== sbSeq) return;
+      box.innerHTML = '';
+      if (!d.items.length) { box.appendChild(el('p', 'field-hint', t('Keine Treffer.'))); return; }
+      box.appendChild(sbTable(d.items, false));
+      box.appendChild(raw('p', 'form-msg', d.truncated ? `${d.items.length} / ${d.total}` : String(d.total)));
+    } catch (err) {
+      if (seq === sbSeq) { box.innerHTML = ''; box.appendChild(el('p', 'form-msg error', err.message)); }
+    }
+  }
+
+  async function loadSbom() {
+    try { renderSbomOverview(await api('/api/sbom')); } catch (e) { /* no permission or offline */ }
+    searchSbom();
+  }
+
   async function init() {
     if (!$('vu-packages')) return;
     if (window.PiAuth) await window.PiAuth.ready;
@@ -369,8 +480,13 @@
     $('vu-show').addEventListener('change', () => { shown = PAGE; if (vu) renderPackages(); });
     $('vu-query').addEventListener('input', () => { shown = PAGE; if (vu) renderPackages(); });
     $('vu-filter').addEventListener('submit', e => e.preventDefault());
-    await Promise.all([loadVulns(), loadEol()]);
-    if (location.hash === '#schwachstellen' || location.hash === '#lebenszyklus') $(location.hash.slice(1)).scrollIntoView();
+    const later = () => { clearTimeout(sbTimer); sbTimer = setTimeout(searchSbom, 300); };
+    $('sb-query').addEventListener('input', later);
+    $('sb-kind').addEventListener('change', searchSbom);
+    $('sb-fleet').addEventListener('change', searchSbom);
+    $('sb-form').addEventListener('submit', e => { e.preventDefault(); searchSbom(); });
+    await Promise.all([loadVulns(), loadEol(), loadSbom()]);
+    if (['#schwachstellen', '#lebenszyklus', '#software-inventar'].includes(location.hash)) $(location.hash.slice(1)).scrollIntoView();
   }
 
   init();

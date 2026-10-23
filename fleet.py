@@ -198,3 +198,25 @@ async def apt(ids: List[str], mode: str, user: str = "") -> Dict[str, Any]:
             return {"id": pid, "ok": False, "message": f"Nicht erreichbar ({type(e).__name__})"}
 
     return {"results": await asyncio.gather(*(one(i) for i in dict.fromkeys(ids)))}
+
+
+async def sbom_search(q: str, kind: str = "") -> Dict[str, Any]:
+    """Software inventory search on every Pi: [{pi, online, items, total, error}]."""
+    import sbom
+    params = {"q": q, "kind": kind}
+
+    async def remote(client: httpx.AsyncClient, r: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            res = await client.get(f"{r['url']}/api/sbom/search", params=params, headers={"Authorization": f"Bearer {r['token']}"})
+            if res.status_code == 404:
+                return {"pi": r["name"], "id": r["id"], "items": [], "total": 0, "error": "Agent zu alt (kein Software-Inventar)"}
+            res.raise_for_status()
+            d = res.json()
+            return {"pi": r["name"], "id": r["id"], "items": d.get("items", []), "total": d.get("total", 0), "error": ""}
+        except (httpx.HTTPError, ValueError) as e:
+            return {"pi": r["name"], "id": r["id"], "items": [], "total": 0, "error": f"Nicht erreichbar ({type(e).__name__})"}
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+        local, *rows = await asyncio.gather(asyncio.to_thread(sbom.search, q, kind), *(remote(client, r) for r in remotes._all()))
+    first = {"pi": platform.node() or "Dieser Pi", "id": "", "items": local["items"], "total": local["total"], "error": ""}
+    return {"pis": [first, *rows], "q": q}

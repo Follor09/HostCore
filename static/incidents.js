@@ -1,6 +1,6 @@
 /**
  * PiCore Dashboard - documentation section "Störungen": incidents with severity, affected services,
- * status and a timeline of updates.
+ * status and a timeline of updates; resolved ones get a post-mortem with actions for the task board.
  */
 (function () {
   'use strict';
@@ -11,7 +11,11 @@
   const can = p => !window.PiAuth || window.PiAuth.can(p);
   const SEV = { gering: '', mittel: 'warning', schwer: 'critical' };
   const open = new Set();
+  const editingPm = new Set();
   let data = null;
+  const PM_FIELDS = [['summary', 'Zusammenfassung', 'Was ist passiert – in zwei, drei Sätzen.'], ['impact', 'Auswirkung', 'Wer oder was war betroffen, wie lange?'],
+    ['cause', 'Ursache', 'Eigentliche Ursache, nicht nur der Auslöser.'], ['went_well', 'Was gut lief', ''],
+    ['went_badly', 'Was schlecht lief', ''], ['lessons', 'Erkenntnisse', '']];
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -49,7 +53,8 @@
   function render() {
     const list = $('inc-list');
     list.innerHTML = '';
-    $('inc-summary').textContent = data.open ? t(`${data.open} offen`) : '';
+    $('inc-summary').textContent = [data.open ? t(`${data.open} offen`) : '',
+      data.open_actions ? t(`${data.open_actions} ${data.open_actions === 1 ? 'Maßnahme' : 'Maßnahmen'} offen`) : ''].filter(Boolean).join(' · ');
     const items = data.incidents.filter(i => $('inc-filter').value !== 'open' || i.open);
     if (!items.length) list.appendChild(el('p', 'docs-empty', t(data.incidents.length ? 'Keine offenen Störungen.' : 'Noch keine Störungen erfasst.')));
     items.forEach(i => {
@@ -77,6 +82,7 @@
         });
         card.appendChild(tl);
       }
+      if (i.postmortem || (!i.open && can('notes.edit'))) card.appendChild(postmortem(i));
       if (can('notes.edit')) {
         const act = el('div', 'inc-actions');
         if (i.open) {
@@ -114,6 +120,140 @@
       }
       list.appendChild(card);
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Post-mortem
+  // ---------------------------------------------------------------------------
+  function postmortem(i) {
+    if (editingPm.has(i.id)) return pmForm(i);
+    const pm = i.postmortem;
+    const box = el('div', 'pm-box');
+    const head = el('div', 'pm-head');
+    head.appendChild(el('strong', '', t('Nachbetrachtung')));
+    if (pm && pm.actions.length) {
+      head.appendChild(el('span', `health-tag ${pm.open_actions ? 'warning' : 'good'}`,
+        t(pm.open_actions ? `${pm.open_actions} offen` : 'Alle Maßnahmen erledigt')));
+    }
+    const tools = el('div', 'pm-tools');
+    if (pm) {
+      const md = el('a', 'text-btn', t('Markdown'));
+      md.href = `/api/incidents/${i.id}/postmortem.md`;
+      md.download = `nachbetrachtung-${i.id}.md`;
+      tools.appendChild(md);
+    }
+    if (can('notes.edit')) {
+      if (pm && pm.actions.some(a => !a.done && !a.card_exists)) {
+        tools.appendChild(button('Als Aufgaben anlegen', 'text-btn', async b => {
+          b.disabled = true;
+          try { await api(`/api/incidents/${i.id}/postmortem/tasks`, {}); await load(); toast(t('Aufgaben angelegt.'), 'success'); }
+          catch (err) { toast(err.message, 'error'); b.disabled = false; }
+        }));
+      }
+      tools.appendChild(button(pm ? 'Bearbeiten' : 'Nachbetrachtung anlegen', 'text-btn', () => { editingPm.add(i.id); render(); }));
+    }
+    head.appendChild(tools);
+    box.appendChild(head);
+    if (!pm) {
+      box.appendChild(el('span', 'field-hint', t('Ursache, Auswirkung und Maßnahmen festhalten, damit es nicht wieder passiert.')));
+      return box;
+    }
+    PM_FIELDS.forEach(([key, label]) => {
+      if (!pm[key]) return;
+      const f = el('div', 'pm-field');
+      f.append(el('h4', '', t(label)), raw('p', '', pm[key]));
+      box.appendChild(f);
+    });
+    if (pm.actions.length) {
+      const f = el('div', 'pm-field');
+      f.appendChild(el('h4', '', t('Maßnahmen')));
+      const ul = el('ul', 'pm-actions');
+      pm.actions.forEach(a => {
+        const li = el('li', a.done ? 'done' : '');
+        li.appendChild(el('span', `health-tag ${a.done ? 'good' : a.overdue ? 'warning' : ''}`, t(a.done ? 'Erledigt' : a.overdue ? 'Überfällig' : 'Offen')));
+        li.appendChild(raw('span', 'pm-text', a.text));
+        const meta = [a.owner, a.due ? `${t('bis')} ${new Date(`${a.due}T12:00:00`).toLocaleDateString(LOCALE)}` : '',
+          a.card_exists ? t(a.card_column === 'done' ? 'Aufgabe erledigt' : 'Aufgabe im Board') : ''].filter(Boolean).join(' · ');
+        if (meta) li.appendChild(raw('span', `pm-meta${a.overdue ? ' overdue' : ''}`, meta));
+        if (can('notes.edit') && !a.card_exists) {
+          li.appendChild(button(a.done ? 'Wieder öffnen' : 'Erledigt', 'text-btn', async b => {
+            b.disabled = true;
+            const body = { ...pm, actions: pm.actions.map(x => ({ ...x, done: x.id === a.id ? !a.done : x.done && !x.card_exists })) };
+            try { await api(`/api/incidents/${i.id}/postmortem`, body); await load(); } catch (err) { toast(err.message, 'error'); b.disabled = false; }
+          }));
+        }
+        ul.appendChild(li);
+      });
+      f.appendChild(ul);
+      box.appendChild(f);
+    }
+    box.appendChild(raw('span', 'field-hint', `${t('Zuletzt geändert')} ${fmtTs(pm.updated)}${pm.updated_by ? ` · ${pm.updated_by}` : ''}`));
+    return box;
+  }
+
+  function pmForm(i) {
+    const pm = i.postmortem || { actions: [] };
+    const form = el('form', 'pm-box');
+    form.autocomplete = 'off';
+    form.appendChild(el('strong', '', t('Nachbetrachtung')));
+    const inputs = {};
+    PM_FIELDS.forEach(([key, label, ph]) => {
+      const w = el('label', 'login-field full');
+      const ta = el('textarea');
+      ta.rows = key === 'summary' || key === 'cause' ? 3 : 2;
+      ta.maxLength = 3000;
+      ta.value = pm[key] || '';
+      if (ph) ta.placeholder = t(ph);
+      w.append(el('span', '', t(label)), ta);
+      inputs[key] = ta;
+      form.appendChild(w);
+    });
+    form.appendChild(el('span', 'field-hint', t('Maßnahmen (Text, verantwortlich, Termin)')));
+    const rows = el('div', 'pm-rows');
+    const addRow = a => {
+      const row = el('div', 'pm-action-row');
+      row.dataset.id = a.id || '';
+      row.dataset.card = a.card || '';
+      row.dataset.done = a.done && !a.card_exists ? '1' : '';
+      const text = el('input'); text.type = 'text'; text.maxLength = 200; text.value = a.text || ''; text.placeholder = t('z. B. Speicherwarnung schon ab 80 %');
+      const owner = el('input'); owner.type = 'text'; owner.maxLength = 60; owner.value = a.owner || ''; owner.placeholder = t('Verantwortlich');
+      const due = el('input'); due.type = 'date'; due.value = a.due || '';
+      row.append(text, owner, due, button('Entfernen', 'text-btn danger', () => row.remove()));
+      rows.appendChild(row);
+    };
+    pm.actions.forEach(addRow);
+    if (!pm.actions.length) addRow({});
+    form.appendChild(rows);
+    form.appendChild(button('Maßnahme hinzufügen', 'text-btn', () => addRow({})));
+    const tasks = el('label', 'login-field toggle-label');
+    const tasksBox = el('input');
+    tasksBox.type = 'checkbox';
+    tasksBox.checked = !i.postmortem;
+    tasks.append(tasksBox, el('span', '', t('Neue Maßnahmen als Aufgaben im Board anlegen')));
+    form.appendChild(tasks);
+    const actions = el('div', 'form-actions');
+    const save = el('button', 'btn-primary', t('Speichern'));
+    save.type = 'submit';
+    actions.append(save, button('Abbrechen', 'btn-secondary', () => { editingPm.delete(i.id); render(); }));
+    form.appendChild(actions);
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      save.disabled = true;
+      const body = { create_tasks: tasksBox.checked, actions: [] };
+      Object.entries(inputs).forEach(([k, v]) => { body[k] = v.value.trim(); });
+      rows.querySelectorAll('.pm-action-row').forEach(r => {
+        const [text, owner, due] = r.querySelectorAll('input');
+        if (text.value.trim()) body.actions.push({ id: r.dataset.id, card: r.dataset.card, done: !!r.dataset.done, text: text.value.trim(), owner: owner.value.trim(), due: due.value });
+      });
+      try {
+        await api(`/api/incidents/${i.id}/postmortem`, body);
+        editingPm.delete(i.id);
+        await load();
+        toast(t('Nachbetrachtung gespeichert.'), 'success');
+      } catch (err) { toast(err.message, 'error'); save.disabled = false; }
+    });
+    setTimeout(() => inputs.summary.focus(), 30);
+    return form;
   }
 
   function openForm(item) {
