@@ -242,15 +242,18 @@ def _docker() -> Dict[str, Any]:
             c = json.loads(line)
         except json.JSONDecodeError:
             continue
-        state = c.get("State", "")
-        health = "unhealthy" if "(unhealthy)" in c.get("Status", "") else ""
+        if not isinstance(c, dict):
+            continue
+        import containers as _c   # same tolerant parsing as the container page
+        state, status = _c._text(c.get("State")), _c._text(c.get("Status"))
+        health = "unhealthy" if "(unhealthy)" in status else ""
         containers.append({
-            "name": c.get("Names", ""),
-            "image": c.get("Image", ""),
+            "name": _c._text(c.get("Names")).lstrip("/"),
+            "image": _c._text(c.get("Image")),
             "state": state,
-            "status": c.get("Status", ""),
-            "ports": c.get("Ports", ""),
-            "level": "error" if health or (state == "exited" and not c.get("Status", "").startswith("Exited (0)"))
+            "status": status,
+            "ports": _c._text(c.get("Ports")),
+            "level": "error" if health or (state == "exited" and not status.startswith("Exited (0)"))
                      or state in ("dead", "restarting") else "active" if state == "running" else "inactive",
         })
     containers.sort(key=lambda c: ({"error": 0, "active": 1, "inactive": 2}[c["level"]], c["name"]))

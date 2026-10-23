@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import history
 import homelab
+import settings_store
 
 logger = logging.getLogger("pi_dashboard.containers")
 
@@ -367,13 +368,27 @@ def kube_logs(namespace: str, name: str, container: str = "", lines: int = 300, 
 # ---------------------------------------------------------------------------
 # Docker containers + compose stacks
 # ---------------------------------------------------------------------------
+def _text(value: Any) -> str:
+    """A field of Docker's JSON output as text, whether it comes as string, list or map."""
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_text(v) for v in value)
+    if isinstance(value, dict):
+        return ",".join(f"{k}={v}" for k, v in value.items())
+    return str(value)
+
+
 def _docker(args: List[str], timeout: float = 15, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
     return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout, errors="replace", cwd=cwd)
 
 
-def _labels(text: str) -> Dict[str, str]:
+def _labels(text: Any) -> Dict[str, str]:
+    """Labels of `docker ps --format json`: "a=1,b=2" - newer Docker versions may give a map."""
+    if isinstance(text, dict):
+        return {str(k): str(v) for k, v in text.items()}
     out = {}
-    for part in (text or "").split(","):
+    for part in _text(text).split(","):
         k, _, v = part.partition("=")
         if k:
             out[k.strip()] = v
@@ -400,15 +415,17 @@ def _docker_list() -> Dict[str, Any]:
         except ValueError:
             continue
         labels = _labels(c.get("Labels", ""))
-        state, status = c.get("State", ""), c.get("Status", "")
+        if not isinstance(c, dict):
+            continue
+        state, status = _text(c.get("State")), _text(c.get("Status"))
         health = "unhealthy" if "(unhealthy)" in status else "healthy" if "(healthy)" in status else ""
         level = ("error" if health == "unhealthy" or state in ("dead", "restarting")
                  or (state == "exited" and not status.startswith("Exited (0)")) else
                  "active" if state == "running" else "inactive")
         containers.append({
-            "id": c.get("ID", "")[:12], "name": c.get("Names", ""), "image": c.get("Image", ""), "state": state,
-            "status": status, "health": health, "level": level, "ports": c.get("Ports", ""),
-            "created": c.get("CreatedAt", ""), "stack": labels.get("com.docker.compose.project", ""),
+            "id": _text(c.get("ID"))[:12], "name": _text(c.get("Names")).lstrip("/"), "image": _text(c.get("Image")), "state": state,
+            "status": status, "health": health, "level": level, "ports": _text(c.get("Ports")),
+            "created": _text(c.get("CreatedAt")), "stack": labels.get("com.docker.compose.project", ""),
             "service": labels.get("com.docker.compose.service", ""),
             "config_files": labels.get("com.docker.compose.project.config_files", ""),
             "working_dir": labels.get("com.docker.compose.project.working_dir", ""),
@@ -431,9 +448,13 @@ def _stacks() -> List[Dict[str, Any]]:
         res = _docker(["compose", "ls", "-a", "--format", "json"], timeout=10)
         if res.returncode == 0:
             for s in json.loads(res.stdout or "[]"):
-                stacks[s.get("Name", "")] = {"name": s.get("Name", ""), "status": s.get("Status", ""),
-                                             "config_files": [f for f in (s.get("ConfigFiles") or "").split(",") if f]}
-    except (subprocess.TimeoutExpired, ValueError):
+                if not isinstance(s, dict):
+                    continue
+                files = s.get("ConfigFiles") or ""
+                files = files if isinstance(files, list) else _text(files).split(",")
+                stacks[_text(s.get("Name"))] = {"name": _text(s.get("Name")), "status": _text(s.get("Status")),
+                                                "config_files": [str(f).strip() for f in files if str(f).strip()]}
+    except (subprocess.TimeoutExpired, ValueError, TypeError, AttributeError):
         pass
     # Stacks docker compose ls doesn't know (older compose): from container labels
     for c in data["containers"]:

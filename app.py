@@ -109,6 +109,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception):
+    """Unexpected errors: say what went wrong instead of a bare "Internal Server Error"
+    (the full traceback goes to the journal)."""
+    logger.error(f"{request.method} {request.url.path}: {type(exc).__name__}: {exc}", exc_info=exc)
+    return JSONResponse({"detail": f"Interner Fehler: {type(exc).__name__}: {str(exc)[:200]}"}, status_code=500)
+
 # In-process API calls (MCP tools -> the dashboard's own API, with its permissions and activity log)
 INTERNAL_HEADER = "x-picore-internal"
 INTERNAL_USER_HEADER = "x-picore-mcp-user"
