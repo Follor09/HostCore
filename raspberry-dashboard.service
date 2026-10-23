@@ -10,6 +10,9 @@ ExecStart=__DIR__/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 # Pulling is done by pi-dashboard-update.timer (keeps working even if the app crashes);
 # the in-app poller only shows "update available".
 Environment=AUTO_UPDATE_ON_COMMIT=false
+# glibc otherwise gives every worker thread its own heap (up to 8 per core) that is rarely
+# handed back - most of the dashboard's memory. Two are plenty for this workload.
+Environment=MALLOC_ARENA_MAX=2
 Restart=always
 RestartSec=5
 StandardOutput=journal

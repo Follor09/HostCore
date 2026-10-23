@@ -15,6 +15,7 @@ FastMCP's OIDCProxy federated to Pocket ID - the same setup as the *-no-kari ser
 import asyncio
 import contextlib
 import hashlib
+import importlib.util
 import json
 import logging
 import os
@@ -61,9 +62,9 @@ def public() -> Dict[str, Any]:
 
 
 def _fastmcp_available() -> bool:
+    # Only look for the package: importing it would keep ~15 MB loaded while MCP is off
     try:
-        import fastmcp  # noqa: F401
-        return True
+        return importlib.util.find_spec("fastmcp") is not None
     except Exception:
         return False
 
