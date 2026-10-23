@@ -99,6 +99,7 @@
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
     page('page:wiki', 'Wissensdatenbank', '/wissen', 'wiki wissen seiten markdown notizen anleitung');
     page('page:fleet', 'Flotte', '/flotte', 'alle pis remote übersicht updates fleet');
+    page('page:api', 'API-Dokumentation', '/api-doku', 'api schnittstellen rest skript curl endpunkte');
     page('page:tools', 'IT-Toolbox', '/werkzeuge', 'base64 json hash md5 sha jwt passwort uuid cron zeitstempel subnetz cidr ipv6 rechner');
     [['subnetz', 'Netzwerk-Rechner', 'subnetz cidr netzmaske ipv4 ipv6 teilnetz'], ['base64', 'Base64', 'kodieren dekodieren'], ['json', 'JSON formatieren', 'json prüfen'],
      ['hash', 'Hashes', 'md5 sha1 sha256 prüfsumme'], ['jwt', 'JWT lesen', 'token'], ['passwort', 'Passwort-Generator', 'uuid zufall'],

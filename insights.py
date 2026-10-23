@@ -323,6 +323,22 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Events (webhooks): {e}")
 
+    for mod, cat, link in (("anomalies", "anomaly", "/system#auffaelligkeiten"), ("dnswatch", "network", "/system#dns-ueberwachung"),
+                           ("incidents", "incident", "/doku#stoerungen")):
+        try:
+            for e in __import__(mod).events_since(since):
+                out.append(_ev(e["ts"], e["level"], cat, e["title"], e.get("detail", ""), link))
+        except Exception as e:
+            logger.warning(f"Events ({mod}): {e}")
+    try:
+        import netscan
+        for e in netscan.ip_events(days):
+            if e["ts"] >= since:
+                out.append(_ev(e["ts"], "warning", "network",
+                               f"IP-Konflikt bei {e['ip']}" if e["kind"] == "conflict" else f"{e['ip']} gehört jetzt einem anderen Gerät",
+                               f"{e['old_name']} → {e['new_name']}", "/system#geraete"))
+    except Exception as e:
+        logger.warning(f"Events (ip): {e}")
     try:
         import backups
         for e in backups.events_since(since):
@@ -382,6 +398,21 @@ def status_summary() -> Dict[str, Any]:
             add(b["level"], b["text"], "/system#backups")
     except Exception as e:
         logger.warning(f"Status (backups): {e}")
+    for mod, fn, link in (("anomalies", "active", "/system#auffaelligkeiten"), ("dnswatch", "alerts", "/system#dns-ueberwachung"),
+                          ("incidents", "open_alerts", "/doku#stoerungen")):
+        try:
+            for a in getattr(__import__(mod), fn)():
+                add(a.get("level", "warning"), a["text"], link)
+        except Exception as e:
+            logger.warning(f"Status ({mod}): {e}")
+    try:
+        import netscan
+        day = time.time() - 86400
+        conflicts = [e for e in netscan.ip_events(1) if e["kind"] == "conflict" and e["ts"] >= day]
+        if conflicts:
+            add("warning", f"IP-Konflikt bei {', '.join(sorted({e['ip'] for e in conflicts}))}", "/system#geraete")
+    except Exception as e:
+        logger.warning(f"Status (ip): {e}")
     try:
         import domains
         for d in domains.alerts():

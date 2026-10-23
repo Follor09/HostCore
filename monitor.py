@@ -386,6 +386,23 @@ class Monitor:
                     step()
                 except Exception as e:
                     logger.warning(f"Monitor {name} sample failed: {e}")
+            # Every sample: anomalies (checks itself every 10 min), DNS monitoring and IP owners (when due)
+            try:
+                import anomalies
+                anomalies.check()
+            except Exception as e:
+                logger.warning(f"Anomaly check failed: {e}")
+            if now % 300 < 60:
+                try:
+                    import netscan
+                    netscan.watch_ip_owners()
+                except Exception as e:
+                    logger.warning(f"IP watch failed: {e}")
+            try:
+                import dnswatch
+                threading.Thread(target=dnswatch.check_if_due, daemon=True).start()
+            except Exception as e:
+                logger.warning(f"DNS watch failed: {e}")
             if now - self.last_cleanup > 3600:
                 self.last_cleanup = now
                 try:
@@ -408,6 +425,11 @@ class Monitor:
                     geoip.refresh_if_old()
                 except Exception as e:
                     logger.warning(f"GeoIP refresh failed: {e}")
+                try:
+                    import capacity
+                    capacity.rollup()
+                except Exception as e:
+                    logger.warning(f"Capacity roll-up failed: {e}")
                 try:
                     import backups
                     backups.check_if_due()

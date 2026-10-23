@@ -73,7 +73,14 @@ import reminders
 import maintenance
 import docs
 import autoupdate
+import anomalies
+import apidocs
 import backups
+import capacity
+import dnswatch
+import incidents
+import latency
+import stacktemplates
 import domains
 import notify
 import retention
@@ -96,12 +103,15 @@ async def lifespan(app: FastAPI):
     health_task = asyncio.create_task(healthchecks.background_checker())
     autoupdate_task = asyncio.create_task(autoupdate.background_runner())
     notify_task = asyncio.create_task(notify.background_runner())
+    latency_task = None if AGENT else asyncio.create_task(latency.background_runner())
     if not AGENT:
         await mcp_server.reload()
     yield
     await mcp_server.shutdown()
     autoupdate_task.cancel()
     notify_task.cancel()
+    if latency_task:
+        latency_task.cancel()
     # Shutdown
     poller_task.cancel()
     history_task.cancel()
@@ -2602,6 +2612,85 @@ async def api_container_job(job_id: str):
     return _container_call(containers.get_job, job_id)
 
 
+@app.get("/api/containers/docker/disk")
+async def api_docker_disk():
+    return await asyncio.to_thread(_container_call, containers.disk_usage)
+
+
+class DockerCleanupRequest(BaseModel):
+    kinds: list = []
+    volumes: list = []
+
+
+@app.post("/api/containers/docker/cleanup")
+async def api_docker_cleanup(req: DockerCleanupRequest, request: Request):
+    request.state.audit_detail = f"{', '.join(str(k) for k in req.kinds)} {' '.join(str(v) for v in req.volumes)}"[:250]
+    return await asyncio.to_thread(_container_call, containers.cleanup, [str(k) for k in req.kinds],
+                                   [str(v) for v in req.volumes][:100], request.state.user or "")
+
+
+@app.get("/api/containers/docker/volumes")
+async def api_docker_volumes():
+    return await asyncio.to_thread(_container_call, containers.volumes_and_networks)
+
+
+class StackCreateRequest(BaseModel):
+    name: str
+    compose: str
+    env: str = ""
+
+
+@app.post("/api/containers/stacks/create")
+async def api_stack_create(req: StackCreateRequest, request: Request):
+    request.state.audit_detail = req.name[:60]
+    return await asyncio.to_thread(_container_call, containers.create_stack, req.name, req.compose, req.env, request.state.user or "")
+
+
+@app.get("/api/containers/stacks/{name}/compose")
+async def api_stack_compose(name: str):
+    return await asyncio.to_thread(_container_call, containers.stack_compose, name)
+
+
+def _template_call(fn, *args):
+    try:
+        return fn(*args)
+    except stacktemplates.TemplateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/stack-templates")
+async def api_stack_templates():
+    return await asyncio.to_thread(stacktemplates.overview)
+
+
+@app.post("/api/stack-templates")
+async def api_stack_templates_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:80]
+    return await asyncio.to_thread(_template_call, stacktemplates.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/stack-templates/{template_id}")
+async def api_stack_templates_update(template_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:80]
+    return await asyncio.to_thread(_template_call, stacktemplates.save, template_id, payload, request.state.user or "")
+
+
+@app.post("/api/stack-templates/{template_id}/delete")
+async def api_stack_templates_delete(template_id: str):
+    return await asyncio.to_thread(stacktemplates.delete, template_id)
+
+
+@app.post("/api/stack-templates/{template_id}/deploy")
+async def api_stack_templates_deploy(template_id: str, payload: dict, request: Request):
+    targets = [str(t) for t in (payload.get("targets") or [])][:20]
+    request.state.audit_detail = f"{payload.get('name', '')} · {len(targets)} Pis"
+    try:
+        return await stacktemplates.deploy(template_id, targets, str(payload.get("name") or ""), str(payload.get("env") or ""),
+                                           request.state.user or "")
+    except stacktemplates.TemplateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/containers/images")
 async def api_container_images():
     return imagecheck.status()
@@ -2987,6 +3076,158 @@ async def api_attachment_delete(kind: str, item_id: str, name: str, request: Req
 @app.get("/api/costs")
 async def api_costs():
     return await asyncio.to_thread(costs.overview)
+
+
+# ---------------------------------------------------------------------------
+# Latency between the Pis, dashboard versions and capacity of the fleet
+# ---------------------------------------------------------------------------
+@app.get("/api/tools/ping-peers")
+async def api_ping_peers(targets: str = ""):
+    """Called by the main dashboard on every Pi: ping the other Pis."""
+    return await asyncio.to_thread(latency.ping_many, [t.strip() for t in targets.split(",") if t.strip()][:20])
+
+
+@app.get("/api/fleet/latency")
+async def api_fleet_latency(hours: int = 24):
+    return await asyncio.to_thread(latency.matrix, max(1, min(hours, 24 * 30)))
+
+
+@app.post("/api/fleet/latency/measure")
+async def api_fleet_latency_measure():
+    await asyncio.to_thread(latency.measure)
+    return await asyncio.to_thread(latency.matrix, 24)
+
+
+@app.post("/api/updates/run-now")
+async def api_updates_run_now():
+    return await asyncio.to_thread(updater.run_update_now)
+
+
+class FleetIdsRequest(BaseModel):
+    ids: list
+
+
+@app.post("/api/fleet/dashboard-update")
+async def api_fleet_dashboard_update(req: FleetIdsRequest, request: Request):
+    request.state.audit_detail = f"{len(req.ids)} Pis"
+    return await fleet.dashboard_update([str(i) for i in req.ids][:50], request.state.user or "")
+
+
+@app.get("/api/fleet/capacity")
+async def api_fleet_capacity():
+    return await fleet.capacity()
+
+
+@app.get("/api/capacity")
+async def api_capacity():
+    return await asyncio.to_thread(capacity.overview)
+
+
+@app.get("/api/capacity/summary")
+async def api_capacity_summary():
+    return await asyncio.to_thread(capacity.summary)
+
+
+# ---------------------------------------------------------------------------
+# Anomalies, DNS monitoring
+# ---------------------------------------------------------------------------
+@app.get("/api/anomalies")
+async def api_anomalies():
+    return await asyncio.to_thread(anomalies.overview)
+
+
+@app.post("/api/anomalies/settings")
+async def api_anomalies_settings(payload: dict):
+    try:
+        return await asyncio.to_thread(anomalies.save, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _dns_call(fn, *args):
+    try:
+        return fn(*args)
+    except dnswatch.DnsWatchError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/dns-watch")
+async def api_dns_watch():
+    return await asyncio.to_thread(dnswatch.overview)
+
+
+@app.post("/api/dns-watch")
+async def api_dns_watch_create(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('type', '')} {payload.get('name', '')}"[:120]
+    return await asyncio.to_thread(_dns_call, dnswatch.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/dns-watch/check")
+async def api_dns_watch_check():
+    return await asyncio.to_thread(dnswatch.check_all)
+
+
+@app.post("/api/dns-watch/{item_id}")
+async def api_dns_watch_update(item_id: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('type', '')} {payload.get('name', '')}"[:120]
+    return await asyncio.to_thread(_dns_call, dnswatch.save, item_id, payload, request.state.user or "")
+
+
+@app.post("/api/dns-watch/{item_id}/delete")
+async def api_dns_watch_delete(item_id: str):
+    return await asyncio.to_thread(dnswatch.delete, item_id)
+
+
+# ---------------------------------------------------------------------------
+# Incidents
+# ---------------------------------------------------------------------------
+def _incident_call(fn, *args):
+    try:
+        return fn(*args)
+    except incidents.IncidentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/incidents")
+async def api_incidents(state: str = ""):
+    return await asyncio.to_thread(incidents.overview, state)
+
+
+@app.post("/api/incidents")
+async def api_incidents_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:120]
+    return await asyncio.to_thread(_incident_call, incidents.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/incidents/{incident_id}")
+async def api_incidents_update(incident_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:120]
+    return await asyncio.to_thread(_incident_call, incidents.save, incident_id, payload, request.state.user or "")
+
+
+@app.post("/api/incidents/{incident_id}/update")
+async def api_incidents_add_update(incident_id: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('status', '')}: {str(payload.get('text', ''))[:100]}"
+    return await asyncio.to_thread(_incident_call, incidents.add_update, incident_id, str(payload.get("status", "")),
+                                   str(payload.get("text", "")), request.state.user or "")
+
+
+@app.post("/api/incidents/{incident_id}/delete")
+async def api_incidents_delete(incident_id: str):
+    return await asyncio.to_thread(incidents.delete, incident_id)
+
+
+# ---------------------------------------------------------------------------
+# API documentation
+# ---------------------------------------------------------------------------
+@app.get("/api-doku")
+async def get_api_docs_page():
+    return _serve_page("apidocs.html")
+
+
+@app.get("/api/api-docs")
+async def api_api_docs():
+    return apidocs.build(app.openapi())
 
 
 @app.get("/wissen")

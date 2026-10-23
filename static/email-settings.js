@@ -38,6 +38,8 @@
     $('em-host').value = st.host;
     $('em-port').value = st.port;
     $('em-security').value = st.security;
+    $('em-insecure').checked = !!st.insecure;
+    $('em-insecure').disabled = st.security === 'none';
     $('em-user').value = st.username;
     $('em-pass').value = '';
     $('em-pass').placeholder = st.has_password ? t('gespeichert – leer lassen zum Behalten') : '';
@@ -71,7 +73,7 @@
   function payload() {
     return {
       enabled: $('em-enabled').checked, host: $('em-host').value.trim(), port: Number($('em-port').value) || 587,
-      security: $('em-security').value, username: $('em-user').value.trim(), password: $('em-pass').value,
+      security: $('em-security').value, insecure: $('em-insecure').checked, username: $('em-user').value.trim(), password: $('em-pass').value,
       sender: $('em-sender').value.trim(), sender_name: $('em-sender-name').value.trim(), recipients: $('em-to').value,
       dashboard_url: $('em-url').value.trim(), events_level: $('em-level').value,
       daily: $('em-daily').checked, daily_hour: Number($('em-daily-hour').value),
@@ -89,6 +91,7 @@
     options($('em-weekly-hour'), hours);
     options($('em-weekly-day'), WEEKDAYS.map((d, i) => [i, t(d)]));
     $('em-security').addEventListener('change', () => {
+      $('em-insecure').disabled = $('em-security').value === 'none';
       const port = $('em-port');
       if (['587', '465', '25'].includes(port.value)) port.value = { starttls: 587, ssl: 465, none: 25 }[$('em-security').value];
     });

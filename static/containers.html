@@ -172,6 +172,49 @@
       </section>
 
       <!-- Image-Updates -->
+      <section class="glass-card settings-section" id="docker-volumes">
+        <div class="section-head">
+          <h2>Volumes &amp; Netzwerke</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="dv-summary"></span>
+            <button class="btn-secondary" id="dv-reload" type="button">Laden</button>
+          </div>
+        </div>
+        <p class="section-desc">Alle Docker-Volumes mit Größe, Stack und den Containern, die sie nutzen, sowie die Netzwerke mit Subnetz und angeschlossenen Containern. Die Größen zu ermitteln dauert bei vielen Volumes einen Moment.</p>
+        <h3 class="subhead">Volumes</h3>
+        <div class="table-scroll"><table class="data-table" id="dv-volumes"></table></div>
+        <h3 class="subhead">Netzwerke</h3>
+        <div class="table-scroll"><table class="data-table" id="dv-networks"></table></div>
+      </section>
+
+      <section class="glass-card settings-section" id="docker-aufraeumen">
+        <div class="section-head">
+          <h2>Docker aufräumen</h2>
+          <button class="btn-secondary" id="dc-reload" type="button">Prüfen</button>
+        </div>
+        <p class="section-desc">Was Docker belegt und was davon nicht mehr gebraucht wird: unbenannte und ungenutzte Images, ungenutzte Netzwerke, Build-Cache und Volumes ohne Container. Erst ansehen, dann auswählen – Volumes werden nur einzeln und nach Bestätigung gelöscht, ihre Daten sind danach weg.</p>
+        <div class="cost-tiles" id="dc-tiles"></div>
+        <div id="dc-groups"></div>
+        <div class="fleet-pending-actions" data-perm="services.control">
+          <button class="btn-danger" id="dc-run" type="button" disabled>Ausgewähltes entfernen</button>
+          <span class="field-hint" id="dc-hint"></span>
+        </div>
+        <div class="fleet-results" id="dc-results"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="stack-vorlagen">
+        <div class="section-head">
+          <h2>Stack-Vorlagen</h2>
+          <div class="head-tools">
+            <button class="btn-secondary" id="tpl-from-stack" type="button" data-perm="apps.install">Aus Stack übernehmen</button>
+            <button class="btn-primary" id="tpl-add" type="button" data-perm="apps.install">Neue Vorlage</button>
+          </div>
+        </div>
+        <p class="section-desc">Eigene Compose-Dateien als Vorlage – auf einem oder mehreren Pis als neuer Stack anlegen (in <code>~/picore-apps/&lt;name&gt;</code>, danach <code>pull</code> und <code>up -d</code>). Zugangsdaten gehören nicht in die Vorlage: sie kommen beim Anlegen in eine <code>.env</code>, die nur auf dem Ziel-Pi gespeichert wird.</p>
+        <div class="docs-form" id="tpl-form-wrap" hidden></div>
+        <div class="tpl-list" id="tpl-list"></div>
+      </section>
+
       <section class="glass-card settings-section" id="images">
         <div class="section-head">
           <h2>Image-Updates</h2>
@@ -286,6 +329,7 @@
   <script src="/static/editor.js"></script>
   <script src="/static/markdown.js"></script>
   <script src="/static/containers.js"></script>
+  <script src="/static/containers-extra.js"></script>
   <script src="/static/appstore.js"></script>
   <script src="/static/containerlogs.js"></script>
   <script src="/static/pagegroups.js"></script>

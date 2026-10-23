@@ -31,7 +31,7 @@
     '/system': {
       title: 'System-Werkzeuge',
       groups: [
-        { id: 'zustand', label: 'Zustand', desc: 'Ereignisse, Verfügbarkeit und Auslastung', sections: ['ereignisse', 'verfuegbarkeit', 'ressourcen'],
+        { id: 'zustand', label: 'Zustand', desc: 'Ereignisse, Verfügbarkeit und Auslastung', sections: ['ereignisse', 'auffaelligkeiten', 'verfuegbarkeit', 'ressourcen', 'kapazitaet'],
           facts: async () => {
             const e = await get('/api/events?days=1');
             const c = e.counts || {};
@@ -39,7 +39,7 @@
               : c.warning ? { level: 'warning', text: `${n(c.warning, 'Warnung', 'Warnungen')} (24 Std.)` }
                 : { level: 'good', text: 'Keine Warnungen in 24 Std.' }];
           } },
-        { id: 'netzwerk', label: 'Netzwerk', desc: 'Schnittstellen, Geräte, Datenverbrauch, DNS und Ports', sections: ['netzwerk', 'geraete', 'datenverbrauch', 'dns', 'port-check', 'netbox'],
+        { id: 'netzwerk', label: 'Netzwerk', desc: 'Schnittstellen, Geräte, Datenverbrauch, DNS und Ports', sections: ['netzwerk', 'geraete', 'datenverbrauch', 'dns', 'dns-ueberwachung', 'port-check', 'netbox'],
           facts: async () => {
             const lan = await get('/api/tools/lan');
             const devs = lan.devices || [];
@@ -127,14 +127,14 @@
             if (mail.status === 'fulfilled' && mail.value.enabled) out.push(mail.value.last_error ? { level: 'warning', text: 'E-Mail-Versand gestört' } : { level: 'good', text: 'E-Mail aktiv' });
             return out;
           } },
-        { id: 'system', label: 'System & Daten', desc: 'Auto-Update, Verlauf, Datenaufbewahrung und Systeminfo', sections: ['auto-update', 'verlauf', 'datenaufbewahrung', 'system'] }
+        { id: 'system', label: 'System & Daten', desc: 'Auto-Update, Verlauf, Datenaufbewahrung, API und Systeminfo', sections: ['auto-update', 'verlauf', 'datenaufbewahrung', 'api', 'system'] }
       ]
     },
     '/containers': {
       title: 'Container',
       overview: ['uebersicht'],   // stays visible on the overview below the tiles
       groups: [
-        { id: 'docker', label: 'Docker', desc: 'Container, Compose-Stacks und Live-Logs', sections: ['docker', 'stacks', 'live-logs'],
+        { id: 'docker', label: 'Docker', desc: 'Container, Compose-Stacks, Live-Logs, Volumes und Aufräumen', sections: ['docker', 'stacks', 'live-logs', 'docker-volumes', 'docker-aufraeumen'],
           facts: async () => {
             const o = await get('/api/containers/overview');
             if (!o.docker || !o.docker.available) return [{ level: 'info', text: 'Docker nicht verfügbar' }];
@@ -157,6 +157,7 @@
             if (!im.checked) return [{ level: 'info', text: 'Noch nicht geprüft' }];
             return [im.updates ? { level: 'warning', text: `${n(im.updates, 'Update', 'Updates')} verfügbar` } : { level: 'good', text: 'Alle Images aktuell' }];
           } },
+        { id: 'vorlagen', label: 'Stack-Vorlagen', desc: 'Eigene Compose-Vorlagen auf beliebigen Pis anlegen', sections: ['stack-vorlagen'] },
         { id: 'statistik', label: 'Statistik', desc: 'CPU, RAM und Netzwerk pro Container', sections: ['statistik'] },
         { id: 'apps', label: 'App-Store', desc: 'Apps als Compose-Stack einrichten', sections: ['apps'] }
       ]
@@ -171,7 +172,7 @@
             const warr = items.filter(i => i.warranty_days != null && i.warranty_days >= 0 && i.warranty_days <= 30).length;
             return [{ level: 'info', text: n(items.length, 'Gerät', 'Geräte') }, ...(warr ? [{ level: 'info', text: `${n(warr, 'Garantie endet', 'Garantien enden')} bald` }] : [])];
           } },
-        { id: 'betrieb', label: 'Betrieb', desc: 'Betriebstagebuch, Runbooks und Befehle', sections: ['tagebuch', 'runbooks', 'befehle'],
+        { id: 'betrieb', label: 'Betrieb', desc: 'Störungen, Betriebstagebuch, Runbooks und Befehle', sections: ['stoerungen', 'tagebuch', 'runbooks', 'befehle'],
           facts: async () => {
             const [jr, rb] = await Promise.allSettled([get('/api/docs/journal?limit=1'), get('/api/docs/runbooks')]);
             const out = [];
@@ -358,6 +359,8 @@
   // Routing
   // ---------------------------------------------------------------------------
   let current = null;
+  let userScrolled = false;
+  ['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(ev => window.addEventListener(ev, () => { userScrolled = true; }, { passive: true }));
   function show(groupId, scrollTo) {
     const g = groups.find(x => x.id === groupId) || null;
     current = g ? g.id : 'start';
@@ -380,6 +383,12 @@
       if (target) target.scrollIntoView({ block: 'start' });
       else window.scrollTo({ top: 0 });
     });
+    // Sections above the target fill up after loading and push it down: follow it a few times,
+    // unless the user scrolled on their own in between
+    if (target) {
+      userScrolled = false;
+      [400, 1200, 2500].forEach(ms => setTimeout(() => { if (!userScrolled && current === g.id) target.scrollIntoView({ block: 'start' }); }, ms));
+    }
     const active = tabs.querySelector('.pg-active');
     if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }

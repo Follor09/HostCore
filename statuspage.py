@@ -172,7 +172,15 @@ def _build() -> Dict[str, Any]:
     shown = {f"{i['kind']}:{i['id']}" for i in cfg["items"]}
     planned = [{"title": w["title"], "start": w["start"], "end": w["end"]} for w in maintenance.upcoming(14)
                if w["scope"] == "all" or shown & set(w["scope"])]
+    try:
+        import incidents
+        public_incidents = incidents.public()
+    except Exception:
+        public_incidents = []
+    if overall == "up" and any(i["status"] != "behoben" for i in public_incidents):
+        overall = "partial"
     return {"title": cfg["title"], "description": cfg["description"], "overall": overall, "items": items, "planned": planned,
+            "incidents": public_incidents,
             "show_history": cfg["show_history"], "days": [time.strftime("%Y-%m-%d", time.localtime(d)) for d in days],
             "updated": now}
 

@@ -189,6 +189,22 @@
         </div>
       </section>
 
+      <!-- DNS-Überwachung -->
+      <section class="glass-card settings-section" id="dns-ueberwachung">
+        <div class="section-head">
+          <h2>DNS-Überwachung</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="dw-summary"></span>
+            <button class="btn-secondary" id="dw-check" type="button" data-perm="settings.manage">Jetzt prüfen</button>
+            <button class="btn-primary" id="dw-add" type="button" data-perm="settings.manage">Eintrag überwachen</button>
+          </div>
+        </div>
+        <p class="section-desc">Eigene DNS-Einträge werden alle 15 Minuten abgefragt. Ändert sich die Antwort, schlägt die Abfrage fehl oder passt sie nicht zum erwarteten Wert, gibt es ein Ereignis (und eine E-Mail, falls eingeschaltet).</p>
+        <div class="docs-form" id="dw-form-wrap" hidden></div>
+        <div class="table-scroll"><table class="data-table" id="dw-table"></table></div>
+        <div id="dw-events"></div>
+      </section>
+
       <!-- Geräte im Netzwerk -->
       <section class="glass-card settings-section" id="geraete">
         <div class="section-head">
@@ -207,6 +223,11 @@
         </div>
         <div class="table-scroll tall">
           <table class="data-table" id="lan-devices"></table>
+        </div>
+        <div class="ip-events" id="lan-ip-events" hidden>
+          <h3 class="subhead">IP-Konflikte &amp; Adresswechsel</h3>
+          <p class="field-hint">Alle 5 Minuten und bei jedem Scan wird geprüft, welches Gerät auf eine Adresse antwortet. Wechselt das, steht es hier; antworten zwei Geräte abwechselnd auf dieselbe Adresse, ist das ein IP-Konflikt (z. B. eine feste IP, die auch der DHCP-Server vergibt).</p>
+          <div class="table-scroll"><table class="data-table" id="lan-ip-table"></table></div>
         </div>
       </section>
 
@@ -649,6 +670,39 @@
         <div class="avail-list" id="avail-list"></div>
       </section>
 
+      <!-- Auffälligkeiten -->
+      <section class="glass-card settings-section" id="auffaelligkeiten">
+        <div class="section-head">
+          <h2>Auffälligkeiten</h2>
+          <span class="health-tag" id="an-state">–</span>
+        </div>
+        <p class="section-desc">Vergleicht alle 10 Minuten die letzten 15 Minuten mit dem, was zu dieser Tageszeit üblich ist (gleiche Uhrzeit an den Vortagen). Liegt ein Wert deutlich darüber, gibt es ein Ereignis und einen Hinweis in der Statusübersicht. In den ersten Tagen lernt die Erkennung noch – je länger die Messwerte aufbewahrt werden, desto genauer wird sie.</p>
+        <form class="anomaly-form" id="an-form" data-perm="settings.manage" autocomplete="off">
+          <label class="toggle-label"><input type="checkbox" id="an-enabled"> Erkennung einschalten</label>
+          <label class="fw-field"><span>Empfindlichkeit</span>
+            <select id="an-sens">
+              <option value="niedrig">Niedrig – nur sehr deutliche Abweichungen</option>
+              <option value="mittel">Mittel</option>
+              <option value="hoch">Hoch – auch kleinere Abweichungen</option>
+            </select>
+          </label>
+          <div class="an-metrics" id="an-metrics"></div>
+          <button type="submit" class="btn-primary">Speichern</button>
+        </form>
+        <div class="table-scroll"><table class="data-table" id="an-table"></table></div>
+        <h3 class="subhead">Letzte 30 Tage</h3>
+        <div class="table-scroll"><table class="data-table" id="an-events"></table></div>
+      </section>
+
+      <!-- Kapazitätsplanung -->
+      <section class="glass-card settings-section" id="kapazitaet">
+        <h2>Kapazitätsplanung</h2>
+        <p class="section-desc">Tageswerte von CPU und Arbeitsspeicher (Durchschnitt und Spitze) – sie bleiben so lange wie der Speicherverlauf, auch wenn die Minutenwerte schon gelöscht sind. Aus dem Trend der letzten 30 Tage wird geschätzt, wann es eng wird: Arbeitsspeicher ab 90 % im Tagesschnitt, CPU ab 80 %, Laufwerke wenn sie voll sind.</p>
+        <div class="cap-tiles" id="cap-tiles"></div>
+        <div class="cap-chart" id="cap-chart"></div>
+        <div class="cost-legend"><span class="c-cap-ram">RAM Ø</span><span class="c-cap-cpu">CPU Ø</span><span class="c-cap-cpu95">CPU-Spitze (95 %)</span></div>
+      </section>
+
       <!-- Drosselung -->
       <section data-cap="throttle" class="glass-card settings-section" id="drosselung">
         <div class="section-head">
@@ -860,6 +914,7 @@
   <script src="/static/system.js"></script>
   <script src="/static/netbox.js"></script>
   <script src="/static/backups.js"></script>
+  <script src="/static/system-extra.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

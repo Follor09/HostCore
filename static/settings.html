@@ -363,6 +363,7 @@
               <option value="none">Keine (nur im Heimnetz)</option>
             </select>
           </label>
+          <label class="toggle-label email-wide"><input type="checkbox" id="em-insecure"> Zertifikat nicht prüfen (selbst signiertes Zertifikat des Mailservers – die Verbindung bleibt verschlüsselt)</label>
           <label class="fw-field"><span>Benutzername</span><input type="text" id="em-user" spellcheck="false" autocomplete="off"></label>
           <label class="fw-field"><span>Passwort</span><input type="password" id="em-pass" autocomplete="new-password"></label>
           <label class="fw-field"><span>Absender</span><input type="email" id="em-sender" placeholder="picore@example.com" spellcheck="false"></label>
@@ -706,6 +707,12 @@
         <p class="form-msg" id="ret-msg" role="status"></p>
         <h3 class="subhead">Speicherbedarf</h3>
         <div class="table-scroll"><table class="data-table" id="ret-stores"></table></div>
+      </section>
+
+      <section class="glass-card settings-section" id="api">
+        <h2>API</h2>
+        <p class="section-desc">Alle Schnittstellen des Dashboards mit Parametern und nötiger Berechtigung – zum Nachschlagen und Ausprobieren, für eigene Skripte und Automationen.</p>
+        <div class="form-actions"><a class="btn-secondary" href="/api-doku">API-Dokumentation öffnen</a></div>
       </section>
 
       <!-- System -->

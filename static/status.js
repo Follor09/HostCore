@@ -67,6 +67,26 @@
       row.append(el('span', 'status-planned-kicker', t('Geplante Wartung')), title, el('span', '', `${fmtWhen(p.start)} – ${fmtWhen(p.end)}`));
       planned.appendChild(row);
     });
+    const inc = $('sp-incidents');
+    inc.innerHTML = '';
+    inc.hidden = !(d.incidents && d.incidents.length);
+    (d.incidents || []).forEach(i => {
+      const box = el('div', `status-incident ${i.status === 'behoben' ? 'resolved' : i.severity}`);
+      const head = el('div', 'status-incident-head');
+      const title = el('b', '', i.title);
+      title.setAttribute('data-no-i18n', '');
+      head.append(el('span', 'status-planned-kicker', t(i.status === 'behoben' ? 'Behobene Störung' : 'Aktuelle Störung')), title,
+        el('span', 'status-incident-state', t(i.status_label)));
+      box.appendChild(head);
+      i.updates.forEach(u => {
+        const line = el('div', 'status-incident-update');
+        const text = el('span', '', u.text);
+        text.setAttribute('data-no-i18n', '');
+        line.append(el('span', 'status-incident-when', `${fmtWhen(u.ts)} · ${t(u.status_label)}`), text);
+        box.appendChild(line);
+      });
+      inc.appendChild(box);
+    });
     $('sp-foot').textContent = `${t('Aktualisiert')} ${new Date(d.updated * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })} · ${t('wird jede Minute neu geladen')}`;
   }
 

@@ -240,6 +240,8 @@ APPROVAL_TOOLS = {
     "wake_on_lan": "Wake-on-LAN", "maintenance_window": "Wartungsfenster", "write_file": "Dateien schreiben",
     "move_to_trash": "Dateien löschen", "delete_task": "Aufgaben löschen", "write_notes": "Notizen ändern",
     "save_wiki_page": "Wiki-Seiten ändern", "add_app_to_board": "Boards ändern",
+    "docker_cleanup": "Docker aufräumen", "deploy_stack_template": "Stacks aus Vorlagen anlegen",
+    "fleet_dashboard_update": "Dashboard-Updates der Flotte", "save_incident": "Störungen erfassen/ändern",
 }
 DEFAULT_APPROVAL = ["stack_action", "kube_scale", "apt_run", "fleet_apt", "packages", "system_power", "firewall",
                     "write_file", "move_to_trash"]
@@ -957,6 +959,79 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
     async def list_domains() -> dict:
         """Own domains with expiry date, registrar, name servers and warning state."""
         return await _api("GET", "/api/docs/domains")
+
+    @mcp.tool(annotations=RO)
+    async def fleet_latency(hours: int = 24) -> dict:
+        """Ping round-trip time and packet loss between all Pis (now, average, maximum, hourly series)."""
+        return await _api("GET", "/api/fleet/latency", {"hours": hours})
+
+    @mcp.tool
+    async def fleet_dashboard_update(hosts: List[str]) -> dict:
+        """Let Pis pull the newest dashboard version now ('' or 'local' = the main Pi). Versions per Pi: fleet_overview."""
+        import remotes
+        ids = ["" if h in ("", "local") else next((x["id"] for x in remotes._all() if h in (x["id"], x["name"])), h) for h in hosts]
+        return await _api("POST", "/api/fleet/dashboard-update", body={"ids": ids})
+
+    @mcp.tool(annotations=RO)
+    async def get_capacity(host: Host = None) -> dict:
+        """Daily CPU/RAM figures with trends and when RAM, CPU or a drive gets tight."""
+        return await _api("GET", "/api/capacity", host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def list_anomalies(host: Host = None) -> dict:
+        """Unusual values compared with the usual range at this time of day (CPU, temperature, RAM, network)."""
+        return await _api("GET", "/api/anomalies", host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def dns_monitoring(host: Host = None) -> dict:
+        """Watched DNS records with their current answers, changes and failures."""
+        return await _api("GET", "/api/dns-watch", host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def list_incidents(only_open: bool = False) -> dict:
+        """Incidents with severity, status, affected services and timeline."""
+        return await _api("GET", "/api/incidents", {"state": "open" if only_open else ""})
+
+    @mcp.tool
+    async def save_incident(title: str | None = None, incident_id: str | None = None,
+                            severity: Literal["gering", "mittel", "schwer"] | None = None,
+                            status: Literal["untersuchung", "identifiziert", "beobachtung", "behoben"] | None = None,
+                            text: str = "", services: List[str] | None = None, public: bool | None = None) -> dict:
+        """Open an incident (without incident_id: title, severity, text) or add a status update to one
+        (incident_id + status + text; status 'behoben' resolves it). services: targets like 'service:ssh', 'stack:media'."""
+        if incident_id and status:
+            return await _api("POST", f"/api/incidents/{incident_id}/update", body={"status": status, "text": text})
+        body = {k: v for k, v in {"title": title, "severity": severity or "mittel", "status": status or "untersuchung",
+                                  "text": text, "services": services or [], "public": bool(public)}.items() if v is not None}
+        return await _api("POST", f"/api/incidents/{incident_id}" if incident_id else "/api/incidents", body=body)
+
+    @mcp.tool(annotations=RO)
+    async def docker_disk_usage(host: Host = None) -> dict:
+        """What Docker takes on disk and what could be removed (unused images, volumes, networks, build cache)."""
+        return await _api("GET", "/api/containers/docker/disk", host=host or "")
+
+    @mcp.tool
+    async def docker_cleanup(kinds: List[Literal["dangling_images", "unused_images", "networks", "build_cache"]],
+                             volumes: List[str] | None = None, host: Host = None) -> dict:
+        """Remove unused Docker data. volumes: names of unused volumes to delete (their data is lost)."""
+        return await _api("POST", "/api/containers/docker/cleanup", body={"kinds": kinds, "volumes": volumes or []}, host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def docker_volumes_networks(host: Host = None) -> dict:
+        """Docker volumes (size, containers, stack) and networks (subnet, containers)."""
+        return await _api("GET", "/api/containers/docker/volumes", host=host or "")
+
+    @mcp.tool(annotations=RO)
+    async def list_stack_templates() -> dict:
+        """Saved compose templates."""
+        return await _api("GET", "/api/stack-templates")
+
+    @mcp.tool
+    async def deploy_stack_template(template_id: str, hosts: List[str], name: str = "", env: str = "") -> dict:
+        """Create a new stack from a template on Pis ('' or 'local' = main Pi); env = .env content (secrets)."""
+        import remotes
+        ids = ["" if h in ("", "local") else next((x["id"] for x in remotes._all() if h in (x["id"], x["name"])), h) for h in hosts]
+        return await _api("POST", f"/api/stack-templates/{template_id}/deploy", body={"targets": ids, "name": name, "env": env})
 
     # ------------------------------------------------------------------ files
     @mcp.tool(annotations=RO)

@@ -53,6 +53,7 @@
       <p class="section-desc">Dieser Pi und alle Remote-Pis auf einen Blick: Erreichbarkeit, Dashboard-Version, ausstehende Paket-Updates, Temperatur und Auslastung. Mehrere Pis auswählen und die Updates gemeinsam anstoßen – jeder Pi führt sie in seinem eigenen apt-Dienst aus. Remote-Pis kommen unter Einstellungen → Remote-Pis dazu.</p>
       <div class="fleet-actions" data-perm="updates.install">
         <span class="field-hint" id="fleet-selected">Keine Pis ausgewählt</span>
+        <button class="btn-secondary" id="fleet-dash" type="button" disabled title="Die ausgewählten Pis holen sich sofort die neueste Dashboard-Version">Dashboard aktualisieren</button>
         <button class="btn-secondary" id="fleet-update" type="button" disabled>Paketlisten aktualisieren</button>
         <button class="btn-primary" id="fleet-upgrade" type="button" disabled>Update &amp; Upgrade installieren</button>
       </div>
@@ -60,6 +61,32 @@
       <div class="table-scroll">
         <table class="data-table fleet-table" id="fleet-table"></table>
       </div>
+    </section>
+
+    <section class="glass-card settings-section" id="fleet-latency">
+      <div class="section-head">
+        <h2>Latenz zwischen den Pis</h2>
+        <div class="head-tools">
+          <span class="field-hint" id="lat-measured"></span>
+          <div class="segmented" id="lat-range" role="tablist" aria-label="Zeitraum">
+            <button class="active" data-hours="24">24 Std.</button>
+            <button data-hours="168">7 Tage</button>
+          </div>
+          <button class="btn-secondary" id="lat-measure" type="button" data-perm="network.tools">Jetzt messen</button>
+        </div>
+      </div>
+      <p class="section-desc">Alle 5 Minuten pingt jeder Pi jeden anderen (3 Pakete). Zeile = von, Spalte = nach; angezeigt wird die aktuelle Antwortzeit, darunter Durchschnitt und Paketverlust im Zeitraum. Ein Klick zeigt den Verlauf.</p>
+      <div class="table-scroll"><table class="data-table lat-table" id="lat-table"></table></div>
+      <div class="lat-detail" id="lat-detail" hidden></div>
+    </section>
+
+    <section class="glass-card settings-section" id="fleet-capacity">
+      <div class="section-head">
+        <h2>Kapazität</h2>
+        <button class="btn-secondary" id="cap-reload" type="button">Neu laden</button>
+      </div>
+      <p class="section-desc">Auslastung und Trend der letzten 30 Tage pro Pi und wann es eng wird: Arbeitsspeicher ab 90 % im Tagesschnitt, CPU ab 80 %, Laufwerke wenn sie voll sind. Details unter System-Werkzeuge → Zustand → Kapazitätsplanung des jeweiligen Pis.</p>
+      <div class="table-scroll"><table class="data-table" id="cap-table"></table></div>
     </section>
 
     <section class="glass-card settings-section" id="fleet-pending" data-perm="updates.install" hidden>

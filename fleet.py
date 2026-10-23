@@ -8,7 +8,7 @@ import asyncio
 import platform
 import subprocess
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -30,6 +30,8 @@ def _compact(snap: Dict[str, Any], updates: Dict[str, Any], version: Dict[str, A
         "security": updates.get("security_count") if updates.get("supported") else None,
         "reboot_required": bool(updates.get("reboot_required")),
         "commit": (version.get("current_commit") or "")[:7], "update_available": bool(version.get("update_available")),
+        "commits_behind": version.get("commits_behind") or 0, "latest_commit": (version.get("latest_remote_commit") or "")[:7],
+        "updating": bool(version.get("is_updating")),
         "apt_running": bool(apt.get("running")), "apt_state": apt.get("state", ""), "apt_mode": apt.get("mode") or "",
         "packages": updates.get("packages", []) if updates.get("supported") else [],
         "lists_updated": updates.get("lists_updated"),
@@ -131,6 +133,46 @@ async def job_log(pid: str) -> Dict[str, Any]:
             "title": (f"apt {src.get('action', '')} {src.get('packages', '')}" if use_pkg else f"apt {src.get('mode', '')}").strip(),
             "started": src.get("started"), "finished": src.get("finished"), "exit_code": src.get("exit_code"),
             "log": (src.get("log") or "")[-20000:]}
+
+
+async def dashboard_update(ids: List[str], user: str = "") -> Dict[str, Any]:
+    """Let the given Pis pull the newest dashboard version right away (instead of at the next timer run)."""
+    import updater
+
+    async def one(pid: str) -> Dict[str, Any]:
+        try:
+            if pid == "":
+                res = await asyncio.to_thread(updater.run_update_now)
+            else:
+                res = await _call(pid, "POST", "/api/updates/run-now", {}, user)
+            return {"id": pid, "ok": bool(res.get("ok")), "message": res.get("message", "")}
+        except ValueError as e:
+            msg = str(e)
+            if "404" in msg or "Not Found" in msg:
+                msg = "Dieser Pi kennt das noch nicht – er aktualisiert sich innerhalb einer Minute selbst."
+            return {"id": pid, "ok": False, "message": msg}
+        except httpx.HTTPError as e:
+            return {"id": pid, "ok": False, "message": f"Nicht erreichbar ({type(e).__name__})"}
+
+    return {"results": await asyncio.gather(*(one(i) for i in dict.fromkeys(ids)))}
+
+
+async def capacity() -> Dict[str, Any]:
+    """Capacity summary of every Pi (for the fleet page)."""
+    import capacity as cap
+
+    async def one(r: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        if r is None:
+            try:
+                return {"id": "", "name": platform.node() or "Dieser Pi", **(await asyncio.to_thread(cap.summary))}
+            except Exception as e:
+                return {"id": "", "name": platform.node() or "Dieser Pi", "error": f"{type(e).__name__}"}
+        try:
+            return {"id": r["id"], "name": r["name"], **(await _call(r["id"], "GET", "/api/capacity/summary"))}
+        except (ValueError, httpx.HTTPError) as e:
+            return {"id": r["id"], "name": r["name"], "error": "Nicht verfügbar" if "404" in str(e) else f"Nicht erreichbar ({type(e).__name__})"}
+
+    return {"pis": await asyncio.gather(one(None), *(one(r) for r in remotes._all()))}
 
 
 async def apt(ids: List[str], mode: str, user: str = "") -> Dict[str, Any]:

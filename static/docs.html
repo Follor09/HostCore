@@ -141,6 +141,24 @@
         <div class="servicedoc-grid" id="sd-list"></div>
       </section>
 
+      <!-- Störungen -->
+      <section class="glass-card settings-section" id="stoerungen">
+        <div class="section-head">
+          <h2>Störungen</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="inc-summary"></span>
+            <select id="inc-filter" aria-label="Anzeigen">
+              <option value="">Alle</option>
+              <option value="open">Nur offene</option>
+            </select>
+            <button data-perm="notes.edit" class="btn-primary" id="inc-add" type="button">Störung erfassen</button>
+          </div>
+        </div>
+        <p class="section-desc">Störungen mit Schwere, betroffenen Diensten, Status und Zeitlinie – vom ersten Verdacht bis „behoben“. Beginn und Ende erscheinen in den Ereignissen (und per E-Mail); als „öffentlich“ markierte Störungen zeigt die öffentliche Statusseite, solange sie offen sind und eine Woche danach.</p>
+        <div class="docs-form" id="inc-form-wrap" hidden></div>
+        <div class="inc-list" id="inc-list"></div>
+      </section>
+
       <!-- Verträge & Abos -->
       <section class="glass-card settings-section" id="vertraege">
         <div class="section-head">
@@ -210,6 +228,7 @@
   <script src="/static/caps.js"></script>
   <script src="/static/hosts.js"></script>
   <script src="/static/docs.js"></script>
+  <script src="/static/incidents.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

@@ -65,7 +65,7 @@ def _set_state(**kw) -> None:
 def public() -> Dict[str, Any]:
     c, s = config(), _state()
     return {"enabled": bool(c.get("enabled")), "host": c.get("host", ""), "port": c.get("port", 587),
-            "security": c.get("security", "starttls"), "username": c.get("username", ""),
+            "security": c.get("security", "starttls"), "insecure": bool(c.get("insecure")), "username": c.get("username", ""),
             "has_password": bool(c.get("password")), "sender": c.get("sender", ""), "sender_name": c.get("sender_name", "PiCore"),
             "recipients": c.get("recipients", []), "dashboard_url": c.get("dashboard_url", ""),
             "events_level": c.get("events_level", "critical"), "daily": c.get("daily", True), "daily_hour": c.get("daily_hour", 7),
@@ -117,7 +117,8 @@ def save(fields: Dict[str, Any]) -> Dict[str, Any]:
     if level not in ("off", "warning", "critical"):
         raise NotifyError("Unbekannte Stufe.")
     c.update(enabled=bool(fields.get("enabled")), host=host, port=_int(fields.get("port") or 587, 1, 65535, "Port"),
-             security=security, username=str(fields.get("username") or "").strip()[:200], sender=sender,
+             security=security, insecure=bool(fields.get("insecure")),
+             username=str(fields.get("username") or "").strip()[:200], sender=sender,
              sender_name=re.sub(r"[\r\n<>\"]", "", str(fields.get("sender_name") or "PiCore"))[:60] or "PiCore",
              recipients=recipients, dashboard_url=url, events_level=level,
              daily=bool(fields.get("daily")), daily_hour=_int(fields.get("daily_hour", 7), 0, 23, "Uhrzeit"),
@@ -206,6 +207,10 @@ def send(subject: str, text: str, html_body: Optional[str] = None, cfg: Optional
         msg.add_alternative(html_body, subtype="html")
     port = int(c.get("port") or 587)
     ctx = ssl.create_default_context()
+    if c.get("insecure"):
+        # Own mail server with a self-signed certificate: still encrypted, but the certificate is not checked
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
     with _send_lock:
         try:
             if c.get("security") == "ssl":
@@ -222,6 +227,8 @@ def send(subject: str, text: str, html_body: Optional[str] = None, cfg: Optional
                 server.send_message(msg)
         except (smtplib.SMTPException, OSError, ssl.SSLError) as e:
             err = f"{type(e).__name__}: {e}"[:300]
+            if isinstance(e, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e):
+                err = "Zertifikat des Mailservers ungültig (selbst signiert?) – „Zertifikat nicht prüfen“ einschalten."
             _set_state(last_error=err, last_error_ts=int(time.time()))
             raise NotifyError(f"Versand fehlgeschlagen – {err}")
     s = _state()

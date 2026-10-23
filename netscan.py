@@ -160,6 +160,10 @@ def scan() -> Dict[str, Any]:
         with concurrent.futures.ThreadPoolExecutor(16) as pool:
             names = dict(zip(found, pool.map(_reverse_dns, found)))
 
+        try:
+            watch_ip_owners(found)
+        except Exception:
+            pass
         now = int(time.time())
         known = settings_store.get("lan_devices", {}) or {}
         for ip, n in found.items():
@@ -207,7 +211,8 @@ def devices() -> Dict[str, Any]:
         items.append({**d, "online": online, "in_wol": mac in wol_macs, "monitor": monitors.get(mac),
                       "new": bool(last) and d.get("first_seen", 0) >= last["ts"] and len(known) > 1})
     items.sort(key=lambda d: (not d["online"], tuple(int(x) for x in d.get("ip", "0.0.0.0").split("."))))
-    return {"devices": items, "last_scan": last, "running": _scan_state["running"], "subnets": [s["network"] for s in local_subnets()]}
+    return {"devices": items, "last_scan": last, "running": _scan_state["running"], "subnets": [s["network"] for s in local_subnets()],
+            "ip_events": ip_events(30)[:50]}
 
 
 def rename(mac: str, alias: str) -> Dict[str, Any]:
@@ -358,3 +363,55 @@ def test_ports(host: str, ports_text: str) -> Dict[str, Any]:
     with concurrent.futures.ThreadPoolExecutor(min(32, len(ports))) as pool:
         results = list(pool.map(lambda p: _probe(ip, p), ports))
     return {"host": host, "ip": ip, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# IP conflicts & MAC changes: an address that suddenly belongs to another device. Checked on
+# every scan and every 5 minutes from the kernel's neighbour table (no sweep needed).
+# ---------------------------------------------------------------------------
+IP_EVENTS_KEY = "lan_ip_events"
+IP_WATCH_KEY = "lan_ip_owner"      # ip -> {mac, ts}: who answered for the address last
+FLAP_WINDOW = 24 * 3600
+
+
+def _dev_name(known: Dict[str, Any], mac: str) -> str:
+    d = known.get(mac) or {}
+    return d.get("alias") or d.get("hostname") or d.get("vendor") or mac
+
+
+def watch_ip_owners(found: Optional[Dict[str, Dict[str, str]]] = None) -> List[Dict[str, Any]]:
+    """Compare who answers for each LAN address with the last time; returns new events."""
+    if found is None:
+        try:
+            subnets = local_subnets()
+        except Exception:
+            return []
+        nets = [ipaddress.ip_network(s["network"]) for s in subnets]
+        found = {ip: n for ip, n in _neighbours().items()
+                 if any(ipaddress.ip_address(ip) in net for net in nets) and n["mac"] != "ff:ff:ff:ff:ff:ff"}
+    now = int(time.time())
+    owners = settings_store.get(IP_WATCH_KEY, {}) or {}
+    events = settings_store.get(IP_EVENTS_KEY, []) or []
+    known = settings_store.get("lan_devices", {}) or {}
+    new = []
+    for ip, n in found.items():
+        mac = n["mac"]
+        prev = owners.get(ip)
+        if prev and prev["mac"] != mac and now - prev["ts"] < 7 * 86400:
+            # The same two devices taking turns on one address within a day: a conflict, not a replacement
+            flapping = any(e["ip"] == ip and now - e["ts"] < FLAP_WINDOW and {e["old_mac"], e["new_mac"]} == {mac, prev["mac"]}
+                           for e in events)
+            ev = {"ts": now, "ip": ip, "old_mac": prev["mac"], "new_mac": mac, "kind": "conflict" if flapping else "change",
+                  "old_name": _dev_name(known, prev["mac"]), "new_name": _dev_name(known, mac)}
+            events.append(ev)
+            new.append(ev)
+        owners[ip] = {"mac": mac, "ts": now}
+    if new:
+        settings_store.set(IP_EVENTS_KEY, events[-300:])
+    settings_store.set(IP_WATCH_KEY, {ip: o for ip, o in owners.items() if now - o["ts"] < 30 * 86400})
+    return new
+
+
+def ip_events(days: int = 30) -> List[Dict[str, Any]]:
+    since = time.time() - days * 86400
+    return [e for e in reversed(settings_store.get(IP_EVENTS_KEY, []) or []) if e["ts"] >= since]

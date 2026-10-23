@@ -187,6 +187,19 @@ def perform_update() -> Dict[str, Any]:
         update_state["is_updating"] = False
 
 
+def run_update_now() -> Dict[str, Any]:
+    """Start the update unit right away (update.sh: pull, pip, restart if something changed).
+    Same as what the timer does every minute - only without waiting."""
+    try:
+        res = subprocess.run(["sudo", "-n", "systemctl", "start", "--no-block", "pi-dashboard-update.service"],
+                             capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"ok": False, "message": f"Update konnte nicht gestartet werden ({type(e).__name__})."}
+    if res.returncode != 0:
+        return {"ok": False, "message": (res.stderr or res.stdout).strip()[:200] or "Update konnte nicht gestartet werden."}
+    return {"ok": True, "message": "Update gestartet – der Pi holt die neueste Version und startet das Dashboard bei Bedarf neu."}
+
+
 async def _restart_server_delayed():
     """Wait 1 second so response finishes, then restart server service or process."""
     await asyncio.sleep(1.2)

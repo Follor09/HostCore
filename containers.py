@@ -810,3 +810,214 @@ def stats_history(kind: str, name: str, hours: int = 24) -> Dict[str, Any]:
     series = [{"ts": p["ts"], "cpu": avg(p["cpu"]), "cpu_max": round(max(p["cpu"]), 2) if p["cpu"] else None,
                "mem": avg(p["mem"]), "rx": avg(p["rx"]), "tx": avg(p["tx"])} for p in sorted(points.values(), key=lambda p: p["ts"])]
     return {"kind": kind, "name": name, "hours": hours, "bucket": bucket, "points": series}
+
+
+# ---------------------------------------------------------------------------
+# Disk use, cleanup, volumes & networks
+# ---------------------------------------------------------------------------
+def _json_lines(args: List[str], timeout: float = 30) -> List[Dict[str, Any]]:
+    res = _docker(args, timeout=timeout)
+    if res.returncode != 0:
+        raise ContainerError((res.stderr or res.stdout).strip()[:300] or "docker fehlgeschlagen")
+    out = []
+    for line in res.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            v = json.loads(line)
+        except ValueError:
+            continue
+        out.extend(v if isinstance(v, list) else [v])
+    return [v for v in out if isinstance(v, dict)]
+
+
+_SIZE_UNITS = {"B": 1, "KB": 1e3, "MB": 1e6, "GB": 1e9, "TB": 1e12, "KIB": 1024, "MIB": 1024 ** 2, "GIB": 1024 ** 3, "TIB": 1024 ** 4}
+
+
+def _size(text: Any) -> int:
+    """'1.234GB' / '12.5MB (34%)' -> bytes (docker prints decimal units)."""
+    m = re.match(r"^\s*([\d.]+)\s*([KMGT]?i?B)", _text(text), re.I)
+    return int(float(m.group(1)) * _SIZE_UNITS.get(m.group(2).upper(), 1)) if m else 0
+
+
+def _need_docker() -> None:
+    if not shutil.which("docker"):
+        raise ContainerError("Docker ist auf diesem Pi nicht installiert.")
+
+
+def _container_mounts() -> Dict[str, List[str]]:
+    """volume name -> containers using it."""
+    used: Dict[str, List[str]] = {}
+    for c in _json_lines(["ps", "-a", "--no-trunc", "--format", "{{json .}}"]):
+        for m in [x.strip() for x in _text(c.get("Mounts")).split(",") if x.strip()]:
+            used.setdefault(m, []).append(_text(c.get("Names")).lstrip("/"))
+    return used
+
+
+def disk_usage() -> Dict[str, Any]:
+    """What Docker takes on disk and what could be freed - with the candidates for cleanup."""
+    _need_docker()
+    df = {_text(r.get("Type")): {"count": int(_text(r.get("TotalCount")) or 0), "active": int(_text(r.get("Active")) or 0),
+                                  "size": _size(r.get("Size")), "reclaimable": _size(r.get("Reclaimable"))}
+          for r in _json_lines(["system", "df", "--format", "{{json .}}"])}
+    images = _json_lines(["image", "ls", "-a", "--no-trunc", "--format", "{{json .}}"])
+    used_ids = set()
+    res = _docker(["ps", "-a", "-q", "--no-trunc"], timeout=15)
+    ids = res.stdout.split()
+    if ids:
+        ins = _docker(["inspect", "--format", "{{.Image}}", *ids[:500]], timeout=30)
+        used_ids = {line.strip() for line in ins.stdout.splitlines() if line.strip()}
+    dangling, unused = [], []
+    for im in images:
+        iid = _text(im.get("ID"))
+        full = iid if iid.startswith("sha256:") else f"sha256:{iid}"
+        item = {"id": iid.replace("sha256:", "")[:12], "repo": _text(im.get("Repository")), "tag": _text(im.get("Tag")),
+                "size": _size(im.get("Size")), "created": _text(im.get("CreatedSince"))}
+        if full in used_ids:
+            continue
+        (dangling if item["repo"] == "<none>" else unused).append(item)
+    volumes = [{"name": _text(v.get("Name")), "driver": _text(v.get("Driver"))}
+               for v in _json_lines(["volume", "ls", "-f", "dangling=true", "--format", "{{json .}}"])]
+    vn = volumes_and_networks()
+    sizes = {v["name"]: v["size"] for v in vn["volumes"]}
+    for v in volumes:
+        v["size"] = sizes.get(v["name"])
+    nets = [n for n in vn["networks"] if not n["containers"] and not n["builtin"]]
+    return {"df": df, "dangling_images": dangling, "unused_images": unused, "unused_volumes": volumes, "unused_networks": nets,
+            "build_cache": df.get("Build Cache", {}).get("reclaimable", 0)}
+
+
+CLEANUP = {
+    "dangling_images": (["image", "prune", "-f"], "Unbenannte Images"),
+    "unused_images": (["image", "prune", "-a", "-f"], "Ungenutzte Images"),
+    "networks": (["network", "prune", "-f"], "Ungenutzte Netzwerke"),
+    "build_cache": (["builder", "prune", "-f"], "Build-Cache"),
+}
+
+
+def cleanup(kinds: List[str], volumes: List[str], user: str = "") -> Dict[str, Any]:
+    """Remove what was chosen; volumes only by name (their data is gone afterwards)."""
+    _need_docker()
+    results = []
+    for k in kinds:
+        if k not in CLEANUP:
+            continue
+        args, label = CLEANUP[k]
+        res = _docker(args, timeout=600)
+        freed = re.search(r"Total reclaimed space:\s*(\S+)", res.stdout)
+        results.append({"kind": k, "label": label, "ok": res.returncode == 0,
+                        "freed": _size(freed.group(1)) if freed else 0,
+                        "message": "" if res.returncode == 0 else (res.stderr or res.stdout).strip()[:300]})
+    vols = [v for v in dict.fromkeys(volumes) if re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,200}$", v)]
+    if vols:
+        in_use = _container_mounts()
+        busy = [v for v in vols if v in in_use]
+        if busy:
+            raise ContainerError(f"Volume wird noch benutzt: {', '.join(busy[:5])}")
+        res = _docker(["volume", "rm", *vols], timeout=120)
+        results.append({"kind": "volumes", "label": f"{len(vols)} Volumes", "ok": res.returncode == 0, "freed": 0,
+                        "message": "" if res.returncode == 0 else (res.stderr or res.stdout).strip()[:300]})
+    _cache.clear()
+    logger.info(f"Docker cleanup by '{user}': {kinds} {vols}")
+    return {"results": results, "usage": disk_usage()}
+
+
+def volumes_and_networks() -> Dict[str, Any]:
+    """All volumes (size, who uses them) and networks (subnet, containers)."""
+    _need_docker()
+    sizes: Dict[str, Optional[int]] = {}
+    links: Dict[str, int] = {}
+    res = _docker(["system", "df", "-v", "--format", "{{json .}}"], timeout=120)
+    if res.returncode == 0:
+        try:
+            data = json.loads(res.stdout.strip().splitlines()[0]) if res.stdout.strip() else {}
+            for v in data.get("Volumes") or []:
+                sizes[_text(v.get("Name"))] = _size(v.get("Size"))
+                links[_text(v.get("Name"))] = int(_text(v.get("Links")) or 0)
+        except (ValueError, IndexError):
+            pass
+    used = _container_mounts()
+    volumes = []
+    for v in _json_lines(["volume", "ls", "--format", "{{json .}}"]):
+        name = _text(v.get("Name"))
+        labels = _labels(v.get("Labels"))
+        volumes.append({"name": name, "driver": _text(v.get("Driver")), "size": sizes.get(name),
+                        "containers": used.get(name, []), "stack": labels.get("com.docker.compose.project", ""),
+                        "anonymous": bool(re.fullmatch(r"[0-9a-f]{64}", name))})
+    volumes.sort(key=lambda v: (-(v["size"] or 0), v["name"]))
+    networks = []
+    nets = _json_lines(["network", "ls", "--no-trunc", "--format", "{{json .}}"])
+    if nets:
+        ids = [_text(n.get("ID")) for n in nets]
+        details = {}
+        if ids:
+            ins = _docker(["network", "inspect", *ids[:200]], timeout=30)
+            try:
+                for d in json.loads(ins.stdout or "[]"):
+                    details[d.get("Id", "")] = d
+            except ValueError:
+                pass
+        for n in nets:
+            d = details.get(_text(n.get("ID")), {})
+            ipam = (d.get("IPAM") or {}).get("Config") or []
+            name = _text(n.get("Name"))
+            networks.append({"name": name, "driver": _text(n.get("Driver")), "scope": _text(n.get("Scope")),
+                             "subnet": ", ".join(c.get("Subnet", "") for c in ipam if c.get("Subnet")),
+                             "gateway": ", ".join(c.get("Gateway", "") for c in ipam if c.get("Gateway")),
+                             "internal": bool(d.get("Internal")), "builtin": name in ("bridge", "host", "none"),
+                             "containers": sorted(c.get("Name", "") for c in (d.get("Containers") or {}).values()),
+                             "stack": _labels(d.get("Labels") or {}).get("com.docker.compose.project", "")})
+    networks.sort(key=lambda n: (n["builtin"], n["name"]))
+    return {"volumes": volumes, "networks": networks, "total_size": sum(v["size"] or 0 for v in volumes)}
+
+
+# ---------------------------------------------------------------------------
+# New stack from a template (Container -> Stack-Vorlagen, also on remote Pis)
+# ---------------------------------------------------------------------------
+STACK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+
+
+def create_stack(name: str, compose: str, env: str = "", user: str = "") -> Dict[str, Any]:
+    import appstore
+    _need_docker()
+    name = (name or "").strip().lower()
+    if not STACK_NAME.match(name):
+        raise ContainerError("Name: Kleinbuchstaben, Ziffern, - und _ (höchstens 41 Zeichen).")
+    if any(s["name"] == name for s in stacks()):
+        raise ContainerError(f"Es gibt schon einen Stack „{name}“.")
+    if not compose.strip() or len(compose) > 200_000 or len(env) > 50_000:
+        raise ContainerError("Compose-Datei fehlt oder ist zu groß.")
+    folder = os.path.join(appstore.APPS_DIR, name)
+    if os.path.exists(folder):
+        raise ContainerError(f"Den Ordner {folder} gibt es schon.")
+    os.makedirs(folder, mode=0o755)
+    path = os.path.join(folder, "docker-compose.yml")
+    with open(path, "w") as f:
+        f.write(compose if compose.endswith("\n") else compose + "\n")
+    if env.strip():
+        with open(os.path.join(folder, ".env"), "w") as f:
+            f.write(env if env.endswith("\n") else env + "\n")
+        os.chmod(os.path.join(folder, ".env"), 0o600)
+    check = _docker(["compose", "-p", name, "-f", path, "config", "-q"], timeout=30, cwd=folder)
+    if check.returncode != 0:
+        import shutil as _sh
+        _sh.rmtree(folder, ignore_errors=True)
+        raise ContainerError(f"Compose-Datei ungültig: {(check.stderr or check.stdout).strip()[:300]}")
+    _cache.clear()
+    return {**compose_job(name, [path], folder, "install", user), "dir": folder}
+
+
+def stack_compose(name: str) -> Dict[str, Any]:
+    """Compose file (and .env) of an existing stack - to save it as a template."""
+    s = next((x for x in stacks() if x["name"] == name), None)
+    if not s or not s.get("config_files"):
+        raise ContainerError("Stack oder Compose-Datei nicht gefunden.")
+    path = s["config_files"][0]
+    try:
+        with open(path, errors="replace") as f:
+            compose = f.read(200_001)
+    except OSError as e:
+        raise ContainerError(f"Compose-Datei nicht lesbar: {e.strerror or e}")
+    env_path = os.path.join(os.path.dirname(path), ".env")
+    return {"name": name, "compose": compose[:200_000], "has_env": os.path.exists(env_path)}

@@ -87,6 +87,7 @@
     $('fleet-selected').textContent = n ? t(`${n} ${n === 1 ? 'Pi' : 'Pis'} ausgewählt`) : t('Keine Pis ausgewählt');
     $('fleet-update').disabled = !n;
     $('fleet-upgrade').disabled = !n;
+    $('fleet-dash').disabled = !n;
     renderPending();
   }
 
@@ -274,7 +275,15 @@
       }
       const ver = row.insertCell();
       ver.appendChild(raw('code', 'fleet-commit', p.commit || '–'));
-      if (p.update_available) { ver.append(' '); ver.appendChild(el('span', 'health-tag warning', t('Update verfügbar'))); }
+      const main = data.pis.find(q => q.id === '');
+      if (p.updating) { ver.append(' '); ver.appendChild(el('span', 'health-tag warning', t('Wird aktualisiert…'))); }
+      else if (p.update_available) {
+        ver.append(' ');
+        ver.appendChild(el('span', 'health-tag warning', p.commits_behind ? t(`${p.commits_behind} Commits zurück`) : t('Update verfügbar')));
+      } else if (p.id && main && main.commit && p.commit && p.commit !== main.commit) {
+        ver.append(' ');
+        ver.appendChild(el('span', 'health-tag', t('anders als Haupt-Pi')));
+      }
       const upd = row.insertCell();
       upd.className = 'fleet-upd';
       if (p.updates == null) upd.textContent = '–';
@@ -400,6 +409,151 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Latency matrix
+  // ---------------------------------------------------------------------------
+  let latHours = 24;
+  let lat = null;
+  const fmtMs = v => (v == null ? '–' : `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`);
+  const latLevel = (rtt, loss) => (rtt == null || loss >= 50 ? 'critical' : loss > 0 || rtt > 50 ? 'warning' : 'good');
+
+  function renderLatency() {
+    const table = $('lat-table');
+    table.innerHTML = '';
+    if (!lat || lat.nodes.length < 2) {
+      table.appendChild(el('caption', 'field-hint', t('Erst mit mindestens einem Remote-Pi (Einstellungen → Remote-Pis) gibt es etwas zu messen.')));
+      return;
+    }
+    $('lat-measured').textContent = lat.measured ? `${t('Gemessen')} ${new Date(lat.measured * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}` : t('Noch nicht gemessen');
+    const head = table.createTHead().insertRow();
+    head.appendChild(el('th', '', t('von → nach')));
+    lat.nodes.forEach(n => head.appendChild(raw('th', '', n.name)));
+    const body = table.createTBody();
+    lat.nodes.forEach(src => {
+      const row = body.insertRow();
+      const name = row.insertCell();
+      name.append(raw('span', 'lan-name', src.name), raw('span', 'lan-sub', src.host));
+      lat.nodes.forEach(dst => {
+        const c = row.insertCell();
+        if (src.id === dst.id) { c.className = 'lat-self'; c.textContent = '–'; return; }
+        const pr = lat.pairs.find(x => x.src === src.id && x.dst === dst.id);
+        if (!pr) { c.appendChild(el('span', 'field-hint', t('keine Daten'))); return; }
+        const btn = el('button', `lat-cell ${latLevel(pr.rtt, pr.loss ?? 100)}`);
+        btn.type = 'button';
+        btn.append(raw('strong', '', pr.rtt == null ? t('keine Antwort') : fmtMs(pr.rtt)),
+          raw('span', 'lan-sub', `Ø ${fmtMs(pr.avg)} · ${t('Verlust')} ${pr.avg_loss} %`));
+        btn.addEventListener('click', () => showLatency(src, dst, pr));
+        c.appendChild(btn);
+      });
+    });
+  }
+
+  function showLatency(src, dst, pr) {
+    const box = $('lat-detail');
+    box.hidden = false;
+    box.innerHTML = '';
+    const head = el('div', 'fleet-pkg-head');
+    head.append(raw('strong', '', `${src.name} → ${dst.name}`),
+      raw('span', 'field-hint', `Ø ${fmtMs(pr.avg)} · max. ${fmtMs(pr.max)} · ${t('Verlust')} ${pr.avg_loss} % · ${pr.samples} ${t('Messungen')}`));
+    head.appendChild(button('Schließen', 'text-btn', () => { box.hidden = true; }));
+    box.appendChild(head);
+    const pts = pr.series.filter(p => p[1] != null);
+    if (!pts.length) { box.appendChild(el('p', 'field-hint', t('Keine Antworten im Zeitraum.'))); return; }
+    const W = 800, H = 140, max = Math.max(...pts.map(p => p[1])) * 1.15 || 1;
+    const x0 = pr.series[0][0], x1 = pr.series[pr.series.length - 1][0] || x0 + 1;
+    const x = ts => ((ts - x0) / Math.max(1, x1 - x0)) * (W - 50) + 45;
+    const y = v => H - 18 - (v / max) * (H - 30);
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('class', 'lat-chart');
+    [0, max / 2, max].forEach(v => {
+      const l = document.createElementNS(ns, 'line');
+      Object.entries({ x1: 45, x2: W - 5, y1: y(v), y2: y(v), class: 'grid-line' }).forEach(([k, val]) => l.setAttribute(k, val));
+      svg.appendChild(l);
+      const tx = document.createElementNS(ns, 'text');
+      Object.entries({ x: 40, y: y(v) + 4, 'text-anchor': 'end', class: 'axis-label' }).forEach(([k, val]) => tx.setAttribute(k, val));
+      tx.textContent = `${Math.round(v)} ms`;
+      svg.appendChild(tx);
+    });
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' '));
+    path.setAttribute('class', 'lat-line');
+    svg.appendChild(path);
+    pr.series.filter(p => p[2] > 0).forEach(p => {
+      const r = document.createElementNS(ns, 'rect');
+      Object.entries({ x: x(p[0]) - 2, y: H - 14, width: 4, height: 10, class: 'lat-loss' }).forEach(([k, val]) => r.setAttribute(k, val));
+      const tt = document.createElementNS(ns, 'title');
+      tt.textContent = `${new Date(p[0] * 1000).toLocaleString(LOCALE)}: ${p[2]} % ${t('Verlust')}`;
+      r.appendChild(tt);
+      svg.appendChild(r);
+    });
+    box.appendChild(svg);
+  }
+
+  async function loadLatency() {
+    try { lat = await api(`/api/fleet/latency?hours=${latHours}`); renderLatency(); } catch (err) { $('lat-measured').textContent = err.message; }
+  }
+
+  function initLatency() {
+    document.querySelectorAll('#lat-range button').forEach(b => b.addEventListener('click', () => {
+      latHours = Number(b.dataset.hours);
+      document.querySelectorAll('#lat-range button').forEach(x => x.classList.toggle('active', x === b));
+      $('lat-detail').hidden = true;
+      loadLatency();
+    }));
+    $('lat-measure').addEventListener('click', async () => {
+      const b = $('lat-measure');
+      b.disabled = true;
+      b.textContent = t('Messe…');
+      try { await api('/api/fleet/latency/measure', {}); await loadLatency(); } catch (err) { toast(err.message, 'error'); }
+      finally { b.disabled = false; b.textContent = t('Jetzt messen'); }
+    });
+    loadLatency();
+    setInterval(() => { if (!document.hidden) loadLatency(); }, 300000);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Capacity of every Pi
+  // ---------------------------------------------------------------------------
+  function capCell(row, f, unit) {
+    const c = row.insertCell();
+    if (!f || f.current == null) { c.textContent = '–'; return; }
+    c.appendChild(raw('span', '', `${f.current} ${unit}`));
+    const trend = f.slope == null ? t('zu wenig Daten') : f.slope > 0.05 ? t(`steigt um ${f.slope.toFixed(2)} pro Tag`) : f.slope < -0.05 ? t('sinkt') : t('gleichbleibend');
+    c.appendChild(el('span', 'lan-sub', trend));
+    if (f.days_left != null) c.appendChild(el('span', `health-tag ${f.days_left < 30 ? 'critical' : f.days_left < 90 ? 'warning' : ''}`,
+      f.days_left === 0 ? t('Grenze erreicht') : t(`eng in ~${f.days_left} Tagen`)));
+  }
+
+  async function loadCapacity() {
+    const table = $('cap-table');
+    let d;
+    try { d = await api('/api/fleet/capacity'); } catch (err) { table.innerHTML = ''; table.appendChild(el('caption', 'field-hint', err.message)); return; }
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Pi', 'Tage erfasst', 'RAM (Tagesschnitt)', 'CPU (Tagesschnitt)', 'Speicher'].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = table.createTBody();
+    d.pis.forEach(p => {
+      const row = body.insertRow();
+      row.insertCell().appendChild(raw('span', 'lan-name', p.name));
+      if (p.error) {
+        const c = row.insertCell();
+        c.colSpan = 4;
+        c.appendChild(el('span', 'field-hint', t(p.error)));
+        return;
+      }
+      row.insertCell().textContent = p.days != null ? String(p.days) : '–';
+      capCell(row, p.ram, '%');
+      capCell(row, p.cpu, '%');
+      const disk = row.insertCell();
+      if (p.disk) {
+        disk.appendChild(raw('span', '', `${p.disk.mount} · ${p.disk.percent} %`));
+        disk.appendChild(el('span', `health-tag ${p.disk.days_left < 30 ? 'critical' : 'warning'}`, t(`voll in ~${p.disk.days_left} Tagen`)));
+      } else disk.appendChild(el('span', 'field-hint', t('kein Laufwerk wird knapp')));
+    });
+  }
+
   async function init() {
     if (window.PiAuth) await window.PiAuth.ready;
     try {
@@ -412,6 +566,19 @@
     window.addEventListener('resize', fitPanels);
     $('fleet-update').addEventListener('click', e => runApt('update', e.currentTarget));
     $('fleet-upgrade').addEventListener('click', e => runApt('upgrade', e.currentTarget));
+    $('fleet-dash').addEventListener('click', e => {
+      const b = e.currentTarget;
+      confirmClick(b, t(`Dashboard auf ${selected.size} ${selected.size === 1 ? 'Pi' : 'Pis'} aktualisieren?`), async () => {
+        try {
+          const r = await api('/api/fleet/dashboard-update', { ids: [...selected] });
+          showResults(r.results, 'Gestartet');
+          document.querySelectorAll('#fleet-results .fleet-result .text-btn').forEach(x => x.remove());
+        } catch (err) { toast(err.message, 'error'); }
+      });
+    });
+    initLatency();
+    loadCapacity();
+    $('cap-reload').addEventListener('click', loadCapacity);
     $('fp-q').addEventListener('input', renderPending);
     $('fp-security').addEventListener('change', renderPending);
     $('fp-filters').addEventListener('submit', e => e.preventDefault());
