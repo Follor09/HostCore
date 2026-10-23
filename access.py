@@ -44,6 +44,10 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/settings$", "login"),
 
     # --- Own account (every logged-in user)
+    ("POST", r"^/api/auth/(reauth|2fa/(setup|enable|disable|recovery)|sessions/[0-9a-f]{16}/revoke)$", "login"),
+    ("GET", r"^/api/auth/(2fa|sessions)$", "login"),
+    ("GET", r"^/2fa$", "login"),
+    ("*", r"^/api/security(/.*)?$", "users.manage"),
     ("POST", r"^/api/settings/account$", "login"),
     ("POST", r"^/api/settings/logout-others$", "login"),
     ("GET", r"^/api/settings$", "login"),

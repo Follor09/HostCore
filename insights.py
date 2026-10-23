@@ -325,7 +325,7 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
 
     for mod, cat, link in (("anomalies", "anomaly", "/system#auffaelligkeiten"), ("dnswatch", "network", "/system#dns-ueberwachung"),
                            ("incidents", "incident", "/doku#stoerungen"), ("vulns", "security", "/system#schwachstellen"),
-                           ("eol", "system", "/system#lebenszyklus")):
+                           ("eol", "system", "/system#lebenszyklus"), ("websec", "security", "/settings#sicherheit")):
         try:
             for e in __import__(mod).events_since(since):
                 out.append(_ev(e["ts"], e["level"], cat, e["title"], e.get("detail", ""), link))

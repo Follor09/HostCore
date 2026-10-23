@@ -133,6 +133,7 @@
         const until = el('span', `user-expiry${u.expired ? ' expired' : ''}`, `${t('Gast bis')} ${fmtUntil(u.expires)}`);
         status.append(' ', until);
       }
+      if (u.totp) status.append(' ', el('span', 'health-tag', '2FA'));
       row.insertCell().textContent = u.created ? new Date(u.created * 1000).toLocaleDateString(LOCALE) : '–';
 
       const actions = row.insertCell();
@@ -140,6 +141,10 @@
       actions.appendChild(button('Passwort', 'btn-secondary', () => openPasswordRow(row, u)));
       actions.appendChild(button('Abmelden', 'btn-secondary', () =>
         run(api(`/api/users/${encodeURIComponent(u.username)}/update`, { logout: true }), `${u.username} wurde auf allen Geräten abgemeldet.`)));
+      if (u.totp && !self) {
+        actions.appendChild(confirmButton('Zwei-Faktor zurücksetzen', 'Sicher?', 'btn-secondary', () =>
+          run(api(`/api/users/${encodeURIComponent(u.username)}/2fa-reset`, {}), `${u.username}: ${t('Zwei-Faktor-Anmeldung zurückgesetzt.')}`)));
+      }
       if (u.expires) {
         actions.appendChild(button('+7 Tage', 'btn-secondary', () => {
           const from = Math.max(Date.now() / 1000, u.expires);
@@ -177,7 +182,7 @@
     const input = el('input');
     input.type = 'password';
     input.autocomplete = 'new-password';
-    input.placeholder = t('Neues Passwort (mind. 8 Zeichen)');
+    input.placeholder = t('Neues Passwort (mind. 10 Zeichen)');
     input.setAttribute('aria-label', `Neues Passwort für ${u.username}`);
     const save = el('button', 'btn-primary', 'Setzen');
     save.type = 'submit';

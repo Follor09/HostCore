@@ -47,8 +47,11 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#konto" class="active">Konto</a>
+      <a href="#zwei-faktor">Zwei-Faktor-Anmeldung</a>
+      <a href="#sitzungen">Sitzungen</a>
       <a href="#benutzer" data-perm="users.manage">Benutzer</a>
       <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
+      <a href="#sicherheit" data-perm="users.manage">Sicherheit</a>
       <a href="#remote" data-perm="users.manage">Remote-Pis</a>
       <a href="#netbox" data-perm="settings.manage">NetBox</a>
       <a href="#mcp" data-perm="users.manage">MCP-Server</a>
@@ -129,6 +132,24 @@
 
       <!-- Sprache / Language -->
       <!-- Benutzer (Admin) -->
+      <section class="glass-card settings-section" id="zwei-faktor">
+        <div class="section-head">
+          <h2>Zwei-Faktor-Anmeldung</h2>
+          <span class="health-tag" id="tf-state"></span>
+        </div>
+        <p class="section-desc">Zusätzlich zum Passwort ein 6-stelliger Code aus einer Authenticator-App auf dem Handy. Wer dein Passwort kennt, kommt ohne das Handy nicht hinein. Für den Notfall gibt es einmalige Wiederherstellungscodes.</p>
+        <div id="tf-body"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="sitzungen">
+        <div class="section-head">
+          <h2>Sitzungen</h2>
+          <span class="field-hint" id="ses-summary"></span>
+        </div>
+        <p class="section-desc">Wo du gerade angemeldet bist – Gerät, Adresse und letzte Nutzung. Unbekannte Sitzungen hier beenden und danach das Passwort ändern.</p>
+        <div class="table-scroll"><table class="data-table" id="ses-table"></table></div>
+      </section>
+
       <section class="glass-card settings-section" id="benutzer" data-perm="users.manage">
         <div class="section-head">
           <h2>Benutzer</h2>
@@ -145,7 +166,7 @@
             <input type="text" id="new-user-name" maxlength="32" autocapitalize="none" spellcheck="false" placeholder="z.B. anna" required>
           </label>
           <label class="login-field grow">
-            <span>Passwort <em>(mind. 8 Zeichen)</em></span>
+            <span>Passwort <em>(mind. 10 Zeichen)</em></span>
             <input type="password" id="new-user-password" autocomplete="new-password" required>
           </label>
           <label class="login-field">
@@ -194,6 +215,21 @@
           </label>
           <button type="submit" class="btn-primary">Anlegen</button>
         </form>
+      </section>
+
+      <section class="glass-card settings-section" id="sicherheit" data-perm="users.manage">
+        <div class="section-head">
+          <h2>Sicherheit</h2>
+          <span class="field-hint" id="sec-client"></span>
+        </div>
+        <p class="section-desc">Einstellungen für den Betrieb im Internet – hinter Cloudflare, einem Reverse-Proxy oder direkt. Die Checkliste zeigt, was für einen öffentlichen Zugang noch fehlt.</p>
+        <h3 class="subhead">Checkliste „Öffentlich erreichbar“</h3>
+        <ul class="st-list" id="sec-checklist"></ul>
+        <form class="sec-form" id="sec-form" autocomplete="off"></form>
+        <h3 class="subhead">Aktive Sitzungen aller Benutzer</h3>
+        <div class="table-scroll"><table class="data-table" id="sec-sessions"></table></div>
+        <h3 class="subhead">Sicherheitsereignisse (30 Tage)</h3>
+        <ol class="event-list" id="sec-events"></ol>
       </section>
 
       <section class="glass-card settings-section" id="remote" data-perm="users.manage">
@@ -754,6 +790,8 @@
   <script src="/static/email-settings.js"></script>
   <script src="/static/retention-settings.js"></script>
   <script src="/static/selftest-settings.js"></script>
+  <script src="/static/twofa.js"></script>
+  <script src="/static/security-settings.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

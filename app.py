@@ -91,6 +91,7 @@ import selftest
 import hardening
 import aptchangelog
 import sbom
+import websec
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -125,7 +126,9 @@ async def lifespan(app: FastAPI):
     health_task.cancel()
 
 
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan)
+# No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan,
+              docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.exception_handler(Exception)
@@ -235,7 +238,7 @@ async def audit_log(request: Request, call_next):
         detail = getattr(request.state, "audit_detail", "")
         if path == "/api/files/download":
             detail = request.query_params.get("path", "")
-        ip = request.client.host if request.client else ""
+        ip = websec.client_ip(request)
         try:
             await asyncio.to_thread(audit.record, user, ip, request.method, path, response.status_code, detail)
         except Exception as e:
@@ -257,7 +260,11 @@ async def require_login(request: Request, call_next):
             request.state.audit_user = request.state.user
             return await call_next(request)
         return HTMLResponse(agent.landing_html())
-    user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
+    token = request.cookies.get(auth.COOKIE_NAME)
+    user = auth.user_from_token(token)
+    ip = websec.client_ip(request)
+    if user:
+        auth.touch_session(auth.session_id(token), ip)
     # In-process calls from the MCP server: the key only exists in this process's memory
     internal = request.headers.get(INTERNAL_HEADER)
     if internal and hmac.compare_digest(internal, INTERNAL_KEY):
@@ -294,13 +301,51 @@ async def require_login(request: Request, call_next):
     if not is_read and not _same_origin(request):
         return JSONResponse({"detail": "Ungültige Herkunft der Anfrage."}, status_code=403)
 
+    if user and not getattr(request.state, "via_mcp", False):
+        # Two-factor login required for this group, but not set up yet: only the setup is open
+        info = auth.user_info(user)
+        if info and not info["totp"] and websec.twofa_required(info["group"]) and not _twofa_setup_path(path):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Bitte zuerst die Zwei-Faktor-Anmeldung einrichten.", "setup_2fa": True}, status_code=403)
+            return RedirectResponse("/2fa", status_code=303)
+        # Areas that are closed for the internet, whoever asks
+        if websec.blocked_from_outside(perm, ip):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Nur aus dem Heimnetz oder VPN erreichbar.", "restricted": True}, status_code=403)
+            return RedirectResponse(f"/?denied={perm}", status_code=303)
+        # Critical changes: password (and code) again, valid for a few minutes
+        if websec.needs_reauth(perm, request.method) and not websec.elevated_until(websec.session_key(token or "")):
+            return JSONResponse({"detail": "Bitte zur Bestätigung das Passwort erneut eingeben.", "reauth": True}, status_code=403)
+
     return await call_next(request)
+
+
+TWOFA_SETUP_PATHS = ("/2fa", "/api/auth/2fa", "/api/auth/logout", "/api/auth/status", "/api/me", "/api/about", "/api/auth/reauth")
+
+
+def _twofa_setup_path(path: str) -> bool:
+    return path.startswith(TWOFA_SETUP_PATHS) or path.startswith("/static/")
+
+
+@app.middleware("http")
+async def security_layer(request: Request, call_next):
+    """Outermost: rate limit for requests from the internet without login (a wall display in the
+    home network with "view without login" polls a lot), security headers on every answer."""
+    path = request.url.path
+    if not AGENT and not path.startswith("/static/") and not request.headers.get(INTERNAL_HEADER):
+        ip = websec.client_ip(request)
+        if not websec.is_internal(ip) and not auth.user_from_token(request.cookies.get(auth.COOKIE_NAME)) and not websec.rate_ok(ip):
+            return JSONResponse({"detail": "Zu viele Anfragen. Bitte kurz warten."}, status_code=429, headers={"Retry-After": "30"})
+    response = await call_next(request)
+    websec.apply_headers(request, response)
+    return response
 
 
 class LoginRequest(BaseModel):
     username: str
     password: str
     remember: bool = False
+    code: str = ""
 
 
 def _safe_next(target: str) -> str:
@@ -344,15 +389,20 @@ def _about() -> dict:
 
 
 @app.get("/api/about")
-async def api_about():
-    return await asyncio.to_thread(_about)
+async def api_about(request: Request):
+    data = await asyncio.to_thread(_about)
+    if not request.state.user:
+        # Without login no version: it would tell an attacker which fixes are missing
+        return {"name": data["name"], "year": data["year"], "commit": "", "date": "", "repo": ""}
+    return data
 
 
 def _me(user: Optional[str]) -> dict:
     info = auth.user_info(user) if user else None
     group = auth.all_groups().get(info["group"]) if info else None
     return {"user": user, "group": info["group"] if info else None, "group_name": group["name"] if group else None,
-            "permissions": sorted(auth.permissions(user)) if user else []}
+            "permissions": sorted(auth.permissions(user)) if user else [],
+            "totp": bool(info and info["totp"]), "totp_required": bool(info and websec.twofa_required(info["group"]))}
 
 
 @app.get("/api/auth/status")
@@ -367,13 +417,13 @@ async def api_me(request: Request):
 
 @app.post("/api/auth/login")
 async def api_login(req: LoginRequest, request: Request):
-    ip = request.client.host if request.client else "unknown"
+    ip = websec.client_ip(request)
     if not auth.is_configured():
         raise HTTPException(status_code=503, detail="Noch kein Passwort gesetzt. Auf dem Pi ausführen: ~/pi-dashboard/set-password.sh")
     if not _same_origin(request):
         raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
 
-    wait = auth.lockout_remaining(ip)
+    wait = max(auth.lockout_remaining(ip), auth.account_lockout_remaining(req.username.strip()))
     if wait:
         raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
 
@@ -381,29 +431,56 @@ async def api_login(req: LoginRequest, request: Request):
     username = await asyncio.to_thread(auth.verify_login, req.username.strip(), req.password)
     if not username:
         request.state.audit_detail = "Falsches Passwort"
-        auth.record_failure(ip)
-        logger.warning(f"Failed login for '{req.username[:32]}' from {ip}")
+        _login_failure(ip, req.username.strip())
         wait = auth.lockout_remaining(ip)
         raise HTTPException(status_code=401 if not wait else 429,
                             detail="Benutzername oder Passwort falsch." if not wait else f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+    recovery_left = None
+    if auth.totp_enabled(username):
+        if not req.code.strip():
+            return JSONResponse({"ok": False, "twofa": True})      # password right: now the code
+        kind = await asyncio.to_thread(auth.totp_check, username, req.code)
+        if not kind:
+            request.state.audit_detail = "Falscher Zwei-Faktor-Code"
+            _login_failure(ip, username)
+            raise HTTPException(status_code=401, detail="Code falsch oder schon benutzt.")
+        if kind == "recovery":
+            recovery_left = auth.totp_recovery_left(username)
+            request.state.audit_detail = "Mit Wiederherstellungscode"
+            websec.record_event("warning", f"Anmeldung mit Wiederherstellungscode: {username}", f"{ip} · noch {recovery_left} Codes")
 
     auth.record_success(ip)
-    request.state.audit_detail = "Angemeldet bleiben" if req.remember else ""
+    auth.record_account_success(username)
+    request.state.audit_detail = getattr(request.state, "audit_detail", "") or ("Angemeldet bleiben" if req.remember else "")
     request.state.audit_user = username   # typed in any case, stored in one spelling
     logger.info(f"Login '{username}' from {ip}")
-    response = JSONResponse({"ok": True, "user": username})
-    _set_session_cookie(response, request, username, req.remember)
+    known = auth.known_ips(username)
+    agent_str = request.headers.get("user-agent", "")
+    response = JSONResponse({"ok": True, "user": username, "recovery_left": recovery_left})
+    token = _set_session_cookie(response, request, username, req.remember)
+    websec.elevate(websec.session_key(token))      # a fresh login counts as confirmation
+    await asyncio.to_thread(websec.check_new_login, username, ip, known, agent_str)
     return response
 
 
-def _set_session_cookie(response, request: Request, username: str, remember: bool) -> None:
-    token, ttl = auth.make_session(username, remember)
+def _login_failure(ip: str, username: str) -> None:
+    auth.record_failure(ip)
+    auth.record_account_failure(username)
+    logger.warning(f"Failed login for '{username[:32]}' from {ip}")
+
+
+def _set_session_cookie(response, request: Request, username: str, remember: bool) -> str:
+    old = request.cookies.get(auth.COOKIE_NAME)
+    if old and auth.user_from_token(old) == username:
+        auth.revoke_session(auth.session_id(old))      # replaced by the new cookie
+    token, ttl = auth.make_session(username, remember, websec.client_ip(request), request.headers.get("user-agent", ""))
     response.set_cookie(
         auth.COOKIE_NAME, token,
         max_age=ttl if remember else None,  # without "remember": ends with the browser
         httponly=True, samesite="strict", path="/",
-        secure=request.url.scheme == "https",
+        secure=websec.scheme(request) == "https",
     )
+    return token
 
 
 def _session_is_remembered(request: Request) -> bool:
@@ -415,10 +492,160 @@ def _session_is_remembered(request: Request) -> bool:
 
 
 @app.post("/api/auth/logout")
-async def api_logout():
+async def api_logout(request: Request):
+    auth.revoke_session(auth.session_id(request.cookies.get(auth.COOKIE_NAME)))
     response = JSONResponse({"ok": True})
     response.delete_cookie(auth.COOKIE_NAME, path="/")
     return response
+
+
+# ---------------------------------------------------------------------------
+# Confirm again, two-factor login, sessions
+# ---------------------------------------------------------------------------
+class ConfirmRequest(BaseModel):
+    password: str = ""
+    code: str = ""
+
+
+async def _confirm(request: Request, password: str, code: str, need_code: bool = True) -> None:
+    """Password (and the 2FA code, if set up) of the logged-in user - with the login lockout."""
+    user = request.state.user
+    ip = websec.client_ip(request)
+    wait = max(auth.lockout_remaining(ip), auth.account_lockout_remaining(user or ""))
+    if wait:
+        raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+    if not user or not await asyncio.to_thread(auth.verify_login, user, password):
+        _login_failure(ip, user or "")
+        raise HTTPException(status_code=403, detail="Passwort ist falsch.")
+    if need_code and auth.totp_enabled(user):
+        if not await asyncio.to_thread(auth.totp_check, user, code):
+            _login_failure(ip, user)
+            raise HTTPException(status_code=403, detail="Code falsch oder schon benutzt.", headers={"X-Need-Code": "1"})
+    auth.record_success(ip)
+
+
+@app.post("/api/auth/reauth")
+async def api_auth_reauth(req: ConfirmRequest, request: Request):
+    await _confirm(request, req.password, req.code)
+    until = websec.elevate(websec.session_key(request.cookies.get(auth.COOKIE_NAME) or ""))
+    request.state.audit_detail = "Erneut bestätigt"
+    return {"ok": True, "until": until}
+
+
+@app.get("/api/auth/2fa")
+async def api_auth_2fa(request: Request):
+    user = request.state.user
+    info = auth.user_info(user)
+    return {"enabled": info["totp"], "recovery_left": auth.totp_recovery_left(user) if info["totp"] else 0,
+            "required": websec.twofa_required(info["group"]),
+            "elevated": bool(websec.elevated_until(websec.session_key(request.cookies.get(auth.COOKIE_NAME) or "")))}
+
+
+@app.post("/api/auth/2fa/setup")
+async def api_auth_2fa_setup(req: ConfirmRequest, request: Request):
+    # Shortly after the login (or a confirmation) no password: that is the forced first setup
+    if not websec.elevated_until(websec.session_key(request.cookies.get(auth.COOKIE_NAME) or "")):
+        if not req.password:
+            raise HTTPException(status_code=403, detail="Bitte das Passwort eingeben.", headers={"X-Need-Password": "1"})
+        await _confirm(request, req.password, req.code)
+    return await asyncio.to_thread(_auth_call, auth.totp_begin, request.state.user)
+
+
+@app.post("/api/auth/2fa/enable")
+async def api_auth_2fa_enable(req: ConfirmRequest, request: Request):
+    codes = await asyncio.to_thread(_auth_call, auth.totp_enable, request.state.user, req.code)
+    request.state.audit_detail = "Zwei-Faktor-Anmeldung eingerichtet"
+    websec.record_event("info", f"Zwei-Faktor-Anmeldung eingerichtet: {request.state.user}", websec.client_ip(request))
+    return {"ok": True, "recovery_codes": codes}
+
+
+@app.post("/api/auth/2fa/disable")
+async def api_auth_2fa_disable(req: ConfirmRequest, request: Request):
+    info = auth.user_info(request.state.user)
+    if websec.twofa_required(info["group"]):
+        raise HTTPException(status_code=400, detail="Für deine Gruppe ist die Zwei-Faktor-Anmeldung Pflicht.")
+    await _confirm(request, req.password, req.code)
+    await asyncio.to_thread(auth.totp_disable, request.state.user)
+    request.state.audit_detail = "Zwei-Faktor-Anmeldung abgeschaltet"
+    websec.record_event("warning", f"Zwei-Faktor-Anmeldung abgeschaltet: {request.state.user}", websec.client_ip(request))
+    return {"ok": True}
+
+
+@app.post("/api/auth/2fa/recovery")
+async def api_auth_2fa_recovery(req: ConfirmRequest, request: Request):
+    await _confirm(request, req.password, req.code)
+    codes = await asyncio.to_thread(_auth_call, auth.totp_new_recovery, request.state.user)
+    request.state.audit_detail = "Neue Wiederherstellungscodes"
+    return {"ok": True, "recovery_codes": codes}
+
+
+@app.get("/2fa")
+async def twofa_page():
+    return _serve_page("twofa.html")
+
+
+def _sessions_view(request: Request, username: Optional[str]) -> dict:
+    current = auth.session_id(request.cookies.get(auth.COOKIE_NAME))
+    items = auth.list_sessions(username)
+    for s in items:
+        s["current"] = s["id"] == current
+        try:
+            import geoip
+            s["country"] = geoip.lookup(s["ip"]) if s.get("ip") else ""
+        except Exception:
+            s["country"] = ""
+        s["internal"] = websec.is_internal(s.get("ip") or "")
+    return {"sessions": items, "legacy": not current}
+
+
+@app.get("/api/auth/sessions")
+async def api_auth_sessions(request: Request):
+    return await asyncio.to_thread(_sessions_view, request, request.state.user)
+
+
+@app.post("/api/auth/sessions/{sid}/revoke")
+async def api_auth_sessions_revoke(sid: str, request: Request):
+    if not auth.revoke_session(sid, request.state.user):
+        raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
+    return await asyncio.to_thread(_sessions_view, request, request.state.user)
+
+
+@app.get("/api/security")
+async def api_security(request: Request):
+    data = await asyncio.to_thread(websec.public_config)
+    data["checklist"] = await asyncio.to_thread(websec.checklist, request)
+    data["events"] = list(reversed(websec.events_since(time.time() - 30 * 86400)))[:50]
+    data["client"] = {"ip": websec.client_ip(request), "internal": websec.is_internal(websec.client_ip(request)),
+                      "peer": request.client.host if request.client else "", "scheme": websec.scheme(request)}
+    return data
+
+
+@app.post("/api/security")
+async def api_security_save(payload: dict, request: Request):
+    try:
+        await asyncio.to_thread(websec.save, payload)
+    except (websec.WebsecError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Never lock yourself out: the restriction must not hit the admin who sets it
+    me = websec.client_ip(request)
+    if websec.config()["restrict"] and "users.manage" in websec.config()["restrict_perms"] and not websec.is_internal(me):
+        await asyncio.to_thread(websec.save, {"restrict": False})
+        raise HTTPException(status_code=400, detail="Du bist gerade nicht im Heimnetz/VPN – die Beschränkung würde dich selbst aussperren. Aus dem Heimnetz einschalten.")
+    request.state.audit_detail = "Sicherheitseinstellungen"
+    return await api_security(request)
+
+
+@app.get("/api/security/sessions")
+async def api_security_sessions(request: Request):
+    return await asyncio.to_thread(_sessions_view, request, None)
+
+
+@app.post("/api/security/sessions/{sid}/revoke")
+async def api_security_sessions_revoke(sid: str, request: Request):
+    if not auth.revoke_session(sid):
+        raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
+    request.state.audit_detail = sid
+    return await asyncio.to_thread(_sessions_view, request, None)
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +714,7 @@ async def api_settings(request: Request):
 
 @app.post("/api/settings/account")
 async def api_settings_account(req: AccountRequest, request: Request):
-    ip = request.client.host if request.client else "unknown"
+    ip = websec.client_ip(request)
     wait = auth.lockout_remaining(ip)
     if wait:
         raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
@@ -921,7 +1148,7 @@ async def public_exchange_upload(token: str, name: str, request: Request):
         with contextlib.suppress(OSError):
             os.remove(tmp)
         raise
-    ip = request.client.host if request.client else ""
+    ip = websec.client_ip(request)
     await asyncio.to_thread(exchange.record_upload, token, os.path.basename(target), written, ip)
     request.state.audit_user = "Austausch-Link"   # the activity log middleware records this request
     request.state.audit_detail = target
@@ -934,7 +1161,7 @@ async def public_exchange_download(token: str, name: str, request: Request):
         path = await asyncio.to_thread(exchange.download_path, token, name)
     except exchange.ExchangeError as e:
         return _exchange_error(e)
-    ip = request.client.host if request.client else ""
+    ip = websec.client_ip(request)
     await asyncio.to_thread(audit.record, "Austausch-Link", ip, "GET", "/x/file", 200, path)
     return FileResponse(path, filename=os.path.basename(path), headers={"X-Content-Type-Options": "nosniff"})
 
@@ -1003,7 +1230,7 @@ async def public_share(token: str, request: Request):
         return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Link ungültig</title>"
                             f"<body style='font-family:sans-serif;padding:40px'><h2>{html_escape(str(e))}</h2>"
                             f"<p>Bitte bei der Person nachfragen, die dir den Link geschickt hat.</p>", status_code=404)
-    ip = request.client.host if request.client else ""
+    ip = websec.client_ip(request)
     await asyncio.to_thread(audit.record, "Freigabe-Link", ip, "GET", "/s/", 200, share["path"])
     return FileResponse(share["path"], filename=share["name"])
 
@@ -1158,7 +1385,7 @@ async def api_geoblock():
 
 @app.post("/api/tools/geoblock")
 async def api_geoblock_apply(req: GeoblockRequest, request: Request):
-    client_ip = request.client.host if request.client else ""
+    client_ip = websec.client_ip(request)
     request.state.audit_detail = ", ".join(str(c) for c in req.countries[:40]) or "–"
     try:
         result = await asyncio.to_thread(security.geoblock_apply, req.countries, client_ip)
@@ -1176,7 +1403,7 @@ async def api_tools_firewall_traffic(range: str = "24h", action: str = "block", 
 @app.post("/api/tools/firewall")
 async def api_tools_firewall_action(req: FirewallRequest, request: Request):
     try:
-        client_ip = request.client.host if request.client else ""
+        client_ip = websec.client_ip(request)
         result = await asyncio.to_thread(security.firewall_action, req.action, req.params, client_ip)
     except (ValueError, TypeError, PermissionError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1473,6 +1700,18 @@ async def api_users_update(username: str, req: UserUpdateRequest, request: Reque
     return response
 
 
+@app.post("/api/users/{username}/2fa-reset")
+async def api_users_2fa_reset(username: str, request: Request):
+    """Lost phone: an admin switches the user's two-factor login off (set up again at the next login)."""
+    name = auth.canonical_username(username)
+    if not name:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden.")
+    await asyncio.to_thread(auth.totp_disable, name)
+    request.state.audit_detail = f"{name}: Zwei-Faktor zurückgesetzt"
+    websec.record_event("warning", f"Zwei-Faktor-Anmeldung zurückgesetzt: {name}", f"von {request.state.user}")
+    return {"users": auth.list_users(), "groups": auth.list_groups()}
+
+
 @app.post("/api/users/{username}/delete")
 async def api_users_delete(username: str, request: Request):
     request.state.audit_detail = username[:32]
@@ -1656,7 +1895,7 @@ async def public_webhook(token: str, request: Request):
         body += chunk
         if len(body) > webhooks.MAX_BODY:
             break
-    ip = request.client.host if request.client else ""
+    ip = websec.client_ip(request)
     try:
         return await asyncio.to_thread(webhooks.receive, token, body, request.headers.get("content-type", ""),
                                        {k.lower(): v for k, v in request.headers.items()}, ip)
@@ -1912,7 +2151,7 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
             raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
         container = await asyncio.to_thread(_terminal_target, req.container)
         return {"ticket": terminal.issue_ticket(request.state.user, container), "expires_in": terminal.TICKET_TTL}
-    ip = request.client.host if request.client else "unknown"
+    ip = websec.client_ip(request)
     wait = auth.lockout_remaining(ip)
     if wait:
         raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte {wait} s warten.")
@@ -2014,14 +2253,17 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
         remote = _remote_for(websocket)
         if remote:
             # the ticket was issued by the remote agent (the ticket request went there too)
-            await asyncio.to_thread(audit.record, user, websocket.client.host if websocket.client else "", "WS", "/ws/terminal", 200, f"@{remote['name']}")
+            await asyncio.to_thread(audit.record, user, websec.client_ip(websocket), "WS", "/ws/terminal", 200, f"@{remote['name']}")
             await _ws_relay(websocket, remote, f"/ws/terminal?ticket={ticket}&rows={int(rows)}&cols={int(cols)}", user)
             return
         target = terminal.redeem_ticket(ticket, user)
         if target is None:
             await websocket.close(code=4401)
             return
-    client = websocket.client.host if websocket.client else "unknown"
+    client = websec.client_ip(websocket)
+    if websec.blocked_from_outside("terminal", client):
+        await websocket.close(code=4403)
+        return
     started = time.time()
     where = f"Container {target} · " if target else ""
     await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}geöffnet")

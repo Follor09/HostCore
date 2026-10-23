@@ -133,7 +133,18 @@
     '/settings': {
       title: 'Einstellungen',
       groups: [
-        { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Benutzer, Berechtigungen und Freigabe-Links', sections: ['konto', 'benutzer', 'berechtigungen', 'freigaben'] },
+        { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Zwei-Faktor, Sitzungen, Benutzer, Berechtigungen, Sicherheit und Freigabe-Links',
+          sections: ['konto', 'zwei-faktor', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'freigaben'],
+          facts: async () => {
+            const out = [];
+            const [tf, sec] = await Promise.allSettled([get('/api/auth/2fa'), get('/api/security')]);
+            if (tf.status === 'fulfilled') out.push(tf.value.enabled ? { level: 'good', text: 'Zwei-Faktor aktiv' } : { level: tf.value.required ? 'critical' : 'info', text: 'Zwei-Faktor nicht eingerichtet' });
+            if (sec.status === 'fulfilled') {
+              const open = sec.value.checklist.filter(c => c.state === 'warning').length;
+              out.push(open ? { level: 'warning', text: n(open, 'offener Punkt für öffentlichen Betrieb', 'offene Punkte für öffentlichen Betrieb') } : { level: 'good', text: 'Bereit für öffentlichen Betrieb' });
+            }
+            return out;
+          } },
         { id: 'dashboard', label: 'Dashboard', desc: 'Sprache, Darstellung, Wetter, Dienste, Links und Wake-on-LAN', sections: ['sprache', 'darstellung', 'wetter', 'dienste', 'links', 'wake-on-lan'] },
         { id: 'ueberwachung', label: 'Überwachung', desc: 'Web-Dienste, Wartungsfenster und öffentliche Statusseite', sections: ['web-dienste', 'wartung', 'statusseite'],
           facts: async () => {

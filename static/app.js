@@ -3110,6 +3110,7 @@
     const W = hEls.chart.clientWidth, H = hEls.chart.clientHeight;
     const pad = { l: 58, r: cfg.series.length > 1 ? 74 : 12, t: 10, b: 24 };
     const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    if (iw <= 0 || ih <= 0) { historyState.layout = null; return; }   // card hidden or collapsed: drawn when visible
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
     const now = Math.floor(Date.now() / 1000);
@@ -3467,6 +3468,7 @@
     const W = container.clientWidth, H = container.clientHeight;
     const pad = { l: 58, r: cfg.kind === 'line' ? 12 : 8, t: 10, b: 24 };
     const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    if (iw <= 0 || ih <= 0) return;   // dialog not laid out yet
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
     // Fixed day grid for the whole range, so gaps show as gaps

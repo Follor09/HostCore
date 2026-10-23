@@ -26,3 +26,5 @@ vulns.json
 vulns.json.tmp
 sbom_images.json
 sbom_images.json.tmp
+sessions.json
+sessions.json.tmp

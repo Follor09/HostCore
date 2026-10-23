@@ -4,6 +4,7 @@
 #        ./set-password.sh public-view on  anyone may view; actions still need login
 #        ./set-password.sh public-view off
 #        ./set-password.sh status
+#        ./set-password.sh 2fa-reset <user>  two-factor login off (lost phone)
 
 set -euo pipefail
 

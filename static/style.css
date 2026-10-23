@@ -11255,3 +11255,38 @@ tr.cost-sum td { font-weight: 700; border-top: 1px solid var(--border-subtle); }
 .pm-action-row input { font-size: 0.85rem; color: var(--text-main); background: rgba(var(--shade-rgb), 0.3); border: 1px solid var(--border-subtle);
   border-radius: 8px; padding: 6px 8px; min-width: 0; }
 @media (max-width: 640px) { .pm-action-row { grid-template-columns: 1fr 1fr; } .pm-action-row input:first-child { grid-column: 1 / -1; } }
+
+/* Confirm again */
+.reauth-modal .modal-card { display: flex; flex-direction: column; gap: 10px; }
+.reauth-modal input { font-family: var(--font-body); font-size: 0.95rem; color: var(--text-main); background: rgba(var(--shade-rgb), 0.3);
+  border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; }
+.reauth-modal input[hidden] { display: none; }
+.reauth-modal .form-msg[hidden] { display: none; }
+
+/* Two-factor setup */
+.twofa-card { max-width: 460px; }
+.twofa-step { margin: 6px 0; font-size: 0.88rem; color: var(--text-main); }
+.twofa-qr { display: flex; justify-content: center; margin: 8px 0; }
+.twofa-qr svg { width: 200px; height: 200px; border-radius: 10px; background: #fff; padding: 6px; }
+.twofa-secret { display: block; font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all; padding: 8px 10px; border-radius: 8px;
+  background: rgba(var(--shade-rgb), 0.35); color: var(--text-main); user-select: all; }
+.twofa-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+.twofa-row input { flex: 1; min-width: 140px; font-family: var(--font-mono); font-size: 1rem; color: var(--text-main); background: rgba(var(--shade-rgb), 0.3);
+  border: 1px solid var(--border-subtle); border-radius: 10px; padding: 9px 12px; }
+.twofa-row a { text-decoration: none; }
+.twofa-codes { font-family: var(--font-mono); font-size: 0.95rem; columns: 2; padding: 10px 14px; border-radius: 10px; background: rgba(var(--shade-rgb), 0.35);
+  color: var(--text-strong); margin: 6px 0; }
+
+/* Settings: security */
+.sec-form { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.sec-form [hidden] { display: none; }
+.sec-form select, .sec-form textarea, .twofa-row input[type="password"] { font-family: var(--font-body); font-size: 0.9rem; color: var(--text-main);
+  background: rgba(var(--shade-rgb), 0.3); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 9px 12px; outline: none; }
+.sec-form textarea { font-family: var(--font-mono); font-size: 0.82rem; resize: vertical; }
+.sec-form select:focus, .sec-form textarea:focus { border-color: var(--border-focus); }
+.sec-form .field-hint { font-weight: 400; }
+.sec-form .toggle-label { font-size: 0.86rem; color: var(--text-main); }
+.sec-perms { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 14px; padding: 4px 0 6px; }
+.sec-perms .toggle-label { font-size: 0.82rem; color: var(--text-muted); }
+#sec-checklist { margin-bottom: 6px; }
+@media (max-width: 480px) { .sec-perms { grid-template-columns: 1fr; } }

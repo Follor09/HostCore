@@ -130,8 +130,24 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 - Passwörter als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed). Eine alte `auth.json` mit einem Benutzer wird automatisch übernommen – dieser wird Administrator.
 - Benutzernamen ohne Groß-/Kleinschreibung („Anna“ = „anna“), Passwörter exakt.
 - Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab. Neues Passwort oder „Abmelden“ beendet nur die Sitzungen dieses Benutzers.
-- Nach 5 Fehlversuchen wird die IP zunehmend lange gesperrt (30 s … 15 min).
+- Nach 5 Fehlversuchen wird die IP zunehmend lange gesperrt (30 s … 15 min), dazu pro Konto ab 10 Fehlversuchen (höchstens 5 min). Hinter Cloudflare oder einem Reverse-Proxy zählt die echte Besucher-IP (siehe *Öffentlicher Betrieb*).
 - Aktionen werden nur von der eigenen Seite akzeptiert (CSRF-Schutz). Der GitHub-Webhook funktioniert ohne Login nur mit gesetztem `GITHUB_WEBHOOK_SECRET`.
+
+### 🛡️ Öffentlicher Betrieb (Cloudflare, Reverse-Proxy, Internet)
+
+Unter **Einstellungen → Sicherheit** (Administratoren) mit einer Checkliste, was für einen öffentlichen Zugang noch fehlt:
+
+- **Echte Besucher-Adresse:** „Cloudflare (Tunnel oder Proxy)“ oder „Eigener Reverse-Proxy“ wählen. `CF-Connecting-IP` bzw. `X-Forwarded-For` gelten nur von vertrauenswürdigen Proxy-Adressen (Standard: Pi selbst, Docker, k3s). Login-Sperren, Rate-Limit, Aktivitätsprotokoll und die Netz-Beschränkung sehen so den echten Besucher statt des Tunnels – sonst würden 5 Fehlversuche irgendwo alle aussperren.
+- **Zwei-Faktor-Anmeldung (TOTP):** pro Konto unter *Einstellungen → Zwei-Faktor-Anmeldung* mit QR-Code für jede Authenticator-App und 10 einmaligen Wiederherstellungscodes. Als Regel „Pflicht für Administratoren“ oder „für alle“ – Betroffene richten sie bei der nächsten Anmeldung ein (`/2fa`), vorher geht nichts anderes. Handy verloren: Administrator → Benutzer → „Zwei-Faktor zurücksetzen“, oder auf dem Pi `./set-password.sh 2fa-reset <name>`.
+- **Erneute Bestätigung:** ausgewählte Rechte (Standard: Benutzer, Firewall, Neustart, Updates, Apps installieren) verlangen vor einer Änderung Passwort und Code erneut – gilt 15 Minuten pro Sitzung. Ein Dialog fragt danach und wiederholt die Aktion.
+- **Nur aus Heimnetz / VPN:** ausgewählte Bereiche (Standard: Terminal, Benutzer, Firewall, Neustart) sind aus dem Internet gesperrt – auch für Administratoren. Private Netze und VPN-Adressen (NetBird, Tailscale) gelten als intern, weitere lassen sich eintragen. Aus dem Internet lässt sich die Sperre nicht einschalten (Schutz vor Selbst-Aussperrung).
+- **Sitzungen:** jede Anmeldung mit Gerät, Adresse (mit Land) und letzter Nutzung; einzeln beenden (eigene unter *Sitzungen*, alle Benutzer unter *Sicherheit*).
+- **Neue Adresse:** Anmeldung von einer bisher unbekannten Adresse außerhalb des Heimnetzes wird ein Sicherheitsereignis (und je nach E-Mail-Einstellung eine Mail).
+- **Header & Härtung:** Content-Security-Policy, Schutz vor Einbetten, `nosniff`, Referrer-Policy, Permissions-Policy, HSTS über HTTPS, `Secure`-Cookie hinter HTTPS-Proxys, kein Caching von API-Antworten, keine FastAPI-Seiten `/docs` und `/openapi.json`, ohne Login keine Versionsnummer.
+- **Begrenzungen:** höchstens 120 Anfragen pro Minute und Adresse aus dem Internet ohne Login (einstellbar; Heimnetz und VPN ausgenommen); Login-Sperre zusätzlich pro Konto (ab 10 Fehlversuchen, höchstens 5 Minuten).
+- **Passwörter:** mindestens 10 Zeichen, keine bekannten Standardpasswörter, nicht der Benutzername (gilt für neue Passwörter).
+
+Empfehlung für den Betrieb hinter einem Cloudflare-Tunnel: Proxy-Art „Cloudflare“, Zwei-Faktor „Pflicht für Administratoren“, „Nur aus Heimnetz / VPN“ für Terminal und Benutzerverwaltung einschalten (aus dem Heimnetz), Port 8000 in der Firewall nur fürs LAN öffnen.
 
 ### 📱 Handy & Tablet
 

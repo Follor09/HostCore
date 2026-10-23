@@ -9,12 +9,15 @@ Login, users and permission groups for the dashboard.
   dashboard.
 - auth.json (untracked, mode 600) holds scrypt hashes, groups and a signing secret.
   An old single-user auth.json is migrated automatically (that user becomes admin).
-- Sessions are stateless HMAC-signed cookies ("user|expiry|version|sig"). Each user has
+- Sessions are HMAC-signed cookies ("user|expiry|version|session id|sig"). Each user has
   a session version: a new password or "log out everywhere" bumps it and ends only that
-  user's sessions. There is always at least one active administrator.
-- Failed logins are rate-limited per client IP.
+  user's sessions. Every session is also listed in sessions.json (device, IP, last use)
+  and can be ended on its own. There is always at least one active administrator.
+- Optional two-factor login (TOTP app + single-use recovery codes, see totp.py).
+- Passwords: at least 10 characters, not a well-known one, not the username.
+- Failed logins are rate-limited per client IP and per account.
 
-CLI:  python auth.py set-password | users | public-view on|off | status
+CLI:  python auth.py set-password | users | public-view on|off | status | 2fa-reset <user>
 """
 
 import argparse
@@ -38,7 +41,17 @@ SESSION_TTL = 12 * 3600            # without "stay logged in"
 REMEMBER_TTL = 30 * 24 * 3600      # with "stay logged in"
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 GROUP_ID_RE = re.compile(r"^[a-z0-9-]{2,32}$")
-MIN_PASSWORD_LENGTH = 8
+MIN_PASSWORD_LENGTH = 10
+SESSIONS_FILE = os.path.join(BASE_DIR, "sessions.json")
+# The most common passwords of public leak lists (lower case) - refused as new passwords
+COMMON_PASSWORDS = {
+    "1234567890", "12345678910", "0123456789", "1234512345", "1q2w3e4r5t", "1qaz2wsx3edc", "qwertyuiop", "qwertzuiop",
+    "password12", "password123", "password1!", "passwort12", "passwort123", "iloveyou12", "administrator", "admin12345",
+    "admin123456", "raspberry1", "raspberrypi", "raspberry123", "letmein123", "welcome123", "willkommen", "willkommen1",
+    "sommer2024", "sommer2025", "sommer2026", "winter2024", "winter2025", "winter2026", "hallo12345", "hallo123456",
+    "geheim1234", "passwort1!", "abcdefghij", "abc1234567", "qwerty1234", "qwertz1234", "1111111111", "0000000000",
+    "changeme123", "dragon1234", "football12", "baseball12", "superman12", "trustno1234", "monkey1234", "starwars12",
+}
 MAX_USERS = 50
 
 # scrypt: ~16 MB memory, ~0.1 s on a Pi 5
@@ -231,9 +244,15 @@ def verify_login(username: str, password: str) -> Optional[str]:
     return name if hmac.compare_digest(actual, bytes.fromhex(user["password_hash"])) else None
 
 
-def _check_password(password: str) -> None:
-    if len(password or "") < MIN_PASSWORD_LENGTH:
+def _check_password(password: str, username: str = "") -> None:
+    password = password or ""
+    if len(password) < MIN_PASSWORD_LENGTH:
         raise AuthError(f"Das Passwort braucht mindestens {MIN_PASSWORD_LENGTH} Zeichen.")
+    low = password.lower()
+    if low in COMMON_PASSWORDS or len(set(low)) < 4:
+        raise AuthError("Dieses Passwort ist zu leicht zu erraten – bitte ein anderes wählen.")
+    if username and len(username) >= 3 and username.lower() in low:
+        raise AuthError("Das Passwort darf den Benutzernamen nicht enthalten.")
 
 
 def _active_admins(cfg: Dict[str, Any], without: Optional[str] = None) -> List[str]:
@@ -242,7 +261,7 @@ def _active_admins(cfg: Dict[str, Any], without: Optional[str] = None) -> List[s
 
 def set_password(username: str, password: str) -> None:
     """CLI / first setup: set a password; creates the user (as admin if it is the first one)."""
-    _check_password(password)
+    _check_password(password, username)
     with _lock:
         cfg = _cfg_for_write()
         name = _find(cfg, username)
@@ -264,7 +283,7 @@ def create_user(username: str, password: str, group: str, expires: Optional[int]
     username = (username or "").strip()
     if not USERNAME_RE.match(username):
         raise AuthError("Benutzername: 1–32 Zeichen, nur Buchstaben, Ziffern und . _ -")
-    _check_password(password)
+    _check_password(password, username)
     with _lock:
         cfg = _cfg_for_write()
         if _find(cfg, username):
@@ -312,7 +331,7 @@ def update_user(username: str, *, group: Optional[str] = None, disabled: Optiona
             u["disabled"] = bool(disabled)
             u["sv"] = u.get("sv", 1) + 1          # a locked account loses its sessions at once
         if password is not None:
-            _check_password(password)
+            _check_password(password, name)
             salt = secrets.token_bytes(16)
             u.update(salt=salt.hex(), password_hash=_scrypt(password, salt).hex(), changed=int(time.time()))
             u["sv"] = u.get("sv", 1) + 1
@@ -342,7 +361,7 @@ def user_info(username: str) -> Optional[Dict[str, Any]]:
     u = cfg["users"][name]
     return {"username": name, "group": u["group"], "disabled": bool(u.get("disabled")),
             "created": u.get("created"), "changed": u.get("changed"),
-            "expires": u.get("expires"), "expired": _expired(u)}
+            "expires": u.get("expires"), "expired": _expired(u), "totp": bool((u.get("totp") or {}).get("enabled"))}
 
 
 def list_users() -> List[Dict[str, Any]]:
@@ -461,13 +480,47 @@ def can(username: Optional[str], perm: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Sessions (signed cookie: "username|expiry|version|signature")
+# Sessions (signed cookie: "username|expiry|version|session id|signature"; cookies from
+# before session ids - four parts - stay valid until they expire)
 # ---------------------------------------------------------------------------
+SID_RE = re.compile(r"^[0-9a-f]{16}$")
+TOUCH_INTERVAL = 300
+_sessions: Dict[str, Any] = {"loaded": False, "items": {}, "saved": 0.0, "dirty": False}
+_sess_lock = threading.Lock()
+
+
 def _sign(secret: str, payload: str) -> str:
     return hmac.new(bytes.fromhex(secret), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def make_session(username: str, remember: bool) -> tuple:
+def _sess_items() -> Dict[str, Dict[str, Any]]:
+    if not _sessions["loaded"]:
+        try:
+            with open(SESSIONS_FILE) as f:
+                data = json.load(f)
+            _sessions["items"] = data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            _sessions["items"] = {}
+        _sessions["loaded"] = True
+    return _sessions["items"]
+
+
+def _sess_save(force: bool = False) -> None:
+    """Writes sessions.json; plain "last used" updates at most once a minute."""
+    if not force and time.time() - _sessions["saved"] < 60:
+        _sessions["dirty"] = True
+        return
+    now = time.time()
+    items = {k: v for k, v in _sess_items().items() if v.get("expires", 0) > now}
+    _sessions["items"] = items
+    tmp = SESSIONS_FILE + ".tmp"
+    with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+        json.dump(items, f)
+    os.replace(tmp, SESSIONS_FILE)
+    _sessions.update(saved=now, dirty=False)
+
+
+def make_session(username: str, remember: bool, ip: str = "", agent: str = "") -> tuple:
     cfg = load_config()
     name = _find(cfg, username) or username
     sv = cfg["users"].get(name, {}).get("sv", 1)
@@ -475,8 +528,69 @@ def make_session(username: str, remember: bool) -> tuple:
     expires = cfg["users"].get(name, {}).get("expires")
     if expires:
         ttl = max(60, min(ttl, int(expires - time.time())))
-    payload = f"{name}|{int(time.time()) + ttl}|{sv}"
+    sid = secrets.token_hex(8)
+    now = int(time.time())
+    payload = f"{name}|{now + ttl}|{sv}|{sid}"
+    with _sess_lock:
+        _sess_items()[sid] = {"user": name, "sv": sv, "created": now, "last_seen": now, "expires": now + ttl,
+                              "ip": ip[:64], "agent": agent[:200], "remember": bool(remember)}
+        _sess_save(force=True)
     return f"{payload}|{_sign(cfg['secret'], payload)}", ttl
+
+
+def session_id(token: Optional[str]) -> str:
+    parts = (token or "").split("|")
+    return parts[3] if len(parts) == 5 and SID_RE.match(parts[3]) else ""
+
+
+def touch_session(sid: str, ip: str = "") -> None:
+    if not sid:
+        return
+    with _sess_lock:
+        s = _sess_items().get(sid)
+        if not s:
+            return
+        now = int(time.time())
+        if now - s.get("last_seen", 0) >= TOUCH_INTERVAL or (ip and ip != s.get("ip")):
+            s["last_seen"] = now
+            if ip:
+                s["ip"] = ip[:64]
+            _sess_save()
+        elif _sessions["dirty"] and time.time() - _sessions["saved"] >= 60:
+            _sess_save()
+
+
+def list_sessions(username: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Active sessions (of one user or all), newest use first."""
+    cfg = load_config() or {}
+    users = cfg.get("users", {})
+    now = time.time()
+    out = []
+    with _sess_lock:
+        for sid, s in _sess_items().items():
+            u = users.get(s["user"])
+            if s.get("expires", 0) <= now or not _usable(u) or u.get("sv", 1) != s.get("sv"):
+                continue
+            if username and s["user"] != username:
+                continue
+            out.append({"id": sid, **{k: s.get(k) for k in ("user", "created", "last_seen", "expires", "ip", "agent", "remember")}})
+    return sorted(out, key=lambda x: -(x["last_seen"] or 0))
+
+
+def revoke_session(sid: str, username: Optional[str] = None) -> bool:
+    """End one session (username given: only if it belongs to that user)."""
+    with _sess_lock:
+        s = _sess_items().get(sid)
+        if not s or (username and s["user"] != username):
+            return False
+        del _sess_items()[sid]
+        _sess_save(force=True)
+    return True
+
+
+def known_ips(username: str) -> List[str]:
+    with _sess_lock:
+        return [s.get("ip", "") for s in _sess_items().values() if s["user"] == username]
 
 
 def active_user(username: str) -> Optional[str]:
@@ -492,24 +606,137 @@ def user_from_token(token: Optional[str]) -> Optional[str]:
     cfg = load_config()
     if not token or not cfg or not cfg.get("secret"):
         return None
+    parts = token.split("|")
     try:
-        username, expiry, sv, sig = token.split("|")
+        if len(parts) == 5:
+            username, expiry, sv, sid, sig = parts
+            payload = f"{username}|{expiry}|{sv}|{sid}"
+        else:
+            username, expiry, sv, sig = parts
+            sid, payload = "", f"{username}|{expiry}|{sv}"
         expiry_ts, sv_num = int(expiry), int(sv)
     except ValueError:
         return None
-    if not hmac.compare_digest(sig, _sign(cfg["secret"], f"{username}|{expiry}|{sv}")):
+    if not hmac.compare_digest(sig, _sign(cfg["secret"], payload)):
         return None
     user = cfg.get("users", {}).get(username)
     if expiry_ts < time.time() or not _usable(user) or user.get("sv", 1) != sv_num:
         return None
+    if sid:
+        with _sess_lock:
+            if sid not in _sess_items():
+                return None     # ended in the session list
     return username
 
 
 # ---------------------------------------------------------------------------
-# Brute-force protection: 5 free attempts per IP, then a growing lockout
+# Two-factor login (TOTP)
+# ---------------------------------------------------------------------------
+def totp_enabled(username: str) -> bool:
+    cfg = load_config() or {}
+    name = _find(cfg, username)
+    return bool(name and (cfg["users"][name].get("totp") or {}).get("enabled"))
+
+
+def totp_begin(username: str) -> Dict[str, Any]:
+    """New secret waiting for confirmation with a first code (the active one stays until then)."""
+    import totp
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if not name:
+            raise AuthError("Benutzer nicht gefunden.")
+        secret = totp.new_secret()
+        cfg["users"][name]["totp_pending"] = {"secret": secret, "ts": int(time.time())}
+        _save_config(cfg)
+    uri = totp.uri(secret, name)
+    return {"secret": secret, "uri": uri, "qr": totp.qr_svg(uri)}
+
+
+def totp_enable(username: str, code: str) -> List[str]:
+    """Confirm the pending secret with a code; returns the recovery codes (shown once)."""
+    import totp
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        u = cfg["users"].get(name or "", {})
+        pending = u.get("totp_pending") or {}
+        if not pending or time.time() - pending.get("ts", 0) > 1800:
+            raise AuthError("Einrichtung abgelaufen – bitte neu beginnen.")
+        step = totp.verify(pending["secret"], code)
+        if step is None:
+            raise AuthError("Code stimmt nicht – Uhrzeit von Pi und Handy prüfen.")
+        codes = totp.recovery_codes()
+        u["totp"] = {"enabled": True, "secret": pending["secret"], "last_step": step, "since": int(time.time()),
+                     "recovery": [totp.hash_recovery(c) for c in codes]}
+        u.pop("totp_pending", None)
+        _save_config(cfg)
+    return codes
+
+
+def totp_check(username: str, code: str) -> Optional[str]:
+    """"totp" / "recovery" if the code is right (a recovery code is used up), else None."""
+    import totp
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        t = (cfg["users"].get(name or "", {}).get("totp") or {})
+        if not t.get("enabled"):
+            return None
+        step = totp.verify(t["secret"], code, t.get("last_step", 0))
+        if step is not None:
+            t["last_step"] = step
+            _save_config(cfg)
+            return "totp"
+        if totp.is_recovery_format(code):
+            h = totp.hash_recovery(code)
+            if h in t.get("recovery", []):
+                t["recovery"].remove(h)
+                _save_config(cfg)
+                return "recovery"
+    return None
+
+
+def totp_recovery_left(username: str) -> int:
+    cfg = load_config() or {}
+    name = _find(cfg, username)
+    return len(((cfg.get("users", {}).get(name or "", {})).get("totp") or {}).get("recovery", []))
+
+
+def totp_new_recovery(username: str) -> List[str]:
+    import totp
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        t = cfg["users"].get(name or "", {}).get("totp") or {}
+        if not t.get("enabled"):
+            raise AuthError("Zwei-Faktor-Anmeldung ist nicht eingerichtet.")
+        codes = totp.recovery_codes()
+        t["recovery"] = [totp.hash_recovery(c) for c in codes]
+        _save_config(cfg)
+    return codes
+
+
+def totp_disable(username: str) -> None:
+    """Switch off (own account after confirmation, an admin for a lost phone, or the CLI)."""
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if not name:
+            raise AuthError("Benutzer nicht gefunden.")
+        cfg["users"][name].pop("totp", None)
+        cfg["users"][name].pop("totp_pending", None)
+        _save_config(cfg)
+
+
+# ---------------------------------------------------------------------------
+# Brute-force protection: 5 free attempts per IP, then a growing lockout; per account
+# 10 free attempts, then a short lockout (capped, so nobody can lock an admin out for long)
 # ---------------------------------------------------------------------------
 FREE_ATTEMPTS = 5
+ACCOUNT_FREE_ATTEMPTS = 10
 _failures: Dict[str, Dict[str, float]] = {}
+_account_failures: Dict[str, Dict[str, float]] = {}
 
 
 def lockout_remaining(ip: str) -> int:
@@ -532,6 +759,28 @@ def record_success(ip: str) -> None:
     _failures.pop(ip, None)
 
 
+def account_lockout_remaining(username: str) -> int:
+    entry = _account_failures.get((username or "").casefold())
+    return max(0, int(entry.get("locked_until", 0) - time.time())) if entry else 0
+
+
+def record_account_failure(username: str) -> None:
+    key = (username or "").casefold()
+    if not key:
+        return
+    entry = _account_failures.setdefault(key, {"count": 0, "locked_until": 0, "first": time.time()})
+    if time.time() - entry["first"] > 3600:
+        entry.update(count=0, first=time.time())
+    entry["count"] += 1
+    if entry["count"] >= ACCOUNT_FREE_ATTEMPTS:
+        extra = entry["count"] - ACCOUNT_FREE_ATTEMPTS
+        entry["locked_until"] = time.time() + min(30 * 2 ** extra, 300)
+
+
+def record_account_success(username: str) -> None:
+    _account_failures.pop((username or "").casefold(), None)
+
+
 # ---------------------------------------------------------------------------
 # CLI (used by set-password.sh)
 # ---------------------------------------------------------------------------
@@ -543,7 +792,18 @@ def _cli() -> int:
     pv = sub.add_parser("public-view", help="Dashboard ohne Login ansehen (Aktionen bleiben geschützt)")
     pv.add_argument("state", choices=["on", "off"])
     sub.add_parser("status", help="Aktuelle Einstellungen anzeigen")
+    tf = sub.add_parser("2fa-reset", help="Zwei-Faktor-Anmeldung eines Benutzers abschalten (Handy verloren)")
+    tf.add_argument("user")
     args = parser.parse_args()
+
+    if args.cmd == "2fa-reset":
+        name = canonical_username(args.user)
+        if not name:
+            print("❌ Benutzer nicht gefunden.")
+            return 1
+        totp_disable(name)
+        print(f"✅ Zwei-Faktor-Anmeldung für '{name}' abgeschaltet – bei der nächsten Anmeldung neu einrichten.")
+        return 0
 
     if args.cmd in ("status", "users"):
         if not is_configured():
@@ -551,7 +811,7 @@ def _cli() -> int:
             return 0
         groups = all_groups()
         for u in list_users():
-            state = " (deaktiviert)" if u["disabled"] else ""
+            state = (" (deaktiviert)" if u["disabled"] else "") + (" · 2FA" if u.get("totp") else "")
             print(f"👤 {u['username']:<20} {groups.get(u['group'], {}).get('name', u['group'])}{state}")
         print(f"👀 Ansehen ohne Login: {'an' if public_view() else 'aus'}")
         return 0
@@ -572,8 +832,10 @@ def _cli() -> int:
         print("❌ Erlaubt sind 1–32 Zeichen: Buchstaben, Ziffern, . _ -")
         return 1
     password = getpass.getpass("Neues Passwort: ")
-    if len(password) < MIN_PASSWORD_LENGTH:
-        print(f"❌ Mindestens {MIN_PASSWORD_LENGTH} Zeichen.")
+    try:
+        _check_password(password, username)
+    except AuthError as e:
+        print(f"❌ {e}")
         return 1
     if getpass.getpass("Passwort wiederholen: ") != password:
         print("❌ Passwörter stimmen nicht überein.")
