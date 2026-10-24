@@ -14,7 +14,7 @@ Instead of stitching together a start page, a container UI, a VM manager, a serv
 On any 64-bit Debian 12+ or Ubuntu 22.04+ machine – a PC, a mini server, a VM or a Raspberry Pi (Pi 5 recommended, Pi 4 works) with Raspberry Pi OS – and a user with `sudo`:
 
 ```bash
-git clone https://github.com/Follor09/RaspberryPi-Dash.git ~/pi-dashboard
+git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ~/pi-dashboard/install.sh
 ```
 

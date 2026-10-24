@@ -73,7 +73,7 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für Linux-Server (D
 ### Schnellstart – direkt auf dem Server (per SSH)
 
 ```bash
-git clone https://github.com/Follor09/RaspberryPi-Dash.git ~/pi-dashboard
+git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ~/pi-dashboard/install.sh
 ```
 
@@ -90,7 +90,7 @@ git clone https://github.com/Follor09/RaspberryPi-Dash.git ~/pi-dashboard
    ```
    oder direkt auf dem Server:
    ```bash
-   git clone https://github.com/<DEIN-BENUTZERNAME>/RaspberryPi-Dash.git ~/pi-dashboard
+   git clone https://github.com/<DEIN-BENUTZERNAME>/HostCore.git ~/pi-dashboard
    ~/pi-dashboard/install.sh
    ```
 3. Ab dann landet jeder Push auf deinen Fork innerhalb einer Minute auf dem Server. Ist der Fork privat, braucht der Server einen Lese-Token (siehe [Privates Repo](#-privates-repo-github-token-hinterlegen)).
@@ -396,7 +396,7 @@ Läuft auf einem **Raspberry Pi** (Raspberry Pi OS 64-bit), auf **Debian 12/13**
 ```bash
 # auf dem Remote-Server (Pi, Debian-VM, Ubuntu-VM …):
 sudo apt update && sudo apt install -y git
-git clone https://github.com/Follor09/RaspberryPi-Dash.git ~/pi-dashboard
+git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ~/pi-dashboard/install.sh --agent --from 192.168.1.10   # IP des Haupt-Dashboards; zeigt am Ende Adresse + Token
 
 ./agent.sh token                 # Token später wieder anzeigen

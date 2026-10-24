@@ -31,4 +31,4 @@ First tagged release.
 - **Compliance page:** baseline check modelled on BSI IT-Grundschutz / CIS, GDPR records of processing and TOM, evidence package for auditors.
 - **Update channels:** *stable* (releases only, default for new installs) or *main* (every commit).
 
-Everything before this release: see the [commit history](https://github.com/Follor09/RaspberryPi-Dash/commits/main) and [README.de.md](README.de.md).
+Everything before this release: see the [commit history](https://github.com/Follor09/HostCore/commits/main) and [README.de.md](README.de.md).

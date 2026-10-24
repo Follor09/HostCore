@@ -6,7 +6,7 @@ HostCore has a lot of features. You don't need them all on day one – this is a
 ## 1. Install and sign in
 
 ```bash
-git clone https://github.com/Follor09/RaspberryPi-Dash.git ~/pi-dashboard
+git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ~/pi-dashboard/install.sh
 ```
 
@@ -67,4 +67,4 @@ Install the agent on further servers – a Raspberry Pi, a Debian or Ubuntu mach
 
 ## Help
 
-Command palette: **Ctrl+K / ⌘K** finds every page and setting. Self-test with copyable fixes: **Settings → Self-test** (*Selbstdiagnose*). Questions and bugs: [GitHub issues](https://github.com/Follor09/RaspberryPi-Dash/issues).
+Command palette: **Ctrl+K / ⌘K** finds every page and setting. Self-test with copyable fixes: **Settings → Self-test** (*Selbstdiagnose*). Questions and bugs: [GitHub issues](https://github.com/Follor09/HostCore/issues).
