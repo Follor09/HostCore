@@ -41,8 +41,55 @@ update_state = {
     "latest_remote_message": "",
     "last_check_timestamp": 0,
     "is_updating": False,
-    "last_update_log": ""
+    "last_update_log": "",
+    "channel": "main",
+    "version": "",
+    "latest_release": ""
 }
+
+# Update channel (also read by update.sh as root): "main" = every commit, "stable" = release tags only
+CHANNEL_FILE = os.path.join(BASE_DIR, ".update-channel")
+CHANNELS = {"main": "Jeder Commit (main)", "stable": "Nur Releases (stabil)"}
+TAG_PATTERN = "v[0-9]*.[0-9]*.[0-9]*"
+
+
+def channel() -> str:
+    try:
+        with open(CHANNEL_FILE) as f:
+            return "stable" if f.read().strip() == "stable" else "main"
+    except OSError:
+        return "main"
+
+
+def set_channel(value: str) -> str:
+    if value not in CHANNELS:
+        raise ValueError("Unbekannter Update-Kanal.")
+    tmp = CHANNEL_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(value + "\n")
+    os.replace(tmp, CHANNEL_FILE)
+    update_state["channel"] = value
+    return value
+
+
+def _target(branch: str) -> str:
+    """Commit to update to - the same rule as update.sh: branch head, or on "stable" the newest
+    release tag of the branch (never an older one than what is installed)."""
+    rc, head = run_git(["rev-parse", f"origin/{branch}"])
+    if rc != 0:
+        return ""
+    if channel() != "stable":
+        return head
+    rc, tags = run_git(["tag", "--list", TAG_PATTERN, "--merged", f"origin/{branch}", "--sort=-v:refname"])
+    tag = tags.splitlines()[0].strip() if rc == 0 and tags.strip() else ""
+    update_state["latest_release"] = tag
+    if not tag:
+        return ""
+    rc, commit = run_git(["rev-parse", f"{tag}^{{commit}}"])
+    if rc != 0:
+        return ""
+    rc_anc, _ = run_git(["merge-base", "--is-ancestor", commit, "HEAD"])
+    return "" if rc_anc == 0 else commit
 
 
 def run_git(args: list[str], timeout: int = 15) -> tuple[int, str]:
@@ -90,6 +137,11 @@ def refresh_git_info() -> Dict[str, Any]:
     if rc == 0:
         update_state["remote_url"] = out
 
+    # Release this commit belongs to (newest tag at or before it) and the update channel
+    rc, out = run_git(["describe", "--tags", "--abbrev=0", "--match", TAG_PATTERN])
+    update_state["version"] = out if rc == 0 else ""
+    update_state["channel"] = channel()
+
     return update_state
 
 
@@ -102,14 +154,19 @@ def check_for_updates() -> Dict[str, Any]:
     update_state["last_check_timestamp"] = time.time()
     branch = update_state["branch"] or "main"
 
-    # Fetch remote silently
-    rc, out = run_git(["fetch", "origin", branch], timeout=20)
+    # Fetch remote silently (with tags: the stable channel follows them)
+    rc, out = run_git(["fetch", "--tags", "--force", "origin", branch], timeout=20)
     if rc != 0:
         logger.warning(f"Git fetch failed: {out}")
         return update_state
 
+    target = _target(branch)
+    if not target:
+        update_state.update(commits_behind=0, update_available=False, latest_remote_commit="", latest_remote_message="")
+        return update_state
+
     # Check commit difference
-    rc, count_str = run_git(["rev-list", f"HEAD..origin/{branch}", "--count"])
+    rc, count_str = run_git(["rev-list", f"HEAD..{target}", "--count"])
     if rc == 0 and count_str.isdigit():
         behind_count = int(count_str)
         update_state["commits_behind"] = behind_count
@@ -117,7 +174,7 @@ def check_for_updates() -> Dict[str, Any]:
 
         if behind_count > 0:
             # Get latest remote commit info
-            rc_log, log_str = run_git(["log", "-1", f"origin/{branch}", "--format=%h - %s"])
+            rc_log, log_str = run_git(["log", "-1", target, "--format=%h - %s"])
             if rc_log == 0 and " - " in log_str:
                 parts = log_str.split(" - ", 1)
                 update_state["latest_remote_commit"] = parts[0]
@@ -145,8 +202,16 @@ def perform_update() -> Dict[str, Any]:
 
     try:
         # 1. Git pull
-        logs.append(f"Pulling latest commits from origin/{branch}...")
-        rc, out = run_git(["pull", "origin", branch], timeout=30)
+        if channel() == "stable":
+            target = _target(branch)
+            if not target:
+                update_state["is_updating"] = False
+                return {"status": "success", "message": "Bereits auf dem neuesten Release."}
+            logs.append(f"Switching to release {update_state['latest_release']} ({target[:7]})...")
+            rc, out = run_git(["reset", "--hard", target], timeout=30)
+        else:
+            logs.append(f"Pulling latest commits from origin/{branch}...")
+            rc, out = run_git(["pull", "origin", branch], timeout=30)
         logs.append(out)
         if rc != 0:
             update_state["is_updating"] = False

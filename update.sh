@@ -41,41 +41,63 @@ if [ -n "$NEW_CRED" ] && [ "$NEW_CRED" != "$(cat "$CRED" 2>/dev/null || true)" ]
     echo "🔑 Token updated"
 fi
 
+# Update channel (Einstellungen -> Auto-Update, file .update-channel in the dashboard folder):
+#   main   - every commit of the branch (default for existing installs)
+#   stable - only releases: the newest tag vX.Y.Z on the branch, never back to an older one
+CHANNEL="$(as_owner cat "$DIR/.update-channel" 2>/dev/null | tr -d '[:space:]' || true)"
+[ "$CHANNEL" = "stable" ] || CHANNEL="main"
+
+# Target commit for a repo: the branch head, or on "stable" its newest release tag.
+# $1 = git wrapper, $2 = branch, $3 = installed commit
+target() {
+    local head tag commit
+    head="$("$1" rev-parse "origin/$2")"
+    [ "$CHANNEL" = "stable" ] || { echo "$head"; return; }
+    tag="$("$1" tag --list 'v[0-9]*.[0-9]*.[0-9]*' --merged "origin/$2" --sort=-v:refname | sed -n 1p)"
+    [ -n "$tag" ] || { echo "$3"; return; }          # no release yet: stay where we are
+    commit="$("$1" rev-parse "$tag^{commit}")"
+    if [ "$commit" != "$3" ] && "$1" merge-base --is-ancestor "$commit" "$3"; then
+        echo "$3"                                      # installed version is newer than the release
+    else
+        echo "$commit"
+    fi
+}
+
 # --- Root copy ---
 SRC_BRANCH="$(src_git rev-parse --abbrev-ref HEAD)"
-src_git fetch --quiet origin "$SRC_BRANCH"
+src_git fetch --quiet --tags --force origin "$SRC_BRANCH"
 SRC_OLD="$(src_git rev-parse HEAD)"
-SRC_NEW="$(src_git rev-parse "origin/$SRC_BRANCH")"
+SRC_NEW="$(target src_git "$SRC_BRANCH" "$SRC_OLD")"
 
 # --- Dashboard folder ---
 BRANCH="$(git_ rev-parse --abbrev-ref HEAD)"
-git_ fetch --quiet origin "$BRANCH"
+git_ fetch --quiet --tags --force origin "$BRANCH"
 LOCAL="$(git_ rev-parse HEAD)"
-REMOTE="$(git_ rev-parse "origin/$BRANCH")"
+REMOTE="$(target git_ "$BRANCH" "$LOCAL")"
 
 [ "$LOCAL" = "$REMOTE" ] && [ "$SRC_OLD" = "$SRC_NEW" ] && exit 0
 
 RESTART=0
 if [ "$LOCAL" != "$REMOTE" ]; then
-    echo "🔄 Update ${LOCAL:0:7} -> ${REMOTE:0:7} ($(git_ log -1 --format=%s "origin/$BRANCH"))"
+    echo "🔄 Update ${LOCAL:0:7} -> ${REMOTE:0:7} [$CHANNEL] ($(git_ log -1 --format=%s "$REMOTE"))"
     # Install new dependencies BEFORE switching code, so a failed pip leaves the
     # old version running and the update is retried on the next run.
     if git_ diff --name-only "$LOCAL" "$REMOTE" | grep -qx "requirements.txt"; then
         echo "📦 requirements.txt changed, installing dependencies..."
         REQ="$(mktemp)"
         trap 'rm -f "$REQ"' EXIT
-        git_ show "origin/$BRANCH:requirements.txt" > "$REQ"
+        git_ show "$REMOTE:requirements.txt" > "$REQ"
         chmod 644 "$REQ"
         as_owner "$DIR/venv/bin/pip" install -q -r "$REQ"
     fi
     # The Pi is a deploy target: GitHub is the source of truth (also handles force-pushes)
-    git_ reset --hard --quiet "origin/$BRANCH"
+    git_ reset --hard --quiet "$REMOTE"
     RESTART=1
 fi
 
 if [ "$SRC_OLD" != "$SRC_NEW" ]; then
     CHANGED="$(src_git diff --name-only "$SRC_OLD" "$SRC_NEW")"
-    src_git reset --hard --quiet "origin/$SRC_BRANCH"
+    src_git reset --hard --quiet "$SRC_NEW"
     # Units, sudo rules (built from services_manager.py) or install.sh itself changed
     if grep -qE '\.(service|timer)$|^install\.sh$|^services_manager\.py$' <<<"$CHANGED"; then
         echo "⚙️  Setup changed, re-running install.sh..."

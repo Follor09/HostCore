@@ -36,6 +36,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("GET", r"^/auth/oidc/callback$", "login", "Anmeldung per SSO"),
     ("POST", r"^/api/gitops$", "system", "GitOps-Stack angelegt"),
     ("POST", r"^/api/changes$", "system", "Änderungsantrag angelegt"),
+    ("POST", r"^/api/settings/update-channel$", "settings", "Update-Kanal geändert"),
     ("POST", r"^/api/patch-sla/settings$", "settings", "Patch-Fristen eingestellt"),
     ("POST", r"^/api/patch-sla/exception$", "settings", "Ausnahme von der Patch-Frist"),
     ("POST", r"^/api/problems$", "system", "Problem erfasst"),

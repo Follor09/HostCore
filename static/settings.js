@@ -152,10 +152,26 @@
       ['Status', `${timerText} · ${u.timer.detail}`, timerLevel],
       ['Repository', u.remote_url || '–'],
       ['Branch', u.branch],
+      ['Version', u.version || 'kein Release'],
+      ['Kanal', (u.channels || {})[u.channel] || u.channel, u.channel === 'stable' ? 'good' : ''],
       ['Commit', u.commit_message ? `${u.current_commit} – ${u.commit_message}` : u.current_commit],
       ['GitHub-Token', u.token_set ? 'Hinterlegt' : 'Nicht hinterlegt (nur für private Repos nötig)', u.token_set ? 'good' : ''],
       ['Letzte Prüfung', fmtDate(u.last_check_timestamp)]
     ]);
+    const sel = $('updater-channel');
+    if (sel && !sel.options.length) {
+      Object.entries(u.channels || {}).forEach(([k, l]) => { const o = document.createElement('option'); o.value = k; o.textContent = l; sel.appendChild(o); });
+      sel.addEventListener('change', async () => {
+        const msg = $('updater-msg');
+        try {
+          await api('/api/settings/update-channel', { channel: sel.value });
+          setMsg(msg, sel.value === 'stable' ? 'Ab jetzt nur noch Releases.' : 'Ab jetzt jeder neue Commit.', 'success');
+          data = await api('/api/settings');
+          renderUpdater(data.updater);
+        } catch (err) { setMsg(msg, err.message, 'error'); }
+      });
+    }
+    if (sel) sel.value = u.channel;
   }
 
   function renderWolSettings(devices) {

@@ -1,0 +1,29 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Footer of the dashboard or Settings → Auto-update (release or commit)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Pi model and OS
+      placeholder: Raspberry Pi 5, Raspberry Pi OS Bookworm 64-bit
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / self-test
+      description: "`journalctl -u raspberry-dashboard -n 100` and anything Settings → Self-test shows (remove addresses or names you don't want to share)"
+      render: text

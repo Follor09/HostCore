@@ -20,7 +20,7 @@ PiCore läuft im **Heimnetz oder hinter einem VPN** (z. B. NetBird, WireGuard, T
 
 ## Automatische Updates
 
-Der Auto-Updater holt **jede Minute** den aktuellen Stand des Branches, von dem der Pi geklont wurde, und führt dabei auch Skripte als root aus. Wer direkt dieses Repository klont, bekommt also jede Änderung hier automatisch. Wer Updates lieber selbst freigibt, arbeitet mit einem **eigenen Fork** (siehe README) oder schaltet den Timer ab:
+Der Auto-Updater prüft **jede Minute** GitHub und führt dabei auch Skripte als root aus. Neue Installationen folgen dem **stabilen Kanal**: nur veröffentlichte Releases (Tags `vX.Y.Z`), nie zurück auf ein älteres. Auf dem Kanal „main“ (Einstellungen → Auto-Update) kommt jeder Commit des Branches automatisch. Wer Updates lieber selbst freigibt, arbeitet mit einem **eigenen Fork** (siehe README) oder schaltet den Timer ab:
 
 ```bash
 sudo systemctl disable --now pi-dashboard-update.timer

@@ -67,6 +67,11 @@ if [ "$SELF" != "$SRC" ]; then
     git -C "$SRC" config credential.helper "store --file=$CRED"
     chown -R root:root "$SRC"
     chmod -R go-w "$SRC"
+    # A fresh install follows releases only; existing installs keep their channel
+    if [ ! -f "$STATE/dir" ] && ! as_owner test -e "$DIR/.update-channel"; then
+        as_owner sh -c 'echo stable > "$1/.update-channel"' sh "$DIR"
+        echo "📦 Update channel: stable releases (Einstellungen → Auto-Update)"
+    fi
     echo "$DIR" > "$STATE/dir"
 
     # Continue with the GitHub version of this script

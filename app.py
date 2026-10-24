@@ -151,7 +151,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.2.0", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.3.0", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -426,7 +426,7 @@ def _about() -> dict:
         pass
     commit = updater.update_state.get("current_commit") or ""
     data = {"name": "PiCore Server", "commit": commit if re.fullmatch(r"[0-9a-f]{4,40}", commit) else "",
-            "date": date, "repo": url, "year": time.localtime().tm_year}
+            "date": date, "repo": url, "year": time.localtime().tm_year, "version": updater.update_state.get("version") or ""}
     _about_cache.update(ts=now, data=data)
     return data
 
@@ -436,7 +436,7 @@ async def api_about(request: Request):
     data = await asyncio.to_thread(_about)
     if not request.state.user:
         # Without login no version: it would tell an attacker which fixes are missing
-        return {"name": data["name"], "year": data["year"], "commit": "", "date": "", "repo": ""}
+        return {"name": data["name"], "year": data["year"], "commit": "", "date": "", "repo": "", "version": ""}
     return data
 
 
@@ -1117,7 +1117,8 @@ def _settings_payload(user: str) -> dict:
         "updater": {
             **{k: updater.update_state.get(k) for k in
                ("is_git_repo", "branch", "current_commit", "commit_message", "remote_url",
-                "update_available", "commits_behind", "last_check_timestamp")},
+                "update_available", "commits_behind", "last_check_timestamp", "channel", "version", "latest_release")},
+            "channels": updater.CHANNELS,
             "timer": sm._updater_status(states),
             "token_set": os.path.exists(os.path.join(BASE_DIR, ".git", "github-credentials")),
         },
@@ -5011,6 +5012,16 @@ async def api_logs(lines: int = 30):
 async def api_update_status():
     """Get current Git version info and pending update status."""
     return updater.update_state
+
+
+@app.post("/api/settings/update-channel")
+async def api_settings_update_channel(payload: dict, request: Request):
+    try:
+        value = await asyncio.to_thread(updater.set_channel, str(payload.get("channel", "")))
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    request.state.audit_detail = value
+    return await asyncio.to_thread(updater.check_for_updates)
 
 
 @app.post("/api/updates/check")

@@ -883,8 +883,11 @@
       <!-- Auto-Update -->
       <section class="glass-card settings-section" id="auto-update" data-perm="settings.manage">
         <h2>Auto-Update</h2>
-        <p class="section-desc">Der Pi prüft jede Minute GitHub und installiert neue Commits automatisch.</p>
+        <p class="section-desc">Der Pi prüft jede Minute GitHub und installiert neue Versionen automatisch – je nach Kanal jeden neuen Commit oder nur veröffentlichte Releases (Tags vX.Y.Z). Auf dem stabilen Kanal geht es nie auf ein älteres Release zurück.</p>
         <dl class="kv-grid" id="updater-info"></dl>
+        <div class="form-grid updater-channel" data-perm="updates.install">
+          <label class="login-field"><span>Update-Kanal</span><select id="updater-channel"></select></label>
+        </div>
         <div class="form-actions">
           <span class="form-msg" id="updater-msg" role="status"></span>
           <button class="btn-secondary" id="updater-check">Jetzt prüfen</button>

@@ -41,6 +41,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/fleet/latency/measure$", "network.tools"),
     ("POST", r"^/api/fleet/dashboard-update$", "updates.install"),
     ("POST", r"^/api/updates/run-now$", "updates.install"),
+    ("POST", r"^/api/settings/update-channel$", "updates.install"),
     ("GET", r"^/api/(capacity|capacity/summary|anomalies|dns-watch)$", "system.view"),
     ("POST", r"^/api/anomalies/settings$", "settings.manage"),
     ("POST", r"^/api/dns-watch(/.*)?$", "settings.manage"),

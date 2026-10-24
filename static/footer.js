@@ -42,7 +42,7 @@
     if (about.commit) {
       const v = document.createElement('span');
       v.className = 'footer-version';
-      v.textContent = `Version ${about.commit}${about.date ? ` (${new Date(`${about.date}T12:00:00`).toLocaleDateString((window.I18N && window.I18N.locale) || 'de-DE')})` : ''}`;
+      v.textContent = `Version ${about.version ? `${about.version} · ` : ""}${about.commit}${about.date ? ` (${new Date(`${about.date}T12:00:00`).toLocaleDateString((window.I18N && window.I18N.locale) || 'de-DE')})` : ''}`;
       main.append(sep(), v);
     }
     if (window.PiWhatsNew && !document.body.classList.contains('login-page')) {
