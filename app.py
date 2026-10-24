@@ -3014,6 +3014,11 @@ def _serve_page(name: str) -> HTMLResponse:
         path = os.path.join(STATIC_DIR, m.group(1))
         return f"/static/{m.group(1)}?v={int(os.path.getmtime(path))}\"" if os.path.exists(path) else m.group(0)
     html = re.sub(r'/static/([\w.-]+\.(?:js|css))"', versioned, html)
+    # Behind Cloudflare: Rocket Loader would turn every script into one loaded by an inline
+    # script, which the CSP blocks (blank page) - data-cfasync="false" makes it skip them.
+    # The manifest is fetched without cookies unless asked, so Cloudflare Access redirects it.
+    html = html.replace("<script src=", '<script data-cfasync="false" src=')
+    html = html.replace('<link rel="manifest" ', '<link rel="manifest" crossorigin="use-credentials" ')
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
