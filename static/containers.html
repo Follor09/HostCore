@@ -49,8 +49,10 @@
       <a href="#docker">Docker</a>
       <a href="#datenbanken">Datenbanken</a>
       <a href="#stack-sicherheit">Sicherheitscheck</a>
+      <a href="#image-richtlinien">Image-Richtlinien</a>
       <a href="#live-logs">Live-Logs</a>
       <a href="#stacks">Compose-Stacks</a>
+      <a href="#gitops">GitOps</a>
       <a href="#images">Image-Updates</a>
       <a href="#statistik">Statistik</a>
     </nav>
@@ -164,6 +166,21 @@
         <div class="sc-list" id="sc-list"></div>
       </section>
 
+      <!-- Image-Richtlinien -->
+      <section class="glass-card settings-section" id="image-richtlinien">
+        <div class="section-head">
+          <h2>Image-Richtlinien</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="ip-mode">–</span>
+          </div>
+        </div>
+        <p class="section-desc">Regeln für die Container-Images: erlaubte Registries, feste Versionen statt „latest“, Fixierung per Digest, gesperrte Images und Höchstalter. „Warnen“ meldet Verstöße; „Blockieren“ stoppt zusätzlich Stack-Updates, App-Installationen, Vorlagen und GitOps-Ausrollen mit verbotenen Images – der Grund steht im Aufgaben-Protokoll. Einzelne Stacks lassen sich ausnehmen.</p>
+        <form class="inline-grid ip-form" id="ip-form" autocomplete="off" data-perm-form="settings.manage"></form>
+        <h3 class="subhead">Laufende Container</h3>
+        <p class="field-hint" id="ip-counts"></p>
+        <div class="table-scroll"><table class="data-table" id="ip-table"></table></div>
+      </section>
+
       <!-- Live-Logs -->
       <section class="glass-card settings-section" id="live-logs" data-perm="logs.view">
         <div class="section-head">
@@ -228,6 +245,19 @@
           <span class="field-hint" id="dc-hint"></span>
         </div>
         <div class="fleet-results" id="dc-results"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="gitops">
+        <div class="section-head">
+          <h2>GitOps</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="go-summary"></span>
+            <button class="btn-primary" id="go-add" type="button" data-perm="apps.install">Stack aus Git</button>
+          </div>
+        </div>
+        <p class="section-desc">Compose-Stacks direkt aus einem Git-Repository: das Repository ist maßgeblich. Neue Commits, die den Ordner des Stacks betreffen, erscheinen hier mit Diff und lassen sich ausrollen – auf Wunsch automatisch. Ausrollen läuft als Aufgabe wie das sichere Stack-Update (Datenbanken sichern, <code>up -d --remove-orphans</code>, Gesundheitsprüfung). Abweichungen auf dem Pi – geänderte Dateien, fehlende oder gestoppte Dienste, andere Images – werden gemeldet. Zugangsdaten gehören in die lokalen Variablen, die nur auf dem Pi liegen.</p>
+        <div class="docs-form" id="go-form-wrap" hidden></div>
+        <div class="go-list" id="go-list"></div>
       </section>
 
       <section class="glass-card settings-section" id="stack-vorlagen">
@@ -362,6 +392,8 @@
   <script src="/static/containerlogs.js"></script>
   <script src="/static/dbmonitor.js"></script>
   <script src="/static/stackcheck.js"></script>
+  <script src="/static/gitops.js"></script>
+  <script src="/static/imagepolicy.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

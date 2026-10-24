@@ -46,7 +46,10 @@
       <a href="#inventar" class="active">Inventar</a>
       <a href="#tagebuch">Betriebstagebuch</a>
       <a href="#runbooks">Runbooks</a>
+      <a href="#probleme">Probleme</a>
+      <a href="#aenderungsantraege">Änderungsanträge</a>
       <a href="#steckbriefe">Steckbriefe</a>
+      <a href="#notfallhandbuch">Notfallhandbuch</a>
       <a href="#vertraege">Verträge &amp; Abos</a>
       <a href="#domains">Domains</a>
       <a href="#befehle">Befehle</a>
@@ -142,6 +145,42 @@
         <div class="servicedoc-grid" id="sd-list"></div>
       </section>
 
+      <!-- Änderungsanträge -->
+      <section class="glass-card settings-section" id="aenderungsantraege">
+        <div class="section-head">
+          <h2>Änderungsanträge</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="chg-summary"></span>
+            <select id="chg-filter" class="inline-select" aria-label="Filter">
+              <option value="open">Offene</option>
+              <option value="all">Alle</option>
+            </select>
+            <button data-perm="notes.edit" class="btn-primary" id="chg-add" type="button">Änderung beantragen</button>
+          </div>
+        </div>
+        <p class="section-desc">Geplante Änderungen mit Risiko, betroffenen Diensten, Ablauf, Rückfallplan und Prüfung – freigegeben von einer zweiten Person, bevor sie umgesetzt werden (Recht „Änderungen freigeben“). Bei der Freigabe kann direkt das Wartungsfenster entstehen; das Ergebnis landet im Betriebstagebuch. Standardänderungen mit geringem Risiko sind vorab genehmigt.</p>
+        <div class="docs-form" id="chg-form-wrap" hidden></div>
+        <div class="inc-list" id="chg-list"></div>
+      </section>
+
+      <!-- Notfallhandbuch -->
+      <section class="glass-card settings-section" id="notfallhandbuch">
+        <div class="section-head">
+          <h2>Notfallhandbuch</h2>
+          <div class="head-tools">
+            <a class="btn-secondary" id="hb-print" href="/notfallhandbuch" target="_blank" rel="noopener">Druckansicht / PDF</a>
+            <a class="btn-secondary" id="hb-md" href="/api/docs/handbook.md">Markdown</a>
+          </div>
+        </div>
+        <p class="section-desc">Wie jeder Dienst nach einem Ausfall zurückkommt – automatisch zusammengestellt aus Stacks, Steckbriefen, Sicherungen, Datenbank-Dumps, GitOps, Inventar und Verträgen, mit fertigen Befehlen für Daten und Datenbanken. Pro Dienst lassen sich Priorität, Sicherungen, eigene Schritte und eine Prüfung ergänzen. Das Handbuch enthält keine Passwörter. Eine Kopie gehört offline: ausdrucken oder als PDF/Markdown außerhalb des Pi ablegen.</p>
+        <div class="hb-summary" id="hb-summary"></div>
+        <details class="db-details hb-general" id="hb-general">
+          <summary>Allgemeines: Notfallkontakte, Zugangsdaten, Ablage</summary>
+          <div id="hb-general-form"></div>
+        </details>
+        <div class="hb-list" id="hb-list"></div>
+      </section>
+
       <!-- Störungen -->
       <section class="glass-card settings-section" id="stoerungen">
         <div class="section-head">
@@ -158,6 +197,22 @@
         <p class="section-desc">Störungen mit Schwere, betroffenen Diensten, Status und Zeitlinie – vom ersten Verdacht bis „behoben“. Beginn und Ende erscheinen in den Ereignissen (und per E-Mail); als „öffentlich“ markierte Störungen zeigt die öffentliche Statusseite, solange sie offen sind und eine Woche danach.</p>
         <div class="docs-form" id="inc-form-wrap" hidden></div>
         <div class="inc-list" id="inc-list"></div>
+      </section>
+
+      <!-- Probleme -->
+      <section class="glass-card settings-section" id="probleme">
+        <div class="section-head">
+          <h2>Probleme</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="pb-summary"></span>
+            <a class="btn-secondary" href="/druck?src=problems" target="_blank" rel="noopener">Bericht</a>
+            <button data-perm="notes.edit" class="btn-primary" id="pb-add" type="button">Problem erfassen</button>
+          </div>
+        </div>
+        <p class="section-desc">Die Ursache hinter wiederkehrenden Störungen: Störungen bündeln, Ursache analysieren, als bekannten Fehler mit Workaround festhalten und über einen Änderungsantrag lösen. Dienste mit mehreren Störungen in 90 Tagen werden vorgeschlagen; offene Störungen auf einem Dienst mit bekanntem Fehler zeigen den Workaround.</p>
+        <div id="pb-hints"></div>
+        <div class="docs-form" id="pb-form-wrap" hidden></div>
+        <div class="inc-list" id="pb-list"></div>
       </section>
 
       <!-- Verträge & Abos -->
@@ -245,6 +300,9 @@
   <script src="/static/hosts.js"></script>
   <script src="/static/docs.js"></script>
   <script src="/static/incidents.js"></script>
+  <script src="/static/handbook-section.js"></script>
+  <script src="/static/changes.js"></script>
+  <script src="/static/problems.js"></script>
   <script src="/static/diff.js"></script>
   <script src="/static/docs-versions.js"></script>
   <script src="/static/pagegroups.js"></script>

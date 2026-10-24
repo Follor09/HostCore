@@ -40,7 +40,29 @@
       submit.disabled = true;
     }
     document.getElementById('login-public').hidden = !status.public_view;
+    const sso = status.sso_login || {};
+    if (sso.enabled) {
+      document.getElementById('sso-box').hidden = false;
+      document.getElementById('login-sso-label').textContent = `Mit ${sso.label} anmelden`;
+      if (sso.local === 'admins') {
+        // Passwords and passkeys only as emergency access for administrators
+        const local = document.getElementById('login-local');
+        const toggle = document.getElementById('login-local-toggle');
+        local.hidden = true;
+        document.getElementById('sso-divider').hidden = true;
+        toggle.hidden = false;
+        toggle.addEventListener('click', () => { local.hidden = !local.hidden; if (!local.hidden) user.focus(); });
+      }
+      document.getElementById('login-sso').focus();
+    }
   }).catch(() => {});
+
+  // Single sign-on: the provider's page, back via /auth/oidc/callback
+  document.getElementById('login-sso').addEventListener('click', () => {
+    location.href = `/auth/oidc/start?next=${encodeURIComponent(nextTarget())}&remember=${remember.checked ? 1 : 0}`;
+  });
+  const ssoError = new URLSearchParams(location.search).get('sso_error');
+  if (ssoError) showError(ssoError);
 
   // Language toggle: shows the other language
   const langBtn = document.getElementById('login-lang');

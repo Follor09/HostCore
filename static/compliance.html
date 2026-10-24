@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
+  <title>Compliance | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber settings-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">Compliance</h1>
+    </div>
+    <div class="header-right">
+      <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      </button>
+      <div class="user-chip" id="user-chip" hidden>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="user-name"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="settings-layout">
+    <nav class="settings-nav" aria-label="Bereiche">
+      <a href="#grundschutz" class="active">Grundschutz-Check</a>
+      <a href="#datenschutz-vvt">Verarbeitungstätigkeiten</a>
+      <a href="#datenschutz-tom">TOM</a>
+      <a href="#nachweis-paket" data-perm="users.manage">Nachweis-Paket</a>
+    </nav>
+
+    <div class="settings-sections">
+      <!-- Grundschutz-Check -->
+      <section class="glass-card settings-section" id="grundschutz" data-perm="system.view">
+        <div class="section-head">
+          <h2>Grundschutz-Check</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="bl-checked"></span>
+            <button class="btn-secondary" id="bl-refresh" type="button">Neu bewerten</button>
+            <a class="btn-secondary" href="/druck?src=baseline" target="_blank" rel="noopener">Bericht</a>
+          </div>
+        </div>
+        <p class="section-desc">Checkliste angelehnt an Bausteine des BSI IT-Grundschutz-Kompendiums (ORP.4, OPS.1.1.3, CON.3, DER.4, SYS.1.6 …) und die CIS Controls – keine Zertifizierung, aber ein ehrlicher Blick auf die Grundlagen. Die meisten Anforderungen bewertet das Dashboard selbst aus seinen Prüfungen; jede lässt sich zusätzlich von Hand bewerten, mit Notiz und Nachweis. Die Handbewertung gilt; widerspricht ihr die automatische Prüfung, wird das angezeigt.</p>
+        <div class="hb-summary" id="bl-summary"></div>
+        <div class="bl-areas" id="bl-areas"></div>
+      </section>
+
+      <!-- Verzeichnis der Verarbeitungstätigkeiten -->
+      <section class="glass-card settings-section" id="datenschutz-vvt">
+        <div class="section-head">
+          <h2>Verarbeitungstätigkeiten</h2>
+          <div class="head-tools">
+            <a class="btn-secondary" href="/druck?src=vvt" target="_blank" rel="noopener">Druckansicht</a>
+            <button class="btn-primary" id="pv-add" type="button" data-perm="notes.edit">Tätigkeit erfassen</button>
+          </div>
+        </div>
+        <p class="section-desc">Verzeichnis von Verarbeitungstätigkeiten nach Art. 30 DSGVO: Zweck, Rechtsgrundlage, Betroffene, Datenkategorien, Empfänger, Auftragsverarbeiter, Drittländer, Löschfristen und die beteiligten Systeme. Eine Struktur zum Ausfüllen – keine Rechtsberatung.</p>
+        <details class="db-details" id="pv-controller-box">
+          <summary>Verantwortlicher und Datenschutzbeauftragte(r)</summary>
+          <form class="inline-grid pv-controller" id="pv-controller" autocomplete="off"></form>
+        </details>
+        <div class="docs-form" id="pv-form-wrap" hidden></div>
+        <div class="inc-list" id="pv-list"></div>
+      </section>
+
+      <!-- TOM -->
+      <section class="glass-card settings-section" id="datenschutz-tom">
+        <div class="section-head">
+          <h2>Technische und organisatorische Maßnahmen</h2>
+          <div class="head-tools">
+            <a class="btn-secondary" href="/druck?src=tom" target="_blank" rel="noopener">Druckansicht</a>
+          </div>
+        </div>
+        <p class="section-desc">Die TOM nach Art. 32 DSGVO, gegliedert nach den üblichen Kontrollbereichen. Pro Bereich eine eigene Beschreibung; darunter steht, was das Dashboard selbst festgestellt hat (Zwei-Faktor-Regel, Rechte-Review, Protokollierung, Sicherungen, Verschlüsselung, Patch-Fristen …) – so bleibt das Dokument nah an der Wirklichkeit.</p>
+        <div class="tom-list" id="tom-list"></div>
+      </section>
+
+      <!-- Nachweis-Paket -->
+      <section class="glass-card settings-section" id="nachweis-paket" data-perm="users.manage">
+        <div class="section-head">
+          <h2>Nachweis-Paket</h2>
+        </div>
+        <p class="section-desc">Ein ZIP für Prüfer oder Kunden: Grundschutz-Check, Patch-Fristen, Rechte-Reviews, Änderungsanträge, Störungen mit Nachbetrachtungen und Probleme, das Aktivitätsprotokoll des Zeitraums samt Integritätsprüfung der ganzen Kette, Datensicherung, technische Prüfungen, Notfallhandbuch, Verarbeitungsverzeichnis und TOM. Jede Datei mit SHA-256-Prüfsumme im Manifest. Keine Passwörter oder Tokens; Fundstellen des Geheimnis-Scans sind maskiert.</p>
+        <form class="form-grid ev-form" id="ev-form" autocomplete="off">
+          <label class="login-field"><span>Beginn</span><input type="date" id="ev-since" required></label>
+          <label class="login-field"><span>Ende (einschließlich)</span><input type="date" id="ev-until" required></label>
+          <div class="form-actions ev-actions">
+            <button type="button" class="btn-secondary" data-range="quarter">Letztes Quartal</button>
+            <button type="button" class="btn-secondary" data-range="year">Letzte 12 Monate</button>
+            <button type="submit" class="btn-primary" id="ev-build">Paket erstellen</button>
+          </div>
+        </form>
+        <h3 class="subhead">Bisherige Exporte</h3>
+        <div class="table-scroll"><table class="data-table" id="ev-history"></table></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
+  <script src="/static/hosts.js"></script>
+  <script src="/static/baseline.js"></script>
+  <script src="/static/privacy.js"></script>
+  <script src="/static/evidence.js"></script>
+  <script src="/static/pagegroups.js"></script>
+  <script src="/static/sidebar.js"></script>
+  <script src="/static/links.js"></script>
+  <script src="/static/palette.js"></script>
+  <script src="/static/mobilenav.js"></script>
+  <script src="/static/whatsnew.js"></script>
+  <script src="/static/footer.js"></script>
+  <script src="/static/tasks.js"></script>
+</body>
+</html>

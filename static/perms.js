@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const state = { user: null, group: null, groupName: null, perms: new Set(), loaded: false, totp: false, passkeys: 0 };
+  const state = { user: null, group: null, groupName: null, perms: new Set(), loaded: false, totp: false, passkeys: 0, sso: false, ssoLabel: '', ssoOnly: false };
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   let resolveReady;
   const ready = new Promise(r => { resolveReady = r; });
@@ -40,6 +40,9 @@
       state.perms = new Set(s.permissions || []);
       state.totp = !!s.totp;
       state.passkeys = s.passkeys || 0;
+      state.sso = !!s.sso;
+      state.ssoOnly = !!s.sso_only;
+      state.ssoLabel = (s.sso_login && s.sso_login.label) || 'SSO';
       state.loaded = true;
       const doIt = () => {
         apply();
@@ -129,10 +132,41 @@
         });
         card.appendChild(pk);
       }
+      // Through the SSO provider in a popup (asks for the login again); the popup elevates this
+      // session on the server, the dialog only waits until it is
+      let ssoTimer = null;
+      if (state.sso) {
+        const sso = el('button', 'btn-secondary reauth-passkey', `Mit ${state.ssoLabel} bestätigen`);
+        sso.type = 'button';
+        sso.addEventListener('click', () => {
+          err.hidden = true;
+          const win = window.open('/auth/oidc/start?reauth=1', 'picore-sso', 'popup,width=520,height=680');
+          if (!win) { err.textContent = t('Popup wurde blockiert – bitte Popups für diese Seite erlauben.'); err.hidden = false; return; }
+          sso.disabled = true;
+          clearInterval(ssoTimer);
+          ssoTimer = setInterval(async () => {
+            try {
+              const d = await (await origFetch('/api/auth/2fa')).json();
+              if (d.elevated) { clearInterval(ssoTimer); done(true); return; }
+            } catch (ex) { /* try again */ }
+            if (win.closed) {
+              setTimeout(async () => {
+                const d = await (await origFetch('/api/auth/2fa')).json().catch(() => ({}));
+                if (d.elevated) { done(true); return; }
+                sso.disabled = false;
+              }, 800);
+              clearInterval(ssoTimer);
+            }
+          }, 1000);
+        });
+        card.appendChild(sso);
+        if (state.ssoOnly) { pw.hidden = true; code.hidden = true; }
+      }
       const buttons = el('div', 'modal-buttons');
       const cancel = el('button', 'btn-cancel', t('Abbrechen'));
       cancel.type = 'button';
       const ok = el('button', 'btn-confirm', t('Bestätigen'));
+      ok.hidden = state.sso && state.ssoOnly;
       ok.type = 'submit';
       buttons.append(cancel, ok);
       card.appendChild(buttons);
@@ -144,6 +178,7 @@
         back.classList.remove('open');
         setTimeout(() => back.remove(), 250);
         document.removeEventListener('keydown', onKey);
+        clearInterval(ssoTimer);
         pending = null;
         resolve(result);
       };

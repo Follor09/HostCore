@@ -404,6 +404,11 @@ class Monitor:
             except Exception as e:
                 logger.warning(f"Database check failed: {e}")
             try:
+                import gitops
+                gitops.check_if_due()
+            except Exception as e:
+                logger.warning(f"GitOps check failed: {e}")
+            try:
                 import dnswatch
                 threading.Thread(target=dnswatch.check_if_due, daemon=True).start()
             except Exception as e:
@@ -445,11 +450,16 @@ class Monitor:
                     threading.Thread(target=domains.check_if_due, daemon=True).start()
                 except Exception as e:
                     logger.warning(f"Domain check failed: {e}")
-                for mod in ("vulns", "eol", "selftest", "hardening", "stackcheck"):
+                for mod in ("vulns", "eol", "selftest", "hardening", "stackcheck", "secretscan"):
                     try:
                         __import__(mod).check_if_due()
                     except Exception as e:
                         logger.warning(f"{mod} check failed: {e}")
+                try:
+                    import patchsla
+                    patchsla.check_overdue()
+                except Exception as e:
+                    logger.warning(f"Patch deadline check failed: {e}")
                 for mod, fn in (("audit", "checkpoint_if_due"), ("versions", "cleanup")):
                     try:
                         getattr(__import__(mod), fn)()

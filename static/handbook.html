@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07090e">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <script src="/static/theme.js"></script>
+  <title>Notfallhandbuch | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber hb-print-page">
+  <div class="hb-toolbar">
+    <a class="btn-secondary" href="/doku#notfallhandbuch">← Dokumentation</a>
+    <span class="field-hint">Im Druckdialog „Als PDF speichern“ wählen, um eine Datei zu erhalten.</span>
+    <button class="btn-primary" id="hb-do-print" type="button">Drucken / als PDF speichern</button>
+  </div>
+  <main class="hb-doc" id="hb-doc">
+    <p class="field-hint">Lade…</p>
+  </main>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/handbook.js"></script>
+</body>
+</html>

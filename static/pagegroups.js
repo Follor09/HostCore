@@ -49,7 +49,7 @@
             return [{ level: 'info', text: `${devs.filter(d => d.online).length} von ${devs.length} Geräten online` },
               ...(fresh ? [{ level: 'info', text: n(fresh, 'neues Gerät', 'neue Geräte') }] : [])];
           } },
-        { id: 'sicherheit', label: 'Sicherheit', desc: 'Firewall, Verbindungen, SSH-Anmeldungen, Härtung, Aktivität', sections: ['firewall', 'firewall-traffic', 'verbindungen', 'ssh', 'haertung', 'aktivitaet'], perm: 'security.view',
+        { id: 'sicherheit', label: 'Sicherheit', desc: 'Firewall, Verbindungen, SSH-Anmeldungen, Härtung, Geheimnis-Scan, Aktivität', sections: ['firewall', 'firewall-traffic', 'verbindungen', 'ssh', 'haertung', 'geheimnis-scan', 'aktivitaet'], perm: 'security.view',
           facts: async () => {
             const out = [];
             const [fw, ssh, hd] = await Promise.allSettled([get('/api/tools/firewall'), get('/api/tools/ssh'), get('/api/hardening')]);
@@ -110,7 +110,7 @@
               : u.count ? { level: 'info', text: `${n(u.count, 'Update', 'Updates')} verfügbar` } : { level: 'good', text: 'System aktuell' },
             ...(u.reboot_required ? [{ level: 'info', text: 'Neustart nötig' }] : [])];
           } },
-        { id: 'software', label: 'Schwachstellen & Support', desc: 'Bekannte Sicherheitslücken, Support-Ende und Software-Inventar', sections: ['schwachstellen', 'lebenszyklus', 'software-inventar'],
+        { id: 'software', label: 'Schwachstellen & Support', desc: 'Bekannte Sicherheitslücken, Patch-Fristen, Support-Ende und Software-Inventar', sections: ['schwachstellen', 'patch-fristen', 'lebenszyklus', 'software-inventar'],
           facts: async () => {
             const out = [];
             const [vu, eol] = await Promise.allSettled([get('/api/vulns'), get('/api/eol')]);
@@ -135,8 +135,8 @@
     '/settings': {
       title: 'Einstellungen',
       groups: [
-        { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Zwei-Faktor, Passkeys, Sitzungen, Benutzer, Berechtigungen, Sicherheit und Freigabe-Links',
-          sections: ['konto', 'zwei-faktor', 'passkeys', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'terminal-mitschnitte', 'freigaben'],
+        { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Zwei-Faktor, Passkeys, Sitzungen, Benutzer, Berechtigungen, Sicherheit, SSO und Freigabe-Links',
+          sections: ['konto', 'zwei-faktor', 'passkeys', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'sso', 'rechte-review', 'terminal-mitschnitte', 'freigaben'],
           facts: async () => {
             const out = [];
             const [tf, sec] = await Promise.allSettled([get('/api/auth/2fa'), get('/api/security')]);
@@ -188,7 +188,7 @@
             return [{ level: running < cs.length ? 'info' : 'good', text: `${running} von ${cs.length} Containern laufen` },
               { level: 'info', text: n((o.stacks || []).length, 'Stack', 'Stacks') }];
           } },
-        { id: 'sicherheitscheck', label: 'Sicherheitscheck', desc: 'Riskante Einstellungen in den Compose-Stacks', sections: ['stack-sicherheit'],
+        { id: 'sicherheitscheck', label: 'Sicherheitscheck', desc: 'Riskante Einstellungen in den Compose-Stacks und Image-Richtlinien', sections: ['stack-sicherheit', 'image-richtlinien'],
           facts: async () => {
             const d = await get('/api/containers/stack-check');
             if (!d.checked) return [{ level: 'info', text: 'Noch nicht geprüft' }];
@@ -219,9 +219,49 @@
             if (!im.checked) return [{ level: 'info', text: 'Noch nicht geprüft' }];
             return [im.updates ? { level: 'warning', text: `${n(im.updates, 'Update', 'Updates')} verfügbar` } : { level: 'good', text: 'Alle Images aktuell' }];
           } },
+        { id: 'gitops', label: 'GitOps', desc: 'Compose-Stacks aus Git-Repositories ausrollen und Abweichungen erkennen', sections: ['gitops'],
+          facts: async () => {
+            const d = await get('/api/gitops');
+            const c = d.counts || {};
+            const total = (d.stacks || []).length;
+            if (!total) return [{ level: 'info', text: 'Noch kein Stack aus Git' }];
+            const out = [];
+            if (c.error) out.push({ level: 'warning', text: `${n(c.error, 'Stack mit Fehler', 'Stacks mit Fehler')}` });
+            if (c.drift) out.push({ level: 'warning', text: `${n(c.drift, 'Stack weicht ab', 'Stacks weichen ab')}` });
+            if (c.behind) out.push({ level: 'info', text: `${n(c.behind, 'Stack mit neuen Commits', 'Stacks mit neuen Commits')}` });
+            if (!out.length) out.push({ level: 'good', text: `${n(total, 'Stack', 'Stacks')} synchron` });
+            return out;
+          } },
         { id: 'vorlagen', label: 'Stack-Vorlagen', desc: 'Eigene Compose-Vorlagen auf beliebigen Pis anlegen', sections: ['stack-vorlagen'] },
         { id: 'statistik', label: 'Statistik', desc: 'CPU, RAM und Netzwerk pro Container', sections: ['statistik'] },
         { id: 'apps', label: 'App-Store', desc: 'Apps als Compose-Stack einrichten', sections: ['apps'] }
+      ]
+    },
+    '/nachweise': {
+      title: 'Compliance',
+      groups: [
+        { id: 'grundschutz', label: 'Grundschutz-Check', desc: 'Anforderungen angelehnt an BSI IT-Grundschutz und CIS, automatisch und von Hand bewertet', sections: ['grundschutz'], perm: 'system.view',
+          facts: async () => {
+            const d = await get('/api/compliance/baseline');
+            const c = d.counts;
+            return [{ level: d.score >= 80 ? 'good' : d.score >= 50 ? 'warning' : 'critical', text: `Erfüllungsgrad ${d.score} %` },
+              ...(c.fail ? [{ level: 'warning', text: n(c.fail, 'Anforderung nicht erfüllt', 'Anforderungen nicht erfüllt') }] : []),
+              ...(c.open ? [{ level: 'info', text: n(c.open, 'Anforderung offen', 'Anforderungen offen') }] : [])];
+          } },
+        { id: 'datenschutz', label: 'Datenschutz', desc: 'Verzeichnis der Verarbeitungstätigkeiten und TOM', sections: ['datenschutz-vvt', 'datenschutz-tom'],
+          facts: async () => {
+            const d = await get('/api/compliance/privacy');
+            const c = d.counts;
+            return [{ level: c.activities ? 'info' : 'warning', text: n(c.activities, 'Verarbeitungstätigkeit', 'Verarbeitungstätigkeiten') },
+              ...(c.review_due ? [{ level: 'warning', text: `${c.review_due} zur Prüfung fällig` }] : []),
+              ...(c.tom_missing ? [{ level: 'warning', text: n(c.tom_missing, 'TOM-Bereich ohne Text', 'TOM-Bereiche ohne Text') }] : [{ level: 'good', text: 'TOM vollständig' }])];
+          } },
+        { id: 'nachweise', label: 'Nachweis-Paket', desc: 'Alle Nachweise eines Zeitraums als ZIP für Prüfer', sections: ['nachweis-paket'], perm: 'users.manage',
+          facts: async () => {
+            const d = await get('/api/compliance/evidence');
+            const last = d.exports[0];
+            return [last ? { level: 'info', text: `Zuletzt ${new Date(last.ts * 1000).toLocaleDateString((window.I18N && window.I18N.locale) || 'de-DE')}` } : { level: 'info', text: 'Noch kein Paket erstellt' }];
+          } }
       ]
     },
     '/doku': {
@@ -234,15 +274,26 @@
             const warr = items.filter(i => i.warranty_days != null && i.warranty_days >= 0 && i.warranty_days <= 30).length;
             return [{ level: 'info', text: n(items.length, 'Gerät', 'Geräte') }, ...(warr ? [{ level: 'info', text: `${n(warr, 'Garantie endet', 'Garantien enden')} bald` }] : [])];
           } },
-        { id: 'betrieb', label: 'Betrieb', desc: 'Störungen, Betriebstagebuch, Runbooks und Befehle', sections: ['stoerungen', 'tagebuch', 'runbooks', 'befehle'],
+        { id: 'betrieb', label: 'Betrieb', desc: 'Störungen, Probleme, Änderungsanträge, Betriebstagebuch, Runbooks und Befehle', sections: ['stoerungen', 'probleme', 'aenderungsantraege', 'tagebuch', 'runbooks', 'befehle'],
           facts: async () => {
-            const [jr, rb] = await Promise.allSettled([get('/api/docs/journal?limit=1'), get('/api/docs/runbooks')]);
+            const [jr, rb, ch] = await Promise.allSettled([get('/api/docs/journal?limit=1'), get('/api/docs/runbooks'), get('/api/changes')]);
             const out = [];
+            if (ch.status === 'fulfilled' && ch.value.waiting) out.push({ level: 'warning', text: `${n(ch.value.waiting, 'Änderung wartet', 'Änderungen warten')} auf Freigabe` });
             if (jr.status === 'fulfilled') out.push({ level: 'info', text: n(jr.value.total || 0, 'Tagebucheintrag', 'Tagebucheinträge') });
             if (rb.status === 'fulfilled') {
               const running = rb.value.runbooks.filter(r => r.running).length;
               out.push({ level: running ? 'warning' : 'info', text: running ? `${n(running, 'Runbook läuft', 'Runbooks laufen')}` : n(rb.value.runbooks.length, 'Runbook', 'Runbooks') });
             }
+            return out;
+          } },
+        { id: 'notfall', label: 'Notfallhandbuch', desc: 'Wiederherstellung jedes Dienstes, Notfallkontakte und Export für die Ablage offline', sections: ['notfallhandbuch'],
+          facts: async () => {
+            const d = await get('/api/docs/handbook');
+            const s = d.summary;
+            if (!s.services) return [{ level: 'info', text: 'Noch keine Dienste' }];
+            const out = [{ level: s.score >= 90 ? 'good' : s.score >= 60 ? 'warning' : 'critical', text: `${s.complete} von ${s.services} Diensten vollständig` }];
+            out.push(d.exported && d.exported.ts ? { level: 'info', text: `Exportiert ${new Date(d.exported.ts * 1000).toLocaleDateString((window.I18N && window.I18N.locale) || 'de-DE')}` }
+              : { level: 'warning', text: 'Noch nie exportiert' });
             return out;
           } },
         { id: 'vertraege', label: 'Verträge & Kosten', desc: 'Verträge, Domains und Homelab-Kosten', sections: ['vertraege', 'domains', 'kosten'],

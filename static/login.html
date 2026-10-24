@@ -36,6 +36,19 @@
 
       <div class="login-notice" id="login-notice" hidden></div>
 
+      <div class="login-sso-box" id="sso-box" hidden>
+        <button type="button" class="login-submit login-sso" id="login-sso">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
+          <span id="login-sso-label">Mit SSO anmelden</span>
+        </button>
+        <div class="login-divider" id="sso-divider"><span>oder</span></div>
+        <button type="button" class="login-forgot" id="login-local-toggle" hidden>Notzugang für Administratoren</button>
+      </div>
+
+      <div class="login-error" id="login-error" role="alert" hidden></div>
+
+      <div class="login-local" id="login-local">
+
       <label class="login-field">
         <span>Benutzername</span>
         <input type="text" id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
@@ -57,8 +70,6 @@
         Angemeldet bleiben (30 Tage)
       </label>
 
-      <div class="login-error" id="login-error" role="alert" hidden></div>
-
       <button type="submit" class="login-submit" id="login-submit">Anmelden</button>
       <button type="button" class="login-passkey" id="login-passkey" hidden>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"></circle><path d="M10.85 12.15 19 4"></path><path d="m18 5 2 2"></path><path d="m15 8 2 2"></path></svg>
@@ -72,6 +83,8 @@
         </label>
         <button type="button" class="btn-secondary" id="forgot-send">Link per E-Mail senden</button>
         <p class="field-hint" id="forgot-msg" role="status"></p>
+      </div>
+
       </div>
 
       <a class="login-public" id="login-public" href="/" hidden>Nur ansehen, ohne Anmeldung →</a>

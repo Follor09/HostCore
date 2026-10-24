@@ -31,3 +31,4 @@ sessions.json.tmp
 db-dumps/
 tasks/
 recordings/
+gitops-env/

@@ -84,6 +84,7 @@ PERMISSIONS = [
     ("firewall.manage", "Firewall ändern", "ufw ein-/ausschalten, Regeln, fail2ban entsperren", "Netzwerk"),
     ("settings.manage", "Einstellungen ändern", "Wetter, Dienste, Wake-on-LAN-Geräte, Web-Dienste, Links, Verlauf, Ansehen ohne Login", "Verwaltung"),
     ("terminal", "Web-Terminal", "Volle Shell als Pi-Benutzer (sudo nur mit Passwort)", "Verwaltung"),
+    ("changes.approve", "Änderungen freigeben", "Änderungsanträge anderer genehmigen oder ablehnen (Vier-Augen-Prinzip)", "Verwaltung"),
     ("users.manage", "Benutzer & Berechtigungen", "Benutzer anlegen, Gruppen und Rechte bearbeiten", "Verwaltung"),
 ]
 ALL_PERMISSIONS = [p[0] for p in PERMISSIONS]
@@ -336,6 +337,7 @@ def update_user(username: str, *, group: Optional[str] = None, disabled: Optiona
             _check_password(password, name)
             salt = secrets.token_bytes(16)
             u.update(salt=salt.hex(), password_hash=_scrypt(password, salt).hex(), changed=int(time.time()))
+            u.pop("sso_only", None)
             u["sv"] = u.get("sv", 1) + 1
         if logout:
             u["sv"] = u.get("sv", 1) + 1
@@ -364,7 +366,9 @@ def user_info(username: str) -> Optional[Dict[str, Any]]:
     return {"username": name, "group": u["group"], "disabled": bool(u.get("disabled")),
             "created": u.get("created"), "changed": u.get("changed"),
             "expires": u.get("expires"), "expired": _expired(u), "totp": bool((u.get("totp") or {}).get("enabled")),
-            "passkeys": len(u.get("passkeys") or []), "email": u.get("email", "")}
+            "passkeys": len(u.get("passkeys") or []), "email": u.get("email", ""),
+            "sso": bool(u.get("sso")), "sso_only": bool(u.get("sso_only")),
+            "last_login": (u.get("last_login") or {}).get("ts"), "last_login_method": (u.get("last_login") or {}).get("method", "")}
 
 
 def list_users() -> List[Dict[str, Any]]:
@@ -523,7 +527,7 @@ def _sess_save(force: bool = False) -> None:
     _sessions.update(saved=now, dirty=False)
 
 
-def make_session(username: str, remember: bool, ip: str = "", agent: str = "") -> tuple:
+def make_session(username: str, remember: bool, ip: str = "", agent: str = "", method: str = "password") -> tuple:
     cfg = load_config()
     name = _find(cfg, username) or username
     sv = cfg["users"].get(name, {}).get("sv", 1)
@@ -534,11 +538,22 @@ def make_session(username: str, remember: bool, ip: str = "", agent: str = "") -
     sid = secrets.token_hex(8)
     now = int(time.time())
     payload = f"{name}|{now + ttl}|{sv}|{sid}"
+    _record_login(name, now, method)
     with _sess_lock:
         _sess_items()[sid] = {"user": name, "sv": sv, "created": now, "last_seen": now, "expires": now + ttl,
-                              "ip": ip[:64], "agent": agent[:200], "remember": bool(remember)}
+                              "ip": ip[:64], "agent": agent[:200], "remember": bool(remember), "method": method}
         _sess_save(force=True)
     return f"{payload}|{_sign(cfg['secret'], payload)}", ttl
+
+
+def _record_login(username: str, ts: int, method: str) -> None:
+    """Last sign-in per account (for the access review)."""
+    with _lock:
+        cfg = _cfg_for_write()
+        u = cfg["users"].get(username)
+        if u is not None:
+            u["last_login"] = {"ts": ts, "method": method}
+            _save_config(cfg)
 
 
 def session_id(token: Optional[str]) -> str:
@@ -576,8 +591,14 @@ def list_sessions(username: Optional[str] = None) -> List[Dict[str, Any]]:
                 continue
             if username and s["user"] != username:
                 continue
-            out.append({"id": sid, **{k: s.get(k) for k in ("user", "created", "last_seen", "expires", "ip", "agent", "remember")}})
+            out.append({"id": sid, **{k: s.get(k) for k in ("user", "created", "last_seen", "expires", "ip", "agent", "remember", "method")}})
     return sorted(out, key=lambda x: -(x["last_seen"] or 0))
+
+
+def session_method(sid: str) -> str:
+    """How a session was opened: "password", "passkey" or "sso"."""
+    with _sess_lock:
+        return (_sess_items().get(sid) or {}).get("method", "password") if sid else ""
 
 
 def revoke_session(sid: str, username: Optional[str] = None) -> bool:
@@ -821,6 +842,93 @@ def passkey_used(username: str, cred_id: str, sign_count: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Single sign-on (oidc.py): the provider's issuer + subject are stored on the account
+# ---------------------------------------------------------------------------
+def find_sso(iss: str, sub: str) -> Optional[str]:
+    cfg = load_config() or {}
+    return next((n for n, u in cfg.get("users", {}).items()
+                 if (u.get("sso") or {}).get("iss") == iss and (u.get("sso") or {}).get("sub") == sub), None)
+
+
+def match_sso_candidate(username: str, email: str) -> Optional[str]:
+    """An account not linked yet with the same username, else with the same e-mail address."""
+    cfg = load_config() or {}
+    users = cfg.get("users", {})
+    name = _find(cfg, username) if username else None
+    if name and not users[name].get("sso"):
+        return name
+    want = email.strip().casefold()
+    hits = [n for n, u in users.items() if want and (u.get("email") or "").casefold() == want and not u.get("sso")]
+    return hits[0] if len(hits) == 1 else None
+
+
+def link_sso(username: str, iss: str, sub: str) -> None:
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if not name:
+            raise AuthError("Benutzer nicht gefunden.")
+        if any((u.get("sso") or {}).get("iss") == iss and (u.get("sso") or {}).get("sub") == sub and n != name
+               for n, u in cfg["users"].items()):
+            raise AuthError("Dieses SSO-Konto ist schon mit einem anderen Benutzer verknüpft.")
+        cfg["users"][name]["sso"] = {"iss": iss, "sub": sub, "since": int(time.time())}
+        _save_config(cfg)
+
+
+def unlink_sso(username: str) -> None:
+    with _lock:
+        cfg = _cfg_for_write()
+        name = _find(cfg, username)
+        if not name or not cfg["users"][name].get("sso"):
+            raise AuthError("Benutzer ist nicht per SSO verknüpft.")
+        u = cfg["users"][name]
+        u.pop("sso", None)
+        if u.pop("sso_only", None):
+            u["disabled"] = True        # no password anyone knows: off until an admin sets one
+            u["sv"] = u.get("sv", 1) + 1
+        _save_config(cfg)
+
+
+def create_sso_user(username: str, group: str, iss: str, sub: str, email: str = "") -> str:
+    """New account for a provider identity; its password is random and unknown (SSO only)."""
+    if not USERNAME_RE.match(username):
+        raise AuthError("Ungültiger Benutzername.")
+    with _lock:
+        cfg = _cfg_for_write()
+        if _find(cfg, username):
+            raise AuthError("Diesen Benutzernamen gibt es schon.")
+        if group not in all_groups(cfg):
+            raise AuthError("Unbekannte Gruppe.")
+        if len(cfg["users"]) >= MAX_USERS:
+            raise AuthError(f"Höchstens {MAX_USERS} Benutzer.")
+        salt = secrets.token_bytes(16)
+        now = int(time.time())
+        u = {"salt": salt.hex(), "password_hash": _scrypt(secrets.token_urlsafe(32), salt).hex(), "group": group,
+             "created": now, "changed": now, "disabled": False, "sv": 1, "sso_only": True,
+             "sso": {"iss": iss, "sub": sub, "since": now}}
+        if email and EMAIL_RE.match(email):
+            u["email"] = email
+        cfg["users"][username] = u
+        _save_config(cfg)
+    return username
+
+
+def sso_seen(username: str) -> None:
+    with _lock:
+        cfg = _cfg_for_write()
+        u = cfg["users"].get(username) or {}
+        if u.get("sso"):
+            u["sso"]["last"] = int(time.time())
+            _save_config(cfg)
+
+
+def sso_links() -> List[Dict[str, Any]]:
+    cfg = load_config() or {}
+    return sorted(({"username": n, "sso": u["sso"], "sso_only": bool(u.get("sso_only"))}
+                   for n, u in cfg.get("users", {}).items() if u.get("sso")), key=lambda x: x["username"].casefold())
+
+
+# ---------------------------------------------------------------------------
 # E-mail address and "Passwort vergessen"
 # ---------------------------------------------------------------------------
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
@@ -885,6 +993,7 @@ def consume_reset(token: str, password: str) -> str:
         salt = secrets.token_bytes(16)
         u.update(salt=salt.hex(), password_hash=_scrypt(password, salt).hex(), changed=int(time.time()), sv=u.get("sv", 1) + 1)
         u.pop("reset", None)
+        u.pop("sso_only", None)
         _save_config(cfg)
     return name
 

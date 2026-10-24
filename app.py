@@ -100,6 +100,18 @@ import sbom
 import websec
 import webauthn
 import versions
+import oidc
+import gitops
+import drhandbook
+import changes
+import accessreview
+import imagepolicy
+import secretscan
+import patchsla
+import problems
+import privacy
+import baseline
+import evidence
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -245,7 +257,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # ---------------------------------------------------------------------------
 PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/api/about", "/favicon.ico",
                 "/status", "/api/public/status", "/api/auth/passkey/login/options", "/api/auth/passkey/login",
-                "/api/auth/forgot", "/api/auth/reset", "/passwort", "/alarm", "/api/alarm"}   # the public status page answers 404 while switched off
+                "/api/auth/forgot", "/api/auth/reset", "/passwort", "/alarm", "/api/alarm",
+                "/auth/oidc/start", "/auth/oidc/callback"}   # the public status page answers 404 while switched off
 
 
 def _same_origin(request: Request) -> bool:
@@ -332,7 +345,8 @@ async def require_login(request: Request, call_next):
     if user and not getattr(request.state, "via_mcp", False):
         # Two-factor login required for this group, but not set up yet: only the setup is open
         info = auth.user_info(user)
-        if info and not info["totp"] and not info["passkeys"] and websec.twofa_required(info["group"]) and not _twofa_setup_path(path):
+        if (info and not info["totp"] and not info["passkeys"] and websec.twofa_required(info["group"]) and not _twofa_setup_path(path)
+                and not (oidc.counts_as_2fa() and auth.session_method(auth.session_id(token)) == "sso")):
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Bitte zuerst die Zwei-Faktor-Anmeldung einrichten.", "setup_2fa": True}, status_code=403)
             return RedirectResponse("/2fa", status_code=303)
@@ -432,12 +446,14 @@ def _me(user: Optional[str]) -> dict:
     return {"user": user, "group": info["group"] if info else None, "group_name": group["name"] if group else None,
             "permissions": sorted(auth.permissions(user)) if user else [],
             "totp": bool(info and info["totp"]), "totp_required": bool(info and websec.twofa_required(info["group"])),
-            "passkeys": info["passkeys"] if info else 0, "email": info["email"] if info else ""}
+            "passkeys": info["passkeys"] if info else 0, "email": info["email"] if info else "",
+            "sso": bool(info and info["sso"] and oidc.enabled()), "sso_only": bool(info and info["sso_only"])}
 
 
 @app.get("/api/auth/status")
 async def api_auth_status(request: Request):
-    return {"configured": auth.is_configured(), "public_view": auth.public_view(), **_me(request.state.user)}
+    return {"configured": auth.is_configured(), "public_view": auth.public_view(), "sso_login": oidc.login_info(),
+            **_me(request.state.user)}
 
 
 @app.get("/api/me")
@@ -465,6 +481,9 @@ async def api_login(req: LoginRequest, request: Request):
         wait = auth.lockout_remaining(ip)
         raise HTTPException(status_code=401 if not wait else 429,
                             detail="Benutzername oder Passwort falsch." if not wait else f"Zu viele Fehlversuche. Bitte {wait} s warten.")
+    if not oidc.local_login_allowed(auth.user_info(username)["group"]):
+        request.state.audit_detail = "Lokale Anmeldung gesperrt (nur SSO)"
+        raise HTTPException(status_code=403, detail=f"Bitte über „{oidc.config()['label']}“ anmelden – die Anmeldung mit Passwort ist Administratoren vorbehalten.")
     recovery_left = None
     if auth.totp_enabled(username):
         if not req.code.strip():
@@ -499,11 +518,11 @@ def _login_failure(ip: str, username: str) -> None:
     logger.warning(f"Failed login for '{username[:32]}' from {ip}")
 
 
-def _set_session_cookie(response, request: Request, username: str, remember: bool) -> str:
+def _set_session_cookie(response, request: Request, username: str, remember: bool, method: str = "password") -> str:
     old = request.cookies.get(auth.COOKIE_NAME)
     if old and auth.user_from_token(old) == username:
         auth.revoke_session(auth.session_id(old))      # replaced by the new cookie
-    token, ttl = auth.make_session(username, remember, websec.client_ip(request), request.headers.get("user-agent", ""))
+    token, ttl = auth.make_session(username, remember, websec.client_ip(request), request.headers.get("user-agent", ""), method)
     response.set_cookie(
         auth.COOKIE_NAME, token,
         max_age=ttl if remember else None,  # without "remember": ends with the browser
@@ -713,13 +732,143 @@ async def api_passkey_login(req: PasskeyRequest, request: Request):
         until = websec.elevate(websec.session_key(request.cookies.get(auth.COOKIE_NAME) or ""))
         request.state.audit_detail = "Erneut bestätigt (Passkey)"
         return {"ok": True, "until": until}
+    if not oidc.local_login_allowed(auth.user_info(username)["group"]):
+        request.state.audit_detail = "Lokale Anmeldung gesperrt (nur SSO)"
+        raise HTTPException(status_code=403, detail=f"Bitte über „{oidc.config()['label']}“ anmelden – die Anmeldung mit Passkey ist Administratoren vorbehalten.")
     request.state.audit_detail = f"Mit Passkey: {stored.get('name', '')[:40]}"
     known = auth.known_ips(username)
     response = JSONResponse({"ok": True, "user": username})
-    token = _set_session_cookie(response, request, username, req.remember)
+    token = _set_session_cookie(response, request, username, req.remember, "passkey")
     websec.elevate(websec.session_key(token))
     await asyncio.to_thread(websec.check_new_login, username, ip, known, request.headers.get("user-agent", ""))
     return response
+
+
+# ---------------------------------------------------------------------------
+# Single sign-on (OpenID Connect, see oidc.py)
+# ---------------------------------------------------------------------------
+def _sso_callback_url(request: Request) -> str:
+    host = (request.headers.get("host") or "").strip()
+    if not host or not re.match(r"^[A-Za-z0-9.\-\[\]:]{1,260}$", host):
+        raise HTTPException(status_code=400, detail="Unbekannte Adresse.")
+    return f"{websec.scheme(request)}://{host}/auth/oidc/callback"
+
+
+def _sso_page(title: str, message: str, target: str = "", close: bool = False, status: int = 200) -> HTMLResponse:
+    """Small page after the provider's redirect. Continuing with a same-site navigation (meta refresh)
+    instead of a redirect: the SameSite=Strict session cookie is not sent within a chain that started
+    on the provider's site, so the dashboard would look logged out."""
+    refresh = f'<meta http-equiv="refresh" content="0;url={html_escape(target)}">' if target else ""
+    link = f'<a class="login-public" href="{html_escape(target or "/login")}">Weiter →</a>' if not close else ""
+    script = '<script src="/static/sso-close.js"></script>' if close else ""
+    html = (f'<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            f'{refresh}<title>{html_escape(title)} | PiCore Server</title><script src="/static/theme.js"></script>'
+            f'<link rel="stylesheet" href="/static/style.css"></head><body class="theme-cyber login-page"><main class="login-wrap">'
+            f'<div class="glass-card login-card"><h1>{html_escape(title)}</h1><p class="card-subtitle">{html_escape(message)}</p>{link}</div>'
+            f'</main>{script}</body></html>')
+    return HTMLResponse(html.replace("<script src=", '<script data-cfasync="false" src='), status_code=status,
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/auth/oidc/start")
+async def sso_start(request: Request, next: str = "/", remember: int = 0, reauth: int = 0):
+    session, user = "", ""
+    if reauth:
+        token = request.cookies.get(auth.COOKIE_NAME) or ""
+        user = request.state.user or ""
+        if not user:
+            return _sso_page("Nicht angemeldet", "Zum Bestätigen zuerst im Dashboard anmelden.", close=True, status=401)
+        session = websec.session_key(token)
+    try:
+        url, binding = await oidc.begin(_sso_callback_url(request), _safe_next(next), bool(remember), session, user)
+    except oidc.OidcError as e:
+        if reauth:
+            return _sso_page("Bestätigung nicht möglich", str(e), close=True, status=400)
+        return RedirectResponse(f"/login?sso_error={quote(str(e), safe='')}", status_code=303)
+    response = RedirectResponse(url, status_code=303)
+    # Lax: comes back with the provider's top-level redirect (Strict would not)
+    response.set_cookie(oidc.STATE_COOKIE, binding, max_age=oidc.FLOW_TTL, httponly=True, samesite="lax",
+                        path="/auth/oidc/", secure=websec.scheme(request) == "https")
+    return response
+
+
+@app.get("/auth/oidc/callback")
+async def sso_callback(request: Request, state: str = "", code: str = "", error: str = "", error_description: str = ""):
+    ip = websec.client_ip(request)
+    flow = None
+    try:
+        flow = oidc.take_flow(state, request.cookies.get(oidc.STATE_COOKIE) or "")
+        if error:
+            raise oidc.OidcError(f"Anbieter: {error_description or error}"[:200])
+        claims = await oidc.finish(flow, code)
+        if flow["reauth_session"]:
+            username = await asyncio.to_thread(auth.find_sso, claims["iss"].rstrip("/"), str(claims["sub"]))
+            if not username or username != flow["reauth_user"]:
+                raise oidc.OidcError("Beim Anbieter ist ein anderes Konto angemeldet.")
+        else:
+            username, how = await asyncio.to_thread(oidc.resolve_user, claims)
+    except (oidc.OidcError, auth.AuthError) as e:
+        await asyncio.to_thread(audit.record, (flow or {}).get("reauth_user", ""), ip, "GET", "/auth/oidc/callback", 401, str(e))
+        websec.record_event("warning", "SSO-Anmeldung abgelehnt", f"{ip} · {e}")
+        if flow and flow["reauth_session"]:
+            return _sso_page("Bestätigung fehlgeschlagen", str(e), close=True, status=401)
+        response = RedirectResponse(f"/login?sso_error={quote(str(e), safe='')}", status_code=303)
+        response.delete_cookie(oidc.STATE_COOKIE, path="/auth/oidc/")
+        return response
+    if flow["reauth_session"]:
+        websec.elevate(flow["reauth_session"])
+        await asyncio.to_thread(audit.record, username, ip, "GET", "/auth/oidc/callback", 200, "Erneut bestätigt (SSO)")
+        response = _sso_page("Bestätigt", "Dieses Fenster schließt sich – die Aktion läuft weiter.", close=True)
+        response.delete_cookie(oidc.STATE_COOKIE, path="/auth/oidc/")
+        return response
+    logger.info(f"SSO login '{username}' from {ip} ({how})")
+    known = auth.known_ips(username)
+    response = _sso_page("Angemeldet", f"Willkommen, {username}.", target=flow["next"])
+    token = _set_session_cookie(response, request, username, flow["remember"], "sso")
+    websec.elevate(websec.session_key(token))
+    response.delete_cookie(oidc.STATE_COOKIE, path="/auth/oidc/")
+    await asyncio.to_thread(audit.record, username, ip, "GET", "/auth/oidc/callback", 200, how)
+    await asyncio.to_thread(websec.check_new_login, username, ip, known, request.headers.get("user-agent", ""))
+    return response
+
+
+def _sso_call(fn, *args):
+    try:
+        return fn(*args)
+    except (oidc.OidcError, auth.AuthError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/settings/sso")
+async def api_settings_sso(request: Request):
+    return oidc.public(_sso_callback_url(request))
+
+
+@app.post("/api/settings/sso")
+async def api_settings_sso_save(payload: dict, request: Request):
+    await asyncio.to_thread(_sso_call, oidc.save, payload)
+    if oidc.enabled():
+        try:
+            await oidc.discovery(force=True)
+        except oidc.OidcError as e:
+            raise HTTPException(status_code=400, detail=f"Gespeichert, aber: {e}")
+    return oidc.public(_sso_callback_url(request))
+
+
+@app.post("/api/settings/sso/test")
+async def api_settings_sso_test(payload: dict):
+    try:
+        return await oidc.test(payload)
+    except oidc.OidcError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/settings/sso/unlink")
+async def api_settings_sso_unlink(payload: dict, request: Request):
+    user = str(payload.get("user") or "")
+    await asyncio.to_thread(_sso_call, auth.unlink_sso, user)
+    request.state.audit_detail = user[:32]
+    return oidc.public(_sso_callback_url(request))
 
 
 # ---------------------------------------------------------------------------
@@ -3634,6 +3783,125 @@ async def api_stack_templates_deploy(template_id: str, payload: dict, request: R
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ---------------------------------------------------------------------------
+# Secret scan (secretscan.py)
+# ---------------------------------------------------------------------------
+def _secretscan_call(fn, *args):
+    try:
+        return fn(*args)
+    except secretscan.SecretScanError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/secret-scan")
+async def api_secret_scan():
+    return await asyncio.to_thread(secretscan.overview)
+
+
+@app.post("/api/secret-scan/run")
+async def api_secret_scan_run():
+    return await asyncio.to_thread(_secretscan_call, secretscan.run)
+
+
+@app.post("/api/secret-scan/ignore")
+async def api_secret_scan_ignore(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('fingerprint', '')} · {'akzeptiert' if payload.get('ignore', True) else 'wieder beachtet'}"
+    return await asyncio.to_thread(_secretscan_call, secretscan.set_ignored, str(payload.get("fingerprint", "")), bool(payload.get("ignore", True)))
+
+
+@app.post("/api/secret-scan/settings")
+async def api_secret_scan_settings(payload: dict):
+    return await asyncio.to_thread(_secretscan_call, secretscan.save_settings, payload)
+
+
+# ---------------------------------------------------------------------------
+# Image policies (imagepolicy.py)
+# ---------------------------------------------------------------------------
+@app.get("/api/containers/image-policy")
+async def api_image_policy():
+    return await asyncio.to_thread(imagepolicy.audit)
+
+
+@app.post("/api/containers/image-policy")
+async def api_image_policy_save(payload: dict, request: Request):
+    try:
+        await asyncio.to_thread(imagepolicy.save, payload)
+    except imagepolicy.PolicyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    request.state.audit_detail = f"Modus {payload.get('mode', '')}"
+    return await asyncio.to_thread(imagepolicy.audit)
+
+
+# ---------------------------------------------------------------------------
+# GitOps: compose stacks from a Git repository (gitops.py)
+# ---------------------------------------------------------------------------
+def _gitops_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except gitops.GitOpsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/gitops")
+async def api_gitops():
+    return await asyncio.to_thread(gitops.overview)
+
+
+@app.post("/api/gitops")
+async def api_gitops_create(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('name', '')} · {payload.get('url', '')}"[:200]
+    return await asyncio.to_thread(_gitops_call, gitops.create, payload, request.state.user or "")
+
+
+@app.get("/api/gitops/{name}/diff")
+async def api_gitops_diff(name: str):
+    return await asyncio.to_thread(_gitops_call, gitops.diff, name)
+
+
+@app.get("/api/gitops/{name}/env")
+async def api_gitops_env(name: str):
+    return {"env": await asyncio.to_thread(_gitops_call, gitops.env_text, name)}
+
+
+@app.post("/api/gitops/{name}/check")
+async def api_gitops_check(name: str):
+    return await asyncio.to_thread(_gitops_call, gitops.check, name, False)
+
+
+@app.post("/api/gitops/{name}/deploy")
+async def api_gitops_deploy(name: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{name} @ {str(payload.get('commit') or 'neueste')[:12]}"
+    return await asyncio.to_thread(_gitops_call, gitops.deploy, name, request.state.user or "", str(payload.get("commit") or ""))
+
+
+@app.post("/api/gitops/{name}/update")
+async def api_gitops_update(name: str, payload: dict, request: Request):
+    request.state.audit_detail = name
+    return await asyncio.to_thread(_gitops_call, gitops.edit, name, payload)
+
+
+@app.post("/api/gitops/{name}/hook")
+async def api_gitops_new_hook(name: str, request: Request):
+    request.state.audit_detail = name
+    return await asyncio.to_thread(_gitops_call, gitops.new_hook, name)
+
+
+@app.post("/api/gitops/{name}/delete")
+async def api_gitops_delete(name: str, payload: dict, request: Request):
+    request.state.audit_detail = name + (" · gestoppt" if payload.get("stop") else "") + (" · Ordner gelöscht" if payload.get("delete_files") else "")
+    return await asyncio.to_thread(_gitops_call, gitops.remove, name, bool(payload.get("delete_files")), bool(payload.get("stop")),
+                                   request.state.user or "")
+
+
+@app.post("/hook/gitops/{token}")
+async def public_gitops_hook(token: str):
+    """Deploy webhook (GitHub, Gitea, GitLab ...): the token in the path names the stack; only a check
+    runs - deploying follows the stack's own setting."""
+    if len(token) > 100 or not await asyncio.to_thread(gitops.hook, token):
+        return JSONResponse({"detail": "Unbekannt."}, status_code=404)
+    return {"ok": True}
+
+
 @app.get("/api/containers/images")
 async def api_container_images():
     return imagecheck.status()
@@ -4343,6 +4611,296 @@ async def api_docs_services_save(payload: dict, request: Request):
 @app.post("/api/docs/services/delete")
 async def api_docs_services_delete(payload: dict):
     return await asyncio.to_thread(_docs_call, docs.servicedoc_delete, str(payload.get("target", "")))
+
+
+# ---------------------------------------------------------------------------
+# Emergency handbook (drhandbook.py)
+# ---------------------------------------------------------------------------
+def _handbook_call(fn, *args):
+    try:
+        return fn(*args)
+    except drhandbook.HandbookError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/docs/handbook")
+async def api_docs_handbook(refresh: int = 0):
+    return await asyncio.to_thread(drhandbook.build, bool(refresh))
+
+
+@app.post("/api/docs/handbook/general")
+async def api_docs_handbook_general(payload: dict, request: Request):
+    return await asyncio.to_thread(_handbook_call, drhandbook.save_general, payload, request.state.user or "")
+
+
+@app.post("/api/docs/handbook/service")
+async def api_docs_handbook_service(payload: dict, request: Request):
+    return await asyncio.to_thread(_handbook_call, drhandbook.save_service, str(payload.get("target", "")), payload,
+                                   request.state.user or "")
+
+
+@app.post("/api/docs/handbook/exported")
+async def api_docs_handbook_exported(request: Request):
+    return await asyncio.to_thread(drhandbook.mark_exported, request.state.user or "")
+
+
+@app.get("/api/docs/handbook.md")
+async def api_docs_handbook_markdown(request: Request):
+    text = await asyncio.to_thread(drhandbook.markdown)
+    if auth.can(request.state.user, "notes.edit"):
+        await asyncio.to_thread(drhandbook.mark_exported, request.state.user or "")
+    name = f"notfallhandbuch-{platform.node()}-{time.strftime('%Y-%m-%d')}.md"
+    return Response(text, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/notfallhandbuch")
+async def get_handbook_page():
+    return _serve_page("handbook.html")
+
+
+# ---------------------------------------------------------------------------
+# Change management (changes.py)
+# ---------------------------------------------------------------------------
+def _change_call(fn, *args):
+    try:
+        return fn(*args)
+    except changes.ChangeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/changes")
+async def api_changes(request: Request):
+    return await asyncio.to_thread(changes.overview, request.state.user or "")
+
+
+@app.post("/api/changes")
+async def api_changes_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:100]
+    return await asyncio.to_thread(_change_call, changes.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/changes/{change_id}")
+async def api_changes_update(change_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:100]
+    return await asyncio.to_thread(_change_call, changes.save, change_id, payload, request.state.user or "")
+
+
+@app.post("/api/changes/{change_id}/action")
+async def api_changes_action(change_id: str, payload: dict, request: Request):
+    act = str(payload.get("action", ""))
+    request.state.audit_detail = f"{change_id} · {act}"
+    return await asyncio.to_thread(_change_call, changes.action, change_id, act, request.state.user or "",
+                                   str(payload.get("note", "")), str(payload.get("result", "")))
+
+
+@app.post("/api/changes/{change_id}/delete")
+async def api_changes_delete(change_id: str, request: Request):
+    return await asyncio.to_thread(_change_call, changes.delete, change_id, request.state.user or "")
+
+
+@app.get("/api/changes/{change_id}/markdown")
+async def api_changes_markdown(change_id: str):
+    text = await asyncio.to_thread(_change_call, changes.markdown, change_id)
+    return Response(text, media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="aenderung-{change_id}.md"'})
+
+
+# ---------------------------------------------------------------------------
+# Access review (accessreview.py)
+# ---------------------------------------------------------------------------
+def _review_call(fn, *args):
+    try:
+        return fn(*args)
+    except accessreview.ReviewError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/access-review")
+async def api_access_review():
+    return await asyncio.to_thread(accessreview.overview)
+
+
+@app.post("/api/access-review/settings")
+async def api_access_review_settings(payload: dict):
+    return await asyncio.to_thread(_review_call, accessreview.save_settings, payload)
+
+
+@app.post("/api/access-review/sign-off")
+async def api_access_review_sign_off(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("note", ""))[:200]
+    return await asyncio.to_thread(_review_call, accessreview.sign_off, str(payload.get("note", "")), request.state.user or "")
+
+
+@app.get("/api/access-review/export.csv")
+async def api_access_review_csv():
+    text = await asyncio.to_thread(accessreview.csv_export)
+    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="rechte-{time.strftime("%Y-%m-%d")}.csv"'})
+
+
+@app.get("/api/access-review/{review_id}/markdown")
+async def api_access_review_markdown(review_id: str):
+    text = await asyncio.to_thread(_review_call, accessreview.review_markdown, review_id)
+    return Response(text, media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="rechte-review-{review_id}.md"'})
+
+
+# ---------------------------------------------------------------------------
+# Patch deadlines, problems, baseline check, data protection, evidence package
+# ---------------------------------------------------------------------------
+def _md_response(text: str, name: str) -> Response:
+    return Response(text, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'inline; filename="{name}"'})
+
+
+def _call400(errors: tuple, fn, *args):
+    try:
+        return fn(*args)
+    except errors as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/patch-sla")
+async def api_patch_sla():
+    return await asyncio.to_thread(patchsla.overview)
+
+
+@app.get("/api/patch-sla/markdown")
+async def api_patch_sla_markdown():
+    return _md_response(await asyncio.to_thread(patchsla.markdown), "patch-fristen.md")
+
+
+@app.post("/api/patch-sla/settings")
+async def api_patch_sla_settings(payload: dict):
+    return await asyncio.to_thread(_call400, (patchsla.PatchSlaError,), patchsla.save_settings, payload)
+
+
+@app.post("/api/patch-sla/exception")
+async def api_patch_sla_exception(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('id', '')} · {'entfernt' if payload.get('remove') else payload.get('until', '')}"
+    return await asyncio.to_thread(_call400, (patchsla.PatchSlaError,), patchsla.set_exception, str(payload.get("id", "")),
+                                   str(payload.get("reason", "")), str(payload.get("until", "")), request.state.user or "", bool(payload.get("remove")))
+
+
+@app.get("/api/problems")
+async def api_problems():
+    return await asyncio.to_thread(problems.overview)
+
+
+@app.get("/api/problems/markdown")
+async def api_problems_markdown():
+    return _md_response(await asyncio.to_thread(problems.markdown), "probleme.md")
+
+
+@app.post("/api/problems")
+async def api_problems_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:100]
+    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/problems/{pid}")
+async def api_problems_update(pid: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:100]
+    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.save, pid, payload, request.state.user or "")
+
+
+@app.post("/api/problems/{pid}/status")
+async def api_problems_status(pid: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{pid} · {payload.get('status', '')}"
+    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.set_status, pid, str(payload.get("status", "")),
+                                   str(payload.get("note", "")), request.state.user or "")
+
+
+@app.post("/api/problems/{pid}/change")
+async def api_problems_change(pid: str, request: Request):
+    return await asyncio.to_thread(_call400, (problems.ProblemError, changes.ChangeError), problems.create_change, pid, request.state.user or "")
+
+
+@app.post("/api/problems/{pid}/delete")
+async def api_problems_delete(pid: str):
+    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.delete, pid)
+
+
+@app.get("/api/compliance/baseline")
+async def api_baseline(refresh: int = 0):
+    return await asyncio.to_thread(baseline.overview, bool(refresh))
+
+
+@app.get("/api/compliance/baseline/markdown")
+async def api_baseline_markdown():
+    return _md_response(await asyncio.to_thread(baseline.markdown), "grundschutz-check.md")
+
+
+@app.post("/api/compliance/baseline/assess")
+async def api_baseline_assess(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('id', '')} · {payload.get('state', '') or 'zurückgesetzt'}"
+    return await asyncio.to_thread(_call400, (baseline.BaselineError,), baseline.assess, str(payload.get("id", "")), str(payload.get("state", "")),
+                                   str(payload.get("note", "")), str(payload.get("evidence", "")), request.state.user or "")
+
+
+@app.get("/api/compliance/privacy")
+async def api_privacy():
+    return await asyncio.to_thread(privacy.overview)
+
+
+@app.get("/api/compliance/privacy/markdown")
+async def api_privacy_markdown(part: str = "all"):
+    part = part if part in ("all", "vvt", "tom") else "all"
+    return _md_response(await asyncio.to_thread(privacy.markdown, part), f"datenschutz-{part}.md")
+
+
+@app.post("/api/compliance/privacy/controller")
+async def api_privacy_controller(payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_controller, payload, request.state.user or "")
+
+
+@app.post("/api/compliance/privacy/activities")
+async def api_privacy_activity_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:100]
+    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_activity, None, payload, request.state.user or "")
+
+
+@app.post("/api/compliance/privacy/activities/{aid}")
+async def api_privacy_activity_update(aid: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:100]
+    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_activity, aid, payload, request.state.user or "")
+
+
+@app.post("/api/compliance/privacy/activities/{aid}/delete")
+async def api_privacy_activity_delete(aid: str):
+    return await asyncio.to_thread(privacy.delete_activity, aid)
+
+
+@app.post("/api/compliance/privacy/tom")
+async def api_privacy_tom(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("area", ""))
+    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_tom, str(payload.get("area", "")), str(payload.get("text", "")),
+                                   request.state.user or "")
+
+
+@app.get("/api/compliance/evidence")
+async def api_evidence_history():
+    return await asyncio.to_thread(evidence.history)
+
+
+@app.post("/api/compliance/evidence")
+async def api_evidence_build(payload: dict, request: Request):
+    try:
+        since, until = int(payload.get("since") or 0), int(payload.get("until") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Ungültiger Zeitraum.")
+    content, name = await asyncio.to_thread(_call400, (evidence.EvidenceError,), evidence.build, since, until, request.state.user or "")
+    request.state.audit_detail = f"{name} · {len(content) // 1024} KB"
+    return Response(content, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/nachweise")
+async def get_compliance_page():
+    return _serve_page("compliance.html")
+
+
+@app.get("/druck")
+async def get_print_page():
+    return _serve_page("print.html")
 
 
 @app.get("/api/history/interfaces")

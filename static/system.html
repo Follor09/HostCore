@@ -56,6 +56,7 @@
       <a data-perm="security.view" href="#firewall-traffic">Firewall-Traffic</a>
       <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
       <a data-perm="security.view" href="#haertung">Härtung</a>
+      <a data-perm="security.view" href="#geheimnis-scan">Geheimnis-Scan</a>
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
       <a href="#backups">Backups</a>
@@ -72,6 +73,7 @@
       <a href="#pakete">Paketverwaltung</a>
       <a href="#aufraeumen">Aufräumen</a>
       <a href="#schwachstellen">Schwachstellen</a>
+      <a href="#patch-fristen">Patch-Fristen</a>
       <a href="#lebenszyklus">Lebenszyklus</a>
       <a href="#software-inventar">Software-Inventar</a>
       <a data-perm="security.view" href="#aktivitaet">Aktivität</a>
@@ -940,6 +942,29 @@
         <p class="field-hint" id="vu-hint"></p>
       </section>
 
+      <!-- Patch-Fristen -->
+      <section class="glass-card settings-section" id="patch-fristen">
+        <div class="section-head">
+          <h2>Patch-Fristen</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="ps-scanned"></span>
+            <select id="ps-filter" class="inline-select" aria-label="Filter">
+              <option value="due">Offene</option>
+              <option value="all">Alle</option>
+            </select>
+            <a class="btn-secondary" href="/druck?src=patch" target="_blank" rel="noopener">Bericht</a>
+          </div>
+        </div>
+        <p class="section-desc">Jede bekannte Lücke mit verfügbarem Fix bekommt eine Frist nach Schwere – gezählt ab dem Tag, an dem der Fix hier zum ersten Mal auftauchte. Pakete von debsecan (hohe Dringlichkeit + aus dem Netz ausnutzbar gilt als kritisch) und Container-Images von Trivy. Überfällige Lücken werden zu Ereignissen; Ausnahmen brauchen eine Begründung und ein Ablaufdatum. Behobene Lücken bleiben ein Jahr als Nachweis: Dauer bis zur Behebung und Einhaltung der Frist.</p>
+        <div class="table-scroll"><table class="data-table ps-stats" id="ps-stats"></table></div>
+        <div class="table-scroll"><table class="data-table" id="ps-table"></table></div>
+        <details class="db-details">
+          <summary>Fristen und Ausnahmen</summary>
+          <form class="form-grid ps-settings" id="ps-settings" autocomplete="off"></form>
+          <div class="table-scroll"><table class="data-table" id="ps-exceptions"></table></div>
+        </details>
+      </section>
+
       <!-- Lebenszyklus -->
       <section class="glass-card settings-section" id="lebenszyklus">
         <div class="section-head">
@@ -966,6 +991,28 @@
         <p class="section-desc">Die Sicherheits-Grundeinstellungen dieses Pi: SSH, Firewall, im Netz erreichbare Dienste, sudo, automatische Anmeldung und Updates. Jeder Punkt mit Bewertung und dem Befehl zur Behebung. Läuft zusätzlich einmal täglich; schwere Mängel erscheinen in der Statusübersicht.</p>
         <div class="bench-values ssh-stats" id="hd-tiles"></div>
         <div class="st-groups" id="hd-groups"></div>
+      </section>
+
+      <section data-perm="security.view" class="glass-card settings-section" id="geheimnis-scan">
+        <div class="section-head">
+          <h2>Geheimnis-Scan</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="ss-checked"></span>
+            <button class="btn-secondary" id="ss-run" type="button">Jetzt scannen</button>
+          </div>
+        </div>
+        <p class="section-desc">Sucht nach Schlüsseln, Tokens und Passwörtern, die an der falschen Stelle liegen: in Stack-Ordnern und GitOps-Klonen, Schnellaktionen, eigenen Ordnern und der Dokumentation des Dashboards (Notizen, Wiki, Runbooks, Tagebuch, Steckbriefe, Befehle). <code>.env</code>-Dateien sind der richtige Ort – bei ihnen und bei Schlüsseldateien wird nur geprüft, ob andere sie lesen können. Gespeichert werden nur maskierte Auszüge, nie das Geheimnis selbst. Läuft einmal täglich.</p>
+        <div class="hb-summary" id="ss-tiles"></div>
+        <div class="table-scroll"><table class="data-table" id="ss-table"></table></div>
+        <details class="db-details">
+          <summary>Geprüfte Orte und eigene Ordner</summary>
+          <ul class="ss-roots" id="ss-roots"></ul>
+          <form class="inline-grid" id="ss-settings" autocomplete="off">
+            <label class="login-field full"><span>Weitere Ordner (einer pro Zeile)</span><textarea id="ss-folders" rows="3" placeholder="/opt/scripts"></textarea></label>
+            <label class="toggle-label full"><input type="checkbox" id="ss-docs"> Dokumentation des Dashboards mitprüfen</label>
+            <div class="form-actions"><button type="submit" class="btn-secondary" data-perm="settings.manage">Speichern</button></div>
+          </form>
+        </details>
       </section>
 
       <!-- Software-Inventar -->
@@ -1037,6 +1084,8 @@
   <script src="/static/alerts.js"></script>
   <script src="/static/software.js"></script>
   <script src="/static/hardening.js"></script>
+  <script src="/static/secretscan.js"></script>
+  <script src="/static/patchsla.js"></script>
   <script src="/static/system-extra.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>

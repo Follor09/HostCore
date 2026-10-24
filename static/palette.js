@@ -96,6 +96,7 @@
     page('page:containers', 'Container', '/containers', 'docker kubernetes k3s pods compose stacks images');
     page('page:settings', 'Einstellungen', '/settings', 'settings konfiguration');
     page('page:docs', 'Dokumentation', '/doku', 'doku inventar tagebuch runbook steckbrief anleitung');
+    page('page:compliance', 'Compliance', '/nachweise', 'grundschutz bsi cis datenschutz dsgvo vvt tom nachweis prüfer audit');
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
     page('page:wiki', 'Wissensdatenbank', '/wissen', 'wiki wissen seiten markdown notizen anleitung');
     page('page:fleet', 'Flotte', '/flotte', 'alle pis remote übersicht updates fleet');

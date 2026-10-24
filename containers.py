@@ -671,6 +671,11 @@ def compose_job(name: str, files: List[str], cwd: str, action: str, user: str = 
     for f in files:
         base += ["-f", f]
     task_steps = [{"argv": ["docker", "compose", *base, *step], "show": f"docker compose {' '.join(step)}"} for step in steps]
+    if action in ("up", "update", "install"):
+        import imagepolicy
+        gate = imagepolicy.gate_step(name, base)
+        if gate:
+            task_steps.insert(0, gate)
     data: Dict[str, Any] = {"stack": name, "action": action, "label": label}
     if action == "update":
         # Safe update: the stack's databases are dumped first, a health check runs last.

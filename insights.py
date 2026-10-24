@@ -330,7 +330,9 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
     for mod, cat, link in (("anomalies", "anomaly", "/system#auffaelligkeiten"), ("dnswatch", "network", "/system#dns-ueberwachung"),
                            ("incidents", "incident", "/doku#stoerungen"), ("vulns", "security", "/system#schwachstellen"),
                            ("eol", "system", "/system#lebenszyklus"), ("websec", "security", "/settings#sicherheit"),
-                           ("dbmonitor", "database", "/containers#datenbanken"), ("tasks", "task", "#aufgaben")):
+                           ("dbmonitor", "database", "/containers#datenbanken"), ("tasks", "task", "#aufgaben"),
+                           ("gitops", "changes", "/containers#gitops"), ("changes", "changes", "/doku#aenderungsantraege"),
+                           ("secretscan", "security", "/system#geheimnis-scan"), ("patchsla", "security", "/system#patch-fristen")):
         try:
             for e in __import__(mod).events_since(since):
                 out.append(_ev(e["ts"], e["level"], cat, e["title"], e.get("detail", ""), e.get("link") or link, e.get("key", "")))
@@ -408,7 +410,11 @@ def status_summary() -> Dict[str, Any]:
                           ("incidents", "open_alerts", "/doku#stoerungen"), ("vulns", "alerts", "/system#schwachstellen"),
                           ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose"),
                           ("hardening", "alerts", "/system#haertung"), ("dbmonitor", "alerts", "/containers#datenbanken"),
-                          ("stackcheck", "alerts", "/containers#stack-sicherheit")):
+                          ("stackcheck", "alerts", "/containers#stack-sicherheit"), ("gitops", "alerts", "/containers#gitops"),
+                          ("changes", "alerts", "/doku#aenderungsantraege"), ("accessreview", "alerts", "/settings#rechte-review"),
+                          ("imagepolicy", "alerts", "/containers#image-richtlinien"), ("secretscan", "alerts", "/system#geheimnis-scan"),
+                          ("patchsla", "alerts", "/system#patch-fristen"), ("problems", "alerts", "/doku#probleme"),
+                          ("privacy", "alerts", "/nachweise#datenschutz-vvt")):
         try:
             for a in getattr(__import__(mod), fn)():
                 add(a.get("level", "warning"), a["text"], link)

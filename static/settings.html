@@ -53,6 +53,8 @@
       <a href="#benutzer" data-perm="users.manage">Benutzer</a>
       <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
       <a href="#sicherheit" data-perm="users.manage">Sicherheit</a>
+      <a href="#sso" data-perm="users.manage">Anmeldung per SSO</a>
+      <a href="#rechte-review" data-perm="users.manage">Rechte-Review</a>
       <a href="#terminal-mitschnitte" data-perm="users.manage">Terminal-Mitschnitte</a>
       <a href="#remote" data-perm="users.manage">Remote-Pis</a>
       <a href="#netbox" data-perm="settings.manage">NetBox</a>
@@ -254,6 +256,91 @@
         <div class="table-scroll"><table class="data-table" id="sec-sessions"></table></div>
         <h3 class="subhead">Sicherheitsereignisse (30 Tage)</h3>
         <ol class="event-list" id="sec-events"></ol>
+      </section>
+
+      <section class="glass-card settings-section" id="sso" data-perm="users.manage">
+        <div class="section-head">
+          <h2>Anmeldung per SSO</h2>
+          <span class="health-tag" id="sso-state">–</span>
+        </div>
+        <p class="section-desc">Anmeldung über einen OpenID-Connect-Anbieter wie Pocket ID, Authentik oder Keycloak. Beim ersten Mal wird das Konto beim Anbieter mit einem Dashboard-Benutzer verknüpft – über eine Gruppen-Zuordnung, den gleichen Benutzernamen oder die gleiche E-Mail-Adresse. Gruppen des Anbieters können die Dashboard-Gruppe bestimmen. Lokale Konten bleiben als Notzugang erhalten; <code>./set-password.sh</code> auf dem Pi funktioniert immer.</p>
+        <form class="remote-form mcp-form" id="sso-form" autocomplete="off">
+          <label class="toggle-label mcp-wide"><input type="checkbox" id="sso-enabled"> Anmeldung per SSO einschalten</label>
+          <label class="fw-field mcp-wide"><span>Anbieter-Adresse (Issuer)</span><input type="text" id="sso-issuer" placeholder="https://id.example.com" spellcheck="false"></label>
+          <label class="fw-field"><span>Client-ID</span><input type="text" id="sso-client" spellcheck="false" autocomplete="picore-sso-client" data-lpignore="true"></label>
+          <label class="fw-field"><span>Client-Secret</span><input type="password" id="sso-secret" spellcheck="false" autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
+          <label class="fw-field"><span>Name auf der Anmeldeseite</span><input type="text" id="sso-label" maxlength="40" placeholder="Pocket ID"></label>
+          <label class="fw-field"><span>Scopes</span><input type="text" id="sso-scopes" spellcheck="false" placeholder="openid profile email groups"></label>
+          <label class="fw-field"><span>Claim mit den Gruppen</span><input type="text" id="sso-claim" spellcheck="false" placeholder="groups"></label>
+          <label class="fw-field"><span>Lokale Anmeldung (Passwort, Passkey)</span><select id="sso-local"></select></label>
+          <div class="mcp-wide">
+            <h3 class="subhead">Konten zuordnen</h3>
+            <label class="toggle-label"><input type="checkbox" id="sso-match"> Vorhandene Benutzer über gleichen Benutzernamen oder bestätigte E-Mail-Adresse verknüpfen</label>
+            <label class="toggle-label"><input type="checkbox" id="sso-create"> Unbekannte Konten automatisch anlegen</label>
+            <label class="fw-field sso-default"><span>Gruppe für neue Konten ohne Gruppen-Zuordnung</span><select id="sso-default"></select></label>
+            <label class="toggle-label"><input type="checkbox" id="sso-restrict"> Nur Mitglieder der zugeordneten Gruppen zulassen</label>
+            <label class="toggle-label"><input type="checkbox" id="sso-sync"> Dashboard-Gruppe bei jeder Anmeldung aus den Anbieter-Gruppen übernehmen</label>
+            <label class="toggle-label"><input type="checkbox" id="sso-2fa"> SSO-Anmeldung gilt als Zwei-Faktor-Anmeldung (Anbieter verlangt Passkey oder 2FA)</label>
+          </div>
+          <div class="mcp-wide">
+            <h3 class="subhead">Gruppen-Zuordnung</h3>
+            <p class="field-hint">Gruppe beim Anbieter → Dashboard-Gruppe. Die erste passende Zeile gilt – privilegierte Gruppen nach oben.</p>
+            <div class="mcp-users" id="sso-groups"></div>
+            <button type="button" class="btn-secondary" id="sso-group-add">+ Zuordnung</button>
+          </div>
+          <div class="remote-form-actions">
+            <button type="button" class="btn-secondary" id="sso-test">Anbieter testen</button>
+            <button type="submit" class="btn-primary">Speichern</button>
+          </div>
+        </form>
+        <p class="form-msg" id="sso-msg" role="status"></p>
+        <dl class="kv-grid mcp-info" id="sso-info"></dl>
+        <h3 class="subhead">Verknüpfte Konten</h3>
+        <div class="table-scroll"><table class="data-table" id="sso-linked"></table></div>
+        <details class="remote-howto">
+          <summary>So wird es eingerichtet</summary>
+          <ol>
+            <li>Beim Anbieter einen OIDC-Client (vertraulich, mit Secret) anlegen. Als Callback-URL die oben angezeigte Adresse eintragen – für jede Adresse, unter der das Dashboard geöffnet wird (z.B. Cloudflare-Domain und Heimnetz-IP), eine eigene.</li>
+            <li>Bei Pocket ID: unter dem Client die erlaubten Benutzergruppen setzen und „PKCE“ aktivieren. Gruppen kommen mit dem Scope <code>groups</code>.</li>
+            <li>Client-ID und Secret hier eintragen, „Anbieter testen“, dann einschalten und speichern.</li>
+            <li>Erst nachdem die SSO-Anmeldung funktioniert, die lokale Anmeldung auf „Nur Administratoren“ stellen. Administratoren behalten Passwort und Passkey als Notzugang.</li>
+            <li>„Bestätigen“ vor kritischen Änderungen geht dann auch über den Anbieter (öffnet ein kleines Fenster).</li>
+          </ol>
+        </details>
+      </section>
+
+      <section class="glass-card settings-section" id="rechte-review" data-perm="users.manage">
+        <div class="section-head">
+          <h2>Rechte-Review</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="ar-due">–</span>
+            <a class="btn-secondary" href="/api/access-review/export.csv">CSV</a>
+          </div>
+        </div>
+        <p class="section-desc">Regelmäßige Prüfung der Zugänge: wer welche Rechte hat, wann zuletzt angemeldet, mit oder ohne zweiten Faktor – dazu Links ohne Anmeldung und MCP-Identitäten. Befunde lassen sich direkt beheben. Abgezeichnet wird mit Notiz; der Stand wird als Nachweis mit Fingerabdruck gespeichert und lässt sich als Markdown exportieren.</p>
+        <div class="hb-summary" id="ar-summary"></div>
+        <ul class="hb-gaps" id="ar-general"></ul>
+        <h3 class="subhead">Konten</h3>
+        <div class="table-scroll"><table class="data-table ar-table" id="ar-users"></table></div>
+        <h3 class="subhead">Gruppen</h3>
+        <div class="table-scroll"><table class="data-table" id="ar-groups"></table></div>
+        <h3 class="subhead">Links ohne Anmeldung und MCP-Identitäten</h3>
+        <div class="table-scroll"><table class="data-table" id="ar-links"></table></div>
+        <h3 class="subhead">Abzeichnen</h3>
+        <form class="inline-grid" id="ar-sign" autocomplete="off">
+          <label class="login-field full"><span>Notiz (z. B. geprüft mit …, Ausnahmen und Begründung)</span><textarea id="ar-note" rows="3"></textarea></label>
+          <div class="form-actions"><button type="submit" class="btn-primary">Review abzeichnen</button></div>
+        </form>
+        <details class="db-details">
+          <summary>Einstellungen und bisherige Reviews</summary>
+          <form class="form-grid ar-settings" id="ar-settings" autocomplete="off">
+            <label class="login-field"><span>Review alle (Tage)</span><input type="number" id="ar-interval" min="7" max="365"></label>
+            <label class="login-field"><span>Inaktiv nach (Tagen)</span><input type="number" id="ar-inactive" min="14" max="730"></label>
+            <label class="login-field"><span>Passwort-Hinweis nach (Tagen)</span><input type="number" id="ar-password" min="30" max="1825"></label>
+            <div class="form-actions"><button type="submit" class="btn-secondary">Speichern</button></div>
+          </form>
+          <div class="table-scroll"><table class="data-table" id="ar-history"></table></div>
+        </details>
       </section>
 
       <section class="glass-card settings-section" id="terminal-mitschnitte" data-perm="users.manage">
@@ -882,6 +969,8 @@
   <script src="/static/twofa.js"></script>
   <script src="/static/passkey.js"></script>
   <script src="/static/security-settings.js"></script>
+  <script src="/static/sso-settings.js"></script>
+  <script src="/static/access-review.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>
