@@ -18,10 +18,10 @@
   const raw = (tag, cls, text) => { const e = el(tag, cls, text); e.setAttribute('data-no-i18n', ''); return e; };
 
   function tryPanel(ep) {
-    const box = el('div', 'ad-try');
+    const box = el('div', 'apidoc-try');
     const inputs = {};
     ep.params.forEach(p => {
-      const l = el('label', 'ad-param');
+      const l = el('label', 'apidoc-param');
       l.appendChild(raw('span', 'mono', `${p.name}${p.required ? ' *' : ''}`));
       const i = el('input');
       i.type = 'text';
@@ -33,7 +33,7 @@
     });
     const go = el('button', 'btn-secondary', t('Ausprobieren'));
     go.type = 'button';
-    const out = raw('pre', 'fleet-log-pre ad-out');
+    const out = raw('pre', 'fleet-log-pre apidoc-out');
     out.hidden = true;
     go.addEventListener('click', async () => {
       let path = ep.path;
@@ -62,17 +62,17 @@
   }
 
   function entry(ep) {
-    const det = el('details', 'ad-entry');
+    const det = el('details', 'apidoc-entry');
     const sum = el('summary');
-    sum.append(el('span', `ad-method ${ep.method.toLowerCase()}`, ep.method), raw('code', 'ad-path', ep.path));
-    if (ep.summary) sum.appendChild(raw('span', 'ad-summary', ep.summary));
+    sum.append(el('span', `apidoc-method ${ep.method.toLowerCase()}`, ep.method), raw('code', 'apidoc-path', ep.path));
+    if (ep.summary) sum.appendChild(raw('span', 'apidoc-summary', ep.summary));
     det.appendChild(sum);
-    const meta = el('div', 'ad-meta');
+    const meta = el('div', 'apidoc-meta');
     meta.appendChild(el('span', 'health-tag', t(ep.permission_label || 'Angemeldet')));
     meta.appendChild(el('span', 'field-hint', t(ep.local_only ? 'immer dieser Pi' : 'wird an den gewählten Remote-Pi weitergeleitet')));
     det.appendChild(meta);
     if (ep.params.length) {
-      const tb = el('table', 'data-table ad-table');
+      const tb = el('table', 'data-table apidoc-table');
       const h = tb.createTHead().insertRow();
       ['Parameter', 'Ort', 'Typ', 'Standard'].forEach(x => h.appendChild(el('th', '', t(x))));
       const b = tb.createTBody();
@@ -87,7 +87,7 @@
     }
     if (ep.body) {
       det.appendChild(el('p', 'field-hint', t('JSON im Body:')));
-      det.appendChild(raw('code', 'ad-body', ep.body.length
+      det.appendChild(raw('code', 'apidoc-body', ep.body.length
         ? `{ ${ep.body.map(b => `"${b.name}": ${b.type}${b.required ? '' : '?'}`).join(', ')} }` : '{ … }'));
     }
     if (ep.method === 'GET') {
@@ -98,17 +98,17 @@
   }
 
   function render() {
-    const q = $('ad-q').value.trim().toLowerCase();
-    const g = $('ad-group').value, m = $('ad-method').value;
+    const q = $('apidoc-q').value.trim().toLowerCase();
+    const g = $('apidoc-group').value, m = $('apidoc-method').value;
     const list = data.endpoints.filter(e => (!g || e.group === g) && (!m || e.method === m)
       && (!q || [e.path, e.summary, e.permission_label, e.group].some(v => (v || '').toLowerCase().includes(q))));
-    $('ad-count').textContent = t(`${list.length} von ${data.count} Schnittstellen`);
-    const box = $('ad-groups');
+    $('apidoc-count').textContent = t(`${list.length} von ${data.count} Schnittstellen`);
+    const box = $('apidoc-groups');
     box.innerHTML = '';
     data.groups.forEach(group => {
       const items = list.filter(e => e.group === group);
       if (!items.length) return;
-      const sec = el('section', 'glass-card settings-section ad-group');
+      const sec = el('section', 'glass-card settings-section apidoc-group');
       sec.appendChild(el('h2', '', t(group)));
       items.forEach(e => sec.appendChild(entry(e)));
       box.appendChild(sec);
@@ -125,11 +125,11 @@
     } catch (e) { /* ignore */ }
     const res = await fetch('/api/api-docs');
     data = await res.json();
-    data.groups.forEach(g => { const o = el('option', '', t(g)); o.value = g; $('ad-group').appendChild(o); });
+    data.groups.forEach(g => { const o = el('option', '', t(g)); o.value = g; $('apidoc-group').appendChild(o); });
     let timer;
-    $('ad-q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 150); });
-    ['ad-group', 'ad-method'].forEach(id => $(id).addEventListener('change', render));
-    $('ad-filters').addEventListener('submit', e => e.preventDefault());
+    $('apidoc-q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 150); });
+    ['apidoc-group', 'apidoc-method'].forEach(id => $(id).addEventListener('change', render));
+    $('apidoc-filters').addEventListener('submit', e => e.preventDefault());
     render();
   }
 
