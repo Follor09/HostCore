@@ -524,6 +524,35 @@ def get_job(job_id: str) -> Dict[str, Any]:
     return job
 
 
+def pre_update_dumps(stack: str) -> List[Dict[str, Any]]:
+    """Dump steps for the running databases of a compose stack (before its update)."""
+    out = []
+    for db in discover():
+        if db["stack"] != stack or db["state"] != "running" or _settings(db["name"])["ignore"]:
+            continue
+        target = os.path.join(_dump_dir(db["name"]), f"{db['name']}-{time.strftime('%Y%m%d-%H%M%S')}-vor-update.sql.gz")
+        tmp = target + ".part"
+        out.append({"name": db["name"], "tmp": tmp, "target": target,
+                    "step": {"shell": _dump_command(db, tmp, target), "show": f"Sicherung vor dem Update: {db['name']} → {os.path.basename(target)}"}})
+    return out
+
+
+def dumps_done(dumps: List[Dict[str, Any]]) -> None:
+    """After a safe update: count the dumps it made (prune old ones, note the time)."""
+    for d in dumps:
+        if os.path.isfile(d.get("target", "")):
+            _prune(d["name"])
+            with _lock:
+                c = dict(_config())
+                c["last_dump"] = {**(c.get("last_dump") or {}), d["name"]: {"ts": int(os.path.getmtime(d["target"])), "error": ""}}
+                settings_store.set(KEY, c)
+        else:
+            try:
+                os.remove(d.get("tmp", ""))
+            except OSError:
+                pass
+
+
 def _running_dump(name: str) -> Optional[Dict[str, Any]]:
     import tasks
     t = next((t for t in tasks.overview(limit=30, kind="dbdump", key=f"dbdump:{name}")["tasks"] if t["state"] == "running"), None)

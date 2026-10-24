@@ -316,7 +316,8 @@ def events_since(since: float) -> List[Dict[str, Any]]:
     for t in reversed(_all(limit=150)):          # oldest first
         bad = t["state"] in ("error", "timeout", "lost")
         if bad and (t["ended"] or t["started"]) >= since:
-            out.append({"ts": int(t["ended"] or t["started"]), "level": "warning", "title": f"Aufgabe fehlgeschlagen: {t['title']}",
+            out.append({"ts": int(t["ended"] or t["started"]), "level": "critical" if (t.get("data") or {}).get("critical") else "warning",
+                        "title": f"Aufgabe fehlgeschlagen: {t['title']}",
                         "detail": t["state_label"] + (f" (Exit {t['exit']})" if t.get("exit") not in (None, 0) else ""),
                         "key": f"task:{t['key'] or t['id']}", "link": f"#aufgabe={t['id']}"})
         elif t["state"] == "ok" and failed_before.get(t["key"]) and t["ended"] and t["ended"] >= since:

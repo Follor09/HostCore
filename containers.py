@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -531,6 +532,7 @@ def multi_logs(names: List[str], since: float = 0, tail: int = 200) -> Dict[str,
 # Jobs: long compose commands run as tasks (tasks.py) - they keep running without the page
 # and across dashboard restarts; the page polls them in the old "job" shape
 # ---------------------------------------------------------------------------
+HEALTH_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stackhealth.py")
 STACK_ACTIONS = {
     "up": ("Starten", [["up", "-d"]]),
     "stop": ("Stoppen", [["stop"]]),
@@ -552,6 +554,10 @@ def _job(task: Dict[str, Any], output: bool = True) -> Dict[str, Any]:
 
 def _compose_done(task: Dict[str, Any]) -> None:
     invalidate()
+    dumps = (task.get("data") or {}).get("dumps") or []
+    if dumps:
+        import dbmonitor
+        dbmonitor.dumps_done(dumps)
     if task["state"] == "ok" and (task.get("data") or {}).get("action") == "update":
         import imagecheck
         imagecheck.start_check()   # the "update available" marks should go away
@@ -664,11 +670,19 @@ def compose_job(name: str, files: List[str], cwd: str, action: str, user: str = 
     base = ["-p", name]
     for f in files:
         base += ["-f", f]
+    task_steps = [{"argv": ["docker", "compose", *base, *step], "show": f"docker compose {' '.join(step)}"} for step in steps]
+    data: Dict[str, Any] = {"stack": name, "action": action, "label": label}
+    if action == "update":
+        # Safe update: the stack's databases are dumped first, a health check runs last.
+        # If it fails the task fails - a critical event, so an alarm with the dump next to it.
+        import dbmonitor
+        dumps = dbmonitor.pre_update_dumps(name)
+        task_steps = [d.pop("step") for d in dumps] + task_steps
+        task_steps.append({"argv": [sys.executable, HEALTH_SCRIPT, name, "120"], "show": "Gesundheitsprüfung"})
+        data.update(dumps=dumps, critical=True)
     try:
-        task = tasks.start("compose", f"{label}: {name}", [{"argv": ["docker", "compose", *base, *step],
-                                                            "show": f"docker compose {' '.join(step)}"} for step in steps],
-                           user=user, key=f"stack:{name}", cwd=cwd, timeout=1800 * len(steps),
-                           data={"stack": name, "action": action, "label": label})
+        task = tasks.start("compose", f"{label}: {name}", task_steps, user=user, key=f"stack:{name}", cwd=cwd,
+                           timeout=1800 * len(task_steps), data=data)
     except tasks.TaskError:
         raise ContainerError("Für diesen Stack läuft schon eine Aktion.")
     invalidate()

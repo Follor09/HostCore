@@ -48,6 +48,7 @@
       <a href="#kubernetes">Kubernetes</a>
       <a href="#docker">Docker</a>
       <a href="#datenbanken">Datenbanken</a>
+      <a href="#stack-sicherheit">Sicherheitscheck</a>
       <a href="#live-logs">Live-Logs</a>
       <a href="#stacks">Compose-Stacks</a>
       <a href="#images">Image-Updates</a>
@@ -148,6 +149,19 @@
         </div>
         <p class="section-desc">PostgreSQL-, MySQL- und MariaDB-Container werden von selbst erkannt und alle fünf Minuten geprüft: Verbindungen, Größe und Wachstum, lange laufende Abfragen, größte Tabellen. Abgefragt wird im Container mit dessen eigenen Zugangsdaten – es wird kein Passwort gespeichert. Probleme erscheinen in den Ereignissen, der Statusübersicht und lösen Alarme aus. Dumps landen gepackt im Ordner db-dumps des Dashboards.</p>
         <div class="db-list" id="db-list"></div>
+      </section>
+
+      <!-- Sicherheitscheck -->
+      <section class="glass-card settings-section" id="stack-sicherheit">
+        <div class="section-head">
+          <h2>Sicherheitscheck</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="sc-checked"></span>
+            <button class="btn-secondary" id="sc-run" type="button">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">Prüft jeden Compose-Stack auf riskante Einstellungen: privilegierte Container, eingebundener Docker-Socket, Host-Netzwerk, weitreichende Rechte, Host-Ordner wie / oder /etc, offene Ports, Images ohne feste Version, Passwörter im Klartext in der Compose-Datei und fehlende Restart-Policy. Ausgewertet wird die zusammengeführte Konfiguration (docker compose config), einmal täglich. Bewusst so gewollte Befunde lassen sich akzeptieren.</p>
+        <div class="sc-list" id="sc-list"></div>
       </section>
 
       <!-- Live-Logs -->
@@ -347,6 +361,7 @@
   <script src="/static/appstore.js"></script>
   <script src="/static/containerlogs.js"></script>
   <script src="/static/dbmonitor.js"></script>
+  <script src="/static/stackcheck.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>

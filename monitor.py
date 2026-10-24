@@ -445,7 +445,7 @@ class Monitor:
                     threading.Thread(target=domains.check_if_due, daemon=True).start()
                 except Exception as e:
                     logger.warning(f"Domain check failed: {e}")
-                for mod in ("vulns", "eol", "selftest", "hardening"):
+                for mod in ("vulns", "eol", "selftest", "hardening", "stackcheck"):
                     try:
                         __import__(mod).check_if_due()
                     except Exception as e:
@@ -458,6 +458,8 @@ class Monitor:
                 try:
                     import terminal
                     terminal.cleanup()
+                    import recordings
+                    recordings.cleanup()
                 except Exception as e:
                     logger.warning(f"Terminal clean-up failed: {e}")
                 try:

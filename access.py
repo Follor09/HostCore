@@ -83,6 +83,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/api/mcp/approvals$", "login"),
     ("POST", r"^/api/mcp/approvals/[^/]+/(approve|deny)$", "login"),   # own requests; others need users.manage (checked there)
     ("*", r"^/api/settings/(email|email/test|retention|retention/cleanup)$", "settings.manage"),
+    ("POST", r"^/api/settings/terminal-recording$", "users.manage"),
     ("GET", r"^/api/backups$", "system.view"),
     ("GET", r"^/api/alerts$", "system.view"),
     ("GET", r"^/api/tasks(/[0-9a-f]{16}(/log)?)?$", "system.view"),
@@ -90,6 +91,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/alerts/[0-9a-f]{12}/(ack|resolve)$", "system.view"),
     ("*", r"^/api/settings/alerting(/test)?$", "settings.manage"),
     ("POST", r"^/api/containers/databases/refresh$", "system.view"),
+    ("POST", r"^/api/containers/stack-check/run$", "system.view"),
+    ("POST", r"^/api/containers/stack-check/ignore$", "settings.manage"),
     ("POST", r"^/api/containers/databases/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/dump$", "services.control"),
     ("POST", r"^/api/containers/databases/[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/settings$", "settings.manage"),
     ("POST", r"^/api/backups(/.*)?$", "settings.manage"),
@@ -171,6 +174,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/tools/(firewall|fail2ban/unban|geoblock|geoip/download|geoip/remove)$", "firewall.manage"),
 
     # --- Terminal
+    ("*", r"^/api/terminal/recordings(/.*)?$", "users.manage"),   # recordings: admins only
     ("*", r"^/api/terminal.*$", "terminal"),
 ]
 _COMPILED = [(m, re.compile(rx), perm) for m, rx, perm in RULES]

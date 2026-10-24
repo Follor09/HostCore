@@ -407,7 +407,8 @@ def status_summary() -> Dict[str, Any]:
     for mod, fn, link in (("anomalies", "active", "/system#auffaelligkeiten"), ("dnswatch", "alerts", "/system#dns-ueberwachung"),
                           ("incidents", "open_alerts", "/doku#stoerungen"), ("vulns", "alerts", "/system#schwachstellen"),
                           ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose"),
-                          ("hardening", "alerts", "/system#haertung"), ("dbmonitor", "alerts", "/containers#datenbanken")):
+                          ("hardening", "alerts", "/system#haertung"), ("dbmonitor", "alerts", "/containers#datenbanken"),
+                          ("stackcheck", "alerts", "/containers#stack-sicherheit")):
         try:
             for a in getattr(__import__(mod), fn)():
                 add(a.get("level", "warning"), a["text"], link)

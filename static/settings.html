@@ -53,6 +53,7 @@
       <a href="#benutzer" data-perm="users.manage">Benutzer</a>
       <a href="#berechtigungen" data-perm="users.manage">Berechtigungen</a>
       <a href="#sicherheit" data-perm="users.manage">Sicherheit</a>
+      <a href="#terminal-mitschnitte" data-perm="users.manage">Terminal-Mitschnitte</a>
       <a href="#remote" data-perm="users.manage">Remote-Pis</a>
       <a href="#netbox" data-perm="settings.manage">NetBox</a>
       <a href="#mcp" data-perm="users.manage">MCP-Server</a>
@@ -253,6 +254,26 @@
         <div class="table-scroll"><table class="data-table" id="sec-sessions"></table></div>
         <h3 class="subhead">Sicherheitsereignisse (30 Tage)</h3>
         <ol class="event-list" id="sec-events"></ol>
+      </section>
+
+      <section class="glass-card settings-section" id="terminal-mitschnitte" data-perm="users.manage">
+        <div class="section-head">
+          <h2>Terminal-Mitschnitte</h2>
+          <span class="field-hint" id="rec-total"></span>
+        </div>
+        <p class="section-desc">Jede Web-Terminal-Sitzung wird aufgezeichnet und lässt sich hier wie ein Video abspielen – wer wann was auf dem Pi oder in welchem Container gemacht hat. Aufgezeichnet wird auch, solange kein Browser verbunden ist. Passwörter an einer sudo-Abfrage zeigt das Terminal nicht an, sie sind daher nicht enthalten. Nur Administratoren sehen die Mitschnitte; jedes Abspielen steht im Aktivitätsprotokoll.</p>
+        <form class="settings-form" id="rec-form">
+          <label class="toggle-label"><input type="checkbox" id="rec-enabled"> Terminal-Sitzungen aufzeichnen</label>
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Aufbewahren (Tage)</span>
+              <input type="number" id="rec-days" min="1" max="365" value="30">
+            </label>
+          </div>
+          <div class="inline-form"><button type="submit" class="btn-primary">Speichern</button></div>
+        </form>
+        <p class="field-hint warn" id="rec-unavailable" hidden>tmux ist nicht installiert – ohne dauerhafte Sitzungen gibt es keine Mitschnitte.</p>
+        <div class="table-scroll"><table class="data-table" id="rec-table"></table></div>
       </section>
 
       <section class="glass-card settings-section" id="remote" data-perm="users.manage">
@@ -855,6 +876,7 @@
   <script src="/static/mcp-activity.js"></script>
   <script src="/static/email-settings.js"></script>
   <script src="/static/alerting-settings.js"></script>
+  <script src="/static/recordings.js"></script>
   <script src="/static/retention-settings.js"></script>
   <script src="/static/selftest-settings.js"></script>
   <script src="/static/twofa.js"></script>

@@ -89,6 +89,8 @@ import retention
 import alerting
 import dbmonitor
 import tasks
+import stackcheck
+import recordings
 import vulns
 import eol
 import selftest
@@ -2420,6 +2422,33 @@ async def api_task_cancel(task_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Compose security check (per Pi)
+# ---------------------------------------------------------------------------
+def _stackcheck_call(fn, *args):
+    try:
+        return fn(*args)
+    except stackcheck.StackCheckError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/containers/stack-check")
+async def api_stack_check():
+    return await asyncio.to_thread(stackcheck.overview)
+
+
+@app.post("/api/containers/stack-check/run")
+async def api_stack_check_run():
+    return await asyncio.to_thread(stackcheck.run)
+
+
+@app.post("/api/containers/stack-check/ignore")
+async def api_stack_check_ignore(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('stack', '')} · {payload.get('finding', '')}"[:120]
+    return await asyncio.to_thread(_stackcheck_call, stackcheck.set_ignored, str(payload.get("stack", "")),
+                                   str(payload.get("finding", "")), bool(payload.get("ignore", True)))
+
+
+# ---------------------------------------------------------------------------
 # Database monitor (per Pi)
 # ---------------------------------------------------------------------------
 def _db_call(fn, *args):
@@ -2617,10 +2646,11 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
 def _terminal_issue(user: str, container: str, sid: str) -> dict:
     """Ticket for a new shell, or for taking over an own running session."""
     if sid:
+        role = terminal.access(sid, user)
         s = terminal.session(sid)
-        if not s or s["user"] != user:
+        if not role or not s:
             raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
-        return {"ticket": terminal.issue_ticket(user, s["container"], sid), "expires_in": terminal.TICKET_TTL}
+        return {"ticket": terminal.issue_ticket(user, s["container"], sid, role == "view"), "expires_in": terminal.TICKET_TTL}
     if terminal.session_count() >= terminal.MAX_SESSIONS:
         raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig – "
                                                     "eine laufende Sitzung beenden oder übernehmen.")
@@ -2634,16 +2664,90 @@ async def api_terminal_resume(req: TerminalResumeRequest, request: Request):
     if not await asyncio.to_thread(terminal.check_resume, req.session, request.state.user or "", req.token):
         raise HTTPException(status_code=403, detail="Sitzung nicht mehr verfügbar.")
     s = await asyncio.to_thread(terminal.session, req.session)
-    return {"ticket": terminal.issue_ticket(request.state.user, s["container"], req.session), "expires_in": terminal.TICKET_TTL}
+    role = await asyncio.to_thread(terminal.access, req.session, request.state.user or "")
+    return {"ticket": terminal.issue_ticket(request.state.user, s["container"], req.session, role == "view"), "expires_in": terminal.TICKET_TTL}
 
 
 @app.get("/api/terminal/sessions")
 async def api_terminal_sessions(request: Request):
     user = request.state.user or ""
     every = auth.can(user, "users.manage") if not AGENT else False
-    items = await asyncio.to_thread(terminal.sessions, None if every else user)
+    items = await asyncio.to_thread(terminal.sessions, user)
+    if every:
+        # Admins also see the other users' sessions (to end them), without access to them
+        mine = {s["id"] for s in items}
+        items += [{**s, "role": "other", "shares": [], "connected": []} for s in await asyncio.to_thread(terminal.sessions) if s["id"] not in mine]
+    rec = recordings.config()["enabled"]
     return {"persistent": terminal.persistent(), "sessions": items, "max": terminal.MAX_SESSIONS,
-            "detached_hours": terminal.DETACHED_TTL // 3600, "user": user}
+            "detached_hours": terminal.DETACHED_TTL // 3600, "user": user, "recording": rec}
+
+
+class TerminalShareRequest(BaseModel):
+    user: str
+    mode: str = "view"
+
+
+def _terminal_change(fn, *args):
+    try:
+        return fn(*args)
+    except terminal.TerminalError as e:
+        raise HTTPException(status_code=404 if "nicht gefunden" in str(e) else 400, detail=str(e))
+
+
+@app.get("/api/terminal/share-users")
+async def api_terminal_share_users(request: Request):
+    """Who a session can be shared with: users with the terminal permission (from the main dashboard)."""
+    me = request.state.user or ""
+    users = await asyncio.to_thread(auth.list_users)
+    return {"users": [u["username"] for u in users if u["username"] != me and not u.get("expired") and auth.can(u["username"], "terminal")]}
+
+
+@app.post("/api/terminal/sessions/{sid}/share")
+async def api_terminal_share(sid: str, req: TerminalShareRequest, request: Request):
+    if not AGENT:
+        known = {u["username"] for u in await asyncio.to_thread(auth.list_users)}
+        if req.user not in known or not auth.can(req.user, "terminal"):
+            raise HTTPException(status_code=400, detail="Dieser Benutzer darf das Terminal nicht benutzen.")
+    await asyncio.to_thread(_terminal_change, terminal.share, sid, request.state.user or "", req.user, req.mode)
+    request.state.audit_detail = f"{sid} → {req.user} ({terminal.MODES.get(req.mode, req.mode)})"
+    return await api_terminal_sessions(request)
+
+
+@app.post("/api/terminal/sessions/{sid}/unshare")
+async def api_terminal_unshare(sid: str, req: TerminalShareRequest, request: Request):
+    await asyncio.to_thread(_terminal_change, terminal.unshare, sid, request.state.user or "", req.user)
+    request.state.audit_detail = f"{sid} → {req.user}"
+    return await api_terminal_sessions(request)
+
+
+def _rec_call(fn, *args):
+    try:
+        return fn(*args)
+    except recordings.RecordingError as e:
+        raise HTTPException(status_code=404 if "nicht gefunden" in str(e) else 400, detail=str(e))
+
+
+@app.get("/api/terminal/recordings")
+async def api_recordings():
+    return await asyncio.to_thread(recordings.overview)
+
+
+@app.get("/api/terminal/recordings/{sid}")
+async def api_recording(sid: str, request: Request):
+    text = await asyncio.to_thread(_rec_call, recordings.read, sid)
+    await asyncio.to_thread(audit.record, request.state.user or "", websec.client_ip(request), "GET", f"/api/terminal/recordings/{sid}", 200, sid)
+    return Response(text, media_type="application/x-asciicast")
+
+
+@app.post("/api/terminal/recordings/{sid}/delete")
+async def api_recording_delete(sid: str, request: Request):
+    request.state.audit_detail = sid
+    return await asyncio.to_thread(_rec_call, recordings.delete, sid)
+
+
+@app.post("/api/settings/terminal-recording")
+async def api_recording_settings(payload: dict):
+    return await asyncio.to_thread(_rec_call, recordings.save, payload)
 
 
 @app.post("/api/terminal/sessions/{sid}/close")
@@ -2740,16 +2844,17 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
         if redeemed is None:
             await websocket.close(code=4401)
             return
-    target, sid = redeemed
+    target, sid, read_only = redeemed
     client = websec.client_ip(websocket)
     if websec.blocked_from_outside("terminal", client):
         await websocket.close(code=4403)
         return
     started = time.time()
     where = f"Container {target} · " if target else ""
-    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}{'verbunden mit ' + sid if sid else 'geöffnet'}")
+    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200,
+                            f"{where}{('zuschauen bei ' if read_only else 'verbunden mit ') + sid if sid else 'geöffnet'}")
     try:
-        await terminal.run_session(websocket, user, client, rows, cols, target, sid)
+        await terminal.run_session(websocket, user, client, rows, cols, target, sid, read_only)
     finally:
         minutes = max(1, round((time.time() - started) / 60))
         await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}getrennt nach {minutes} Min.")

@@ -136,7 +136,7 @@
       title: 'Einstellungen',
       groups: [
         { id: 'konto', label: 'Konto & Zugang', desc: 'Eigenes Konto, Zwei-Faktor, Passkeys, Sitzungen, Benutzer, Berechtigungen, Sicherheit und Freigabe-Links',
-          sections: ['konto', 'zwei-faktor', 'passkeys', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'freigaben'],
+          sections: ['konto', 'zwei-faktor', 'passkeys', 'sitzungen', 'benutzer', 'berechtigungen', 'sicherheit', 'terminal-mitschnitte', 'freigaben'],
           facts: async () => {
             const out = [];
             const [tf, sec] = await Promise.allSettled([get('/api/auth/2fa'), get('/api/security')]);
@@ -187,6 +187,14 @@
             const running = cs.filter(c => c.state === 'running').length;
             return [{ level: running < cs.length ? 'info' : 'good', text: `${running} von ${cs.length} Containern laufen` },
               { level: 'info', text: n((o.stacks || []).length, 'Stack', 'Stacks') }];
+          } },
+        { id: 'sicherheitscheck', label: 'Sicherheitscheck', desc: 'Riskante Einstellungen in den Compose-Stacks', sections: ['stack-sicherheit'],
+          facts: async () => {
+            const d = await get('/api/containers/stack-check');
+            if (!d.checked) return [{ level: 'info', text: 'Noch nicht geprüft' }];
+            if (d.score == null) return [{ level: 'info', text: 'Keine Stacks' }];
+            return [{ level: d.critical ? 'critical' : d.score < 80 ? 'warning' : 'good', text: `Bewertung ${d.score} von 100` },
+              ...(d.critical ? [{ level: 'critical', text: n(d.critical, 'kritischer Befund', 'kritische Befunde') }] : [])];
           } },
         { id: 'datenbanken', label: 'Datenbanken', desc: 'PostgreSQL, MySQL und MariaDB in Containern: Zustand, Größe und Dumps', sections: ['datenbanken'],
           facts: async () => {

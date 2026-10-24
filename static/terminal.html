@@ -28,6 +28,8 @@
       </a>
       <h1 class="settings-title" id="term-title">Terminal</h1>
       <span class="health-tag" id="term-status">Nicht verbunden</span>
+      <span class="health-tag" id="term-rec" hidden title="Diese Sitzung wird aufgezeichnet und kann von Administratoren abgespielt werden">Aufzeichnung</span>
+      <span class="field-hint term-viewers" id="term-viewers" hidden></span>
     </div>
     <div class="header-right">
       <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
@@ -39,6 +41,22 @@
           <input type="search" id="term-snippets-q" placeholder="Befehl suchen…" autocomplete="off" spellcheck="false" aria-label="Befehl suchen">
           <div class="term-snippets-list" id="term-snippets-list"></div>
           <a class="term-snippets-manage" href="/doku#befehle">Befehle verwalten →</a>
+        </div>
+      </div>
+      <div class="term-share-wrap">
+        <button class="btn-secondary" id="term-share" type="button" hidden aria-haspopup="true" aria-expanded="false">Teilen</button>
+        <div class="term-share" id="term-share-menu" hidden>
+          <h3 class="subhead">Sitzung teilen</h3>
+          <div class="term-share-form">
+            <select id="term-share-user" aria-label="Benutzer"></select>
+            <select id="term-share-mode" aria-label="Recht">
+              <option value="view">Zuschauen</option>
+              <option value="write">Mitschreiben</option>
+            </select>
+            <button class="btn-primary" id="term-share-add" type="button">Freigeben</button>
+          </div>
+          <p class="field-hint" id="term-share-hint">Die Person öffnet das Terminal und wählt die Sitzung unter „Laufende Sitzungen“.</p>
+          <div id="term-share-list"></div>
         </div>
       </div>
       <button class="btn-secondary" id="term-kill" type="button" hidden title="Shell beenden – sonst läuft sie nach dem Schließen der Seite weiter">Sitzung beenden</button>

@@ -8,6 +8,10 @@ reconnects by itself with the session's resume token (no password - the login co
 required), and the session can be taken over from another device with the password. Sessions
 nobody looked at for DETACHED_TTL end. Without tmux the shell ends with the connection.
 
+Sharing: the owner can give another user (with the terminal permission) a session to watch
+(read-only tmux client) or to type along; ending the share disconnects them at once. Each
+session is recorded (recordings.py) unless that is switched off.
+
 Safety:
 - Opening a terminal needs the password again (not just the session cookie). That
   yields a one-time ticket valid for 60 s, which the WebSocket must present.
@@ -49,8 +53,10 @@ SOCKET = "picore"
 CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "terminal-tmux.conf")
 SESSION_RE = re.compile(r"^picore-[0-9a-f]{12}$")
 
-_tickets: Dict[str, tuple] = {}   # ticket -> (username, expires, container, session)
+_tickets: Dict[str, tuple] = {}   # ticket -> (username, expires, container, session, read_only)
 _sessions: Dict[int, dict] = {}   # pid -> info (connections without tmux)
+_attached: Dict[str, Dict[int, dict]] = {}   # session -> {pid of the tmux client: {user, mode, client, proc}}
+MODES = {"view": "Zuschauen", "write": "Mitschreiben"}
 
 
 class TerminalError(Exception):
@@ -60,25 +66,26 @@ class TerminalError(Exception):
 CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
-def issue_ticket(username: str, container: str = "", session: str = "") -> str:
+def issue_ticket(username: str, container: str = "", session: str = "", read_only: bool = False) -> str:
     """container: open a shell inside this running Docker container instead of on the Pi.
-    session: attach to this existing (persistent) session instead of starting a new one."""
+    session: attach to this existing (persistent) session instead of starting a new one;
+    read_only: only watch it (a session shared for viewing)."""
     now = time.time()
     for t, entry in list(_tickets.items()):
         if entry[1] < now:
             _tickets.pop(t, None)
     ticket = secrets.token_urlsafe(32)
-    _tickets[ticket] = (username, now + TICKET_TTL, container, session)
+    _tickets[ticket] = (username, now + TICKET_TTL, container, session, read_only)
     return ticket
 
 
-def redeem_ticket(ticket: Optional[str], username: str) -> Optional[Tuple[str, str]]:
+def redeem_ticket(ticket: Optional[str], username: str) -> Optional[Tuple[str, str, bool]]:
     """One-time use: a ticket is consumed even if it turns out to be invalid.
-    Returns (container ("" = the Pi), session ("" = a new one)) or None."""
+    Returns (container ("" = the Pi), session ("" = a new one), read_only) or None."""
     entry = _tickets.pop(ticket or "", None)
     if not entry or entry[0] != username or entry[1] < time.time():
         return None
-    return entry[2], entry[3]
+    return entry[2], entry[3], entry[4]
 
 
 def check_container(name: str) -> str:
@@ -136,11 +143,23 @@ def _ensure_server() -> None:
         time.sleep(0.1)
 
 
-FIELDS = ["session_name", "session_created", "session_attached", "session_activity", "@picore_user", "@picore_container", "@picore_client"]
+FIELDS = ["session_name", "session_created", "session_attached", "session_activity", "@picore_user", "@picore_container", "@picore_client",
+          "@picore_share", "@picore_recorded"]
+
+
+def _parse_share(text: str) -> Dict[str, str]:
+    """"bob:view,anna:write" -> {"bob": "view", "anna": "write"}"""
+    out = {}
+    for part in (text or "").split(","):
+        user, _, mode = part.partition(":")
+        if user and mode in MODES:
+            out[user] = mode
+    return out
 
 
 def sessions(user: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Running persistent sessions (of one user, or all)."""
+    """Running persistent sessions (of one user - own ones and the ones shared with them - or all).
+    "role": owner, view or write - for the user asked about."""
     if not TMUX:
         return []
     try:
@@ -152,11 +171,16 @@ def sessions(user: Optional[str] = None) -> List[Dict[str, Any]]:
         parts = line.split("\t")
         if len(parts) != len(FIELDS) or not SESSION_RE.match(parts[0]):
             continue
-        name, created, attached, activity, owner, container, client = parts
-        if user is not None and owner != user:
+        name, created, attached, activity, owner, container, client, share, recorded = parts
+        shared = _parse_share(share)
+        if user is not None and owner != user and user not in shared:
             continue
+        role = "owner" if user is None or owner == user else shared[user]
+        connected = [{"user": c["user"], "mode": c["mode"]} for c in (_attached.get(name) or {}).values()]
         out.append({"id": name, "created": int(created or 0), "attached": int(attached or 0), "activity": int(activity or 0),
-                    "user": owner, "container": container, "client": client})
+                    "user": owner, "container": container, "client": client, "role": role, "recorded": recorded == "1",
+                    "shares": [{"user": u, "mode": m} for u, m in sorted(shared.items())] if role == "owner" else [],
+                    "connected": connected if role == "owner" else []})
     out.sort(key=lambda s: -s["activity"])
     return out
 
@@ -165,19 +189,68 @@ def session(sid: str) -> Optional[Dict[str, Any]]:
     return next((s for s in sessions() if s["id"] == sid), None) if SESSION_RE.match(sid or "") else None
 
 
-def _set_resume(sid: str) -> str:
+def _resume_option(user: str) -> str:
+    """One resume token per user and session - a viewer reconnecting does not log out the owner."""
+    return "@picore_resume_" + hashlib.sha256(user.encode()).hexdigest()[:12]
+
+
+def _set_resume(sid: str, user: str) -> str:
     token = secrets.token_urlsafe(32)
-    _tmux(["set-option", "-t", sid, "@picore_resume", hashlib.sha256(token.encode()).hexdigest()])
+    _tmux(["set-option", "-t", sid, _resume_option(user), hashlib.sha256(token.encode()).hexdigest()])
     return token
 
 
+def access(sid: str, user: str) -> Optional[str]:
+    """The user's role in a session: owner / write / view - or None."""
+    s = next((x for x in sessions(user) if x["id"] == sid), None) if SESSION_RE.match(sid or "") else None
+    return s["role"] if s else None
+
+
 def check_resume(sid: str, user: str, token: str) -> bool:
-    s = session(sid)
-    if not s or s["user"] != user or not token:
+    if not token or not access(sid, user):
         return False
-    res = _tmux(["show-options", "-v", "-t", sid, "@picore_resume"])
+    res = _tmux(["show-options", "-v", "-t", sid, _resume_option(user)])
     stored = res.stdout.strip()
     return bool(stored) and hmac.compare_digest(stored, hashlib.sha256(token.encode()).hexdigest())
+
+
+def share(sid: str, owner: str, user: str, mode: str) -> None:
+    s = session(sid)
+    if not s or s["user"] != owner:
+        raise TerminalError("Sitzung nicht gefunden.")
+    if mode not in MODES:
+        raise TerminalError("Unbekannte Freigabe.")
+    if not re.match(r"^[\w.-]{1,64}$", user or "") or user == owner:
+        raise TerminalError("Ungültiger Benutzer.")
+    shared = _parse_share(_tmux(["show-options", "-v", "-t", sid, "@picore_share"]).stdout.strip())
+    shared[user] = mode
+    _tmux(["set-option", "-t", sid, "@picore_share", ",".join(f"{u}:{m}" for u, m in sorted(shared.items()))])
+    # Changed from typing to watching: reconnect them as watchers
+    _kick(sid, lambda c: c["user"] == user and c["mode"] != mode, "Die Freigabe wurde geändert.")
+
+
+def unshare(sid: str, owner: str, user: str) -> None:
+    s = session(sid)
+    if not s or s["user"] != owner:
+        raise TerminalError("Sitzung nicht gefunden.")
+    shared = _parse_share(_tmux(["show-options", "-v", "-t", sid, "@picore_share"]).stdout.strip())
+    shared.pop(user, None)
+    if shared:
+        _tmux(["set-option", "-t", sid, "@picore_share", ",".join(f"{u}:{m}" for u, m in sorted(shared.items()))])
+    else:
+        _tmux(["set-option", "-u", "-t", sid, "@picore_share"])
+    _tmux(["set-option", "-u", "-t", sid, _resume_option(user)])
+    _kick(sid, lambda c: c["user"] == user, "Die Freigabe wurde beendet.")
+
+
+def _kick(sid: str, which, reason: str) -> None:
+    for pid, c in list((_attached.get(sid) or {}).items()):
+        if which(c):
+            c["kicked"] = reason
+            try:
+                os.killpg(pid, signal.SIGHUP)
+            except (ProcessLookupError, PermissionError):
+                pass
 
 
 def _new_session(user: str, client: str, rows: int, cols: int, container: str) -> str:
@@ -191,6 +264,12 @@ def _new_session(user: str, client: str, rows: int, cols: int, container: str) -
         raise TerminalError(f"Terminal konnte nicht gestartet werden: {res.stderr.strip()[:200]}")
     for key, value in (("@picore_user", user), ("@picore_container", container), ("@picore_client", client)):
         _tmux(["set-option", "-t", sid, key, value])
+    try:
+        import recordings
+        if recordings.start(sid, user, container, client, cols, rows, _tmux):
+            _tmux(["set-option", "-t", sid, "@picore_recorded", "1"])
+    except Exception as e:
+        logger.warning(f"Terminal recording for {sid} not started: {e}")
     return sid
 
 
@@ -274,9 +353,11 @@ def _terminate(proc: subprocess.Popen) -> None:
             continue
 
 
-async def run_session(websocket, username: str, client: str, rows: int, cols: int, container: str = "", sid: str = "") -> None:
+async def run_session(websocket, username: str, client: str, rows: int, cols: int, container: str = "", sid: str = "",
+                      read_only: bool = False) -> None:
     """Bridge one accepted WebSocket to a shell (on the Pi or in a container) until either side closes.
-    With tmux: to a persistent session (sid = attach to that one, otherwise a new one)."""
+    With tmux: to a persistent session (sid = attach to that one, otherwise a new one;
+    read_only = a session shared for watching)."""
     if not TMUX:
         await _bridge(websocket, username, client, rows, cols, container=container)
         return
@@ -284,7 +365,11 @@ async def run_session(websocket, username: str, client: str, rows: int, cols: in
         if not sid:
             sid = await asyncio.to_thread(_new_session, username, client, rows, cols, container)
             logger.info(f"Terminal session {sid} started by '{username}' from {client}")
-        token = await asyncio.to_thread(_set_resume, sid)
+        role = await asyncio.to_thread(access, sid, username)
+        if not role:
+            raise TerminalError("Sitzung nicht gefunden.")
+        read_only = read_only or role == "view"
+        token = await asyncio.to_thread(_set_resume, sid, username)
     except (TerminalError, OSError, subprocess.SubprocessError) as e:
         with contextlib.suppress(Exception):
             await websocket.send_text(json.dumps({"type": "exit", "reason": str(e)}))
@@ -292,16 +377,21 @@ async def run_session(websocket, username: str, client: str, rows: int, cols: in
         return
     info = await asyncio.to_thread(session, sid) or {}
     await websocket.send_text(json.dumps({"type": "session", "id": sid, "resume": token, "persistent": True,
-                                          "container": info.get("container", container), "created": info.get("created", 0)}))
-    argv = [TMUX, "-L", SOCKET, "-f", CONF, "attach-session", "-t", sid]
-    ended = await _bridge(websocket, username, client, rows, cols, argv=argv, sid=sid)
+                                          "container": info.get("container", container), "created": info.get("created", 0),
+                                          "role": role, "read_only": read_only, "owner": info.get("user", username),
+                                          "recorded": info.get("recorded", False)}))
+    argv = [TMUX, "-L", SOCKET, "-f", CONF, "attach-session", *(["-r"] if read_only else []), "-t", sid]
+    ended = await _bridge(websocket, username, client, rows, cols, argv=argv, sid=sid, mode="view" if read_only else "write")
     logger.info(f"Terminal session {sid}: '{username}' from {client} {'left' if ended == 'browser' else ended}")
 
 
 async def _bridge(websocket, username: str, client: str, rows: int, cols: int, container: str = "",
-                  argv: Optional[List[str]] = None, sid: str = "") -> str:
-    """Pump between WebSocket and a pty until one side ends. Returns "browser", "shell" or "idle"."""
+                  argv: Optional[List[str]] = None, sid: str = "", mode: str = "write") -> str:
+    """Pump between WebSocket and a pty until one side ends. Returns "browser", "shell", "detached" or "idle"."""
     proc, master = await asyncio.to_thread(_spawn_shell, rows, cols, container, argv)
+    conn = {"user": username, "mode": mode, "client": client}
+    if sid:
+        _attached.setdefault(sid, {})[proc.pid] = conn
     loop = asyncio.get_running_loop()
     output: asyncio.Queue = asyncio.Queue()
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -334,7 +424,7 @@ async def _bridge(websocket, username: str, client: str, rows: int, cols: int, c
         nonlocal last_input
         while True:
             msg = json.loads(await websocket.receive_text())
-            if msg.get("type") == "input":
+            if msg.get("type") == "input" and mode == "write":
                 last_input = time.time()
                 data = str(msg.get("data", "")).encode("utf-8")
                 while data:
@@ -361,8 +451,10 @@ async def _bridge(websocket, username: str, client: str, rows: int, cols: int, c
             ended = "shell" if tasks[0] in done else "idle"
             if ended == "shell" and sid and await asyncio.to_thread(session, sid):
                 ended = "detached"   # the tmux client went away, the session did not (closed elsewhere?)
-            reason = {"shell": "Shell beendet.", "detached": "Verbindung zur Sitzung getrennt.",
+            reason = {"shell": "Shell beendet.", "detached": conn.get("kicked") or "Verbindung zur Sitzung getrennt.",
                       "idle": "Wegen Inaktivität getrennt (30 Min.)." + (" Die Sitzung läuft weiter." if sid else "")}[ended]
+            if conn.get("kicked"):
+                ended = "kicked"
             try:
                 await asyncio.wait_for(websocket.send_text(json.dumps({"type": "exit", "reason": reason, "why": ended})), 2)
                 await asyncio.wait_for(websocket.close(), 2)
@@ -379,7 +471,11 @@ async def _bridge(websocket, username: str, client: str, rows: int, cols: int, c
         try:
             await asyncio.to_thread(_terminate, proc)
         finally:
-            if not sid:
+            if sid:
+                (_attached.get(sid) or {}).pop(proc.pid, None)
+                if not _attached.get(sid):
+                    _attached.pop(sid, None)
+            else:
                 _sessions.pop(proc.pid, None)
                 logger.info(f"Terminal closed for '{username}' from {client} (pid {proc.pid})")
     return ended

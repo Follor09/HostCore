@@ -524,6 +524,7 @@
           : button(label, 'btn-primary', run, 'services.control');
         b.disabled = !s.file_exists || !!running;
         if (!s.file_exists) b.title = t('Compose-Datei nicht gefunden');
+        else if (action === 'update') b.title = t('Sichert zuerst die Datenbanken des Stacks, lädt dann neue Images, startet neu und prüft, ob alle Container gesund laufen.');
         actions.appendChild(b);
       });
       if (s.files.length && window.PiEditor) {

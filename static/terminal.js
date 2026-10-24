@@ -7,6 +7,8 @@
  * kept in sessionStorage for this tab. When the connection drops (network, dashboard restart)
  * the page reconnects by itself with the token - no password - and also after a reload.
  * Running sessions can be taken over (password) or ended from the unlock card.
+ * The owner can share a session ("Teilen"): to watch (read-only) or to type along; who is
+ * connected shows next to the status. Recorded sessions carry the "Aufzeichnung" tag.
  */
 (function () {
   'use strict';
@@ -17,6 +19,7 @@
   const container = (new URLSearchParams(location.search).get('container') || '').trim();
   const STORE = `picore-term:${container || 'pi'}`;
   let current = null;          // {id, resume} of the attached persistent session
+  let role = 'owner', readOnly = false, viewersTimer = null;
   let persistent = false;
   let retry = { n: 0, timer: null, since: 0 };
   let pinger = null;
@@ -71,7 +74,7 @@
     term.loadAddon(fit);
     term.open($('terminal'));
     term.onData(data => {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data }));
+      if (!readOnly && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data }));
     });
     const sendSize = () => {
       fit.fit();
@@ -150,13 +153,23 @@
         persistent = true;
         current = { id: msg.id, resume: msg.resume };
         store.set(current);
-        setStatus('good', 'Verbunden · läuft dauerhaft');
-        $('term-kill').hidden = false;
+        role = msg.role || 'owner';
+        readOnly = !!msg.read_only;
+        term.options.disableStdin = readOnly;
+        setStatus('good', readOnly ? `${t('Zuschauen bei')} ${msg.owner}` : role === 'write' ? `${t('Mitschreiben bei')} ${msg.owner}` : 'Verbunden · läuft dauerhaft');
+        $('term-rec').hidden = !msg.recorded;
+        $('term-kill').hidden = role !== 'owner';
+        $('term-share').hidden = role !== 'owner';
+        if (role === 'owner') watchViewers();
       } else if (msg.type === 'exit') exit = msg;
     };
     ws.onclose = e => {
       clearInterval(pinger);
+      clearInterval(viewersTimer);
       $('term-kill').hidden = true;
+      $('term-share').hidden = true;
+      $('term-viewers').hidden = true;
+      toggleShare(false);
       if (e.code === 4401) { store.set(null); return showUnlock(t('Sitzung abgelaufen oder Ticket ungültig – bitte erneut anmelden.')); }
       if (exit) {
         // Ended on purpose: the shell is gone, or idle (then the password is needed again)
@@ -221,9 +234,10 @@
     let d;
     try { d = await (await fetch('/api/terminal/sessions')).json(); } catch (e) { return; }
     persistent = !!d.persistent;
-    $('term-hint').textContent = persistent
+    $('term-hint').textContent = (persistent
       ? t(`Die Shell läuft als dein Benutzer – für Root-Befehle sudo verwenden. Sie läuft weiter, wenn die Verbindung abbricht oder die Seite geschlossen wird; nach ${d.detached_hours} Std. ohne Nutzung wird sie beendet.`)
-      : t('Die Shell läuft als dein Benutzer – für Root-Befehle sudo verwenden. Nach 30 Min. ohne Eingabe wird sie geschlossen.');
+      : t('Die Shell läuft als dein Benutzer – für Root-Befehle sudo verwenden. Nach 30 Min. ohne Eingabe wird sie geschlossen.'))
+      + (persistent && d.recording ? ` ${t('Sitzungen werden aufgezeichnet.')}` : '');
     const box = $('term-sessions');
     const list = $('term-sessions-list');
     list.innerHTML = '';
@@ -234,7 +248,8 @@
       row.className = 'term-session';
       const info = document.createElement('div');
       const name = document.createElement('b');
-      name.textContent = x.container ? `${t('Container')} ${x.container}` : t('Shell auf dem Pi');
+      name.textContent = (x.container ? `${t('Container')} ${x.container}` : t('Shell auf dem Pi'))
+        + (x.role === 'view' || x.role === 'write' ? ` · ${t('geteilt von')} ${x.user}` : '');
       name.setAttribute('data-no-i18n', '');
       const sub = document.createElement('small');
       sub.className = 'field-hint';
@@ -245,13 +260,14 @@
       const take = document.createElement('button');
       take.type = 'button';
       take.className = 'btn-secondary';
-      take.textContent = t('Übernehmen');
-      take.hidden = x.user !== d.user;
+      take.textContent = t(x.role === 'view' ? 'Zuschauen' : x.role === 'write' ? 'Beitreten' : 'Übernehmen');
+      take.hidden = !['owner', 'view', 'write'].includes(x.role);
       take.addEventListener('click', () => unlock(null, x.id));
       const kill = document.createElement('button');
       kill.type = 'button';
       kill.className = 'text-btn';
       kill.textContent = t('Beenden');
+      kill.hidden = !['owner', 'other'].includes(x.role);
       kill.addEventListener('click', async () => {
         if (!confirm(t('Diese Sitzung beenden? Laufende Programme darin werden abgebrochen.'))) return;
         await fetch(`/api/terminal/sessions/${encodeURIComponent(x.id)}/close`, { method: 'POST' });
@@ -260,6 +276,82 @@
       row.append(info, take, kill);
       list.appendChild(row);
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sharing (owner only)
+  // ---------------------------------------------------------------------------
+  const MODE = { view: 'Zuschauen', write: 'Mitschreiben' };
+
+  async function mySession() {
+    try {
+      const d = await (await fetch('/api/terminal/sessions')).json();
+      return (d.sessions || []).find(x => current && x.id === current.id);
+    } catch (e) { return null; }
+  }
+
+  function showViewers(s) {
+    const box = $('term-viewers');
+    const others = (s && s.connected || []).filter(c => c.user !== s.user);
+    box.hidden = !others.length;
+    box.textContent = others.length ? `${t('Verbunden')}: ${others.map(c => `${c.user} (${t(MODE[c.mode])})`).join(', ')}` : '';
+  }
+
+  function watchViewers() {
+    clearInterval(viewersTimer);
+    const tick = async () => showViewers(await mySession());
+    tick();
+    viewersTimer = setInterval(() => { if (!document.hidden) tick(); }, 10000);
+  }
+
+  async function renderShare() {
+    const s = await mySession();
+    showViewers(s);
+    const list = $('term-share-list');
+    list.innerHTML = '';
+    (s && s.shares || []).forEach(sh => {
+      const row = document.createElement('div');
+      row.className = 'term-share-row';
+      const who = document.createElement('span');
+      who.setAttribute('data-no-i18n', '');
+      const live = (s.connected || []).some(c => c.user === sh.user);
+      who.textContent = `${sh.user} · ${t(MODE[sh.mode])}${live ? ` · ${t('verbunden')}` : ''}`;
+      const end = document.createElement('button');
+      end.type = 'button';
+      end.className = 'text-btn';
+      end.textContent = t('Freigabe beenden');
+      end.addEventListener('click', async () => {
+        await fetch(`/api/terminal/sessions/${encodeURIComponent(current.id)}/unshare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: sh.user }) });
+        renderShare();
+      });
+      row.append(who, end);
+      list.appendChild(row);
+    });
+  }
+
+  async function toggleShare(open) {
+    $('term-share-menu').hidden = !open;
+    $('term-share').setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    const sel = $('term-share-user');
+    sel.innerHTML = '';
+    let users = [];
+    try { users = (await (await fetch('/api/terminal/share-users')).json()).users || []; } catch (e) { /* offline */ }
+    users.forEach(u => { const o = document.createElement('option'); o.value = u; o.textContent = u; sel.appendChild(o); });
+    $('term-share-add').disabled = !users.length;
+    $('term-share-hint').textContent = users.length ? t('Die Person öffnet das Terminal und wählt die Sitzung unter „Laufende Sitzungen“.')
+      : t('Es gibt keinen anderen Benutzer mit dem Recht „Web-Terminal“.');
+    renderShare();
+  }
+
+  async function addShare() {
+    const res = await fetch(`/api/terminal/sessions/${encodeURIComponent(current.id)}/share`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: $('term-share-user').value, mode: $('term-share-mode').value })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(d.detail || t('Teilen fehlgeschlagen.')); return; }
+    renderShare();
   }
 
   async function unlock(e, session) {
@@ -305,6 +397,9 @@
     }
     $('term-unlock').addEventListener('submit', unlock);
     $('term-reconnect').addEventListener('click', () => showUnlock());
+    $('term-share').addEventListener('click', e => { e.stopPropagation(); toggleShare($('term-share-menu').hidden); });
+    $('term-share-add').addEventListener('click', addShare);
+    document.addEventListener('click', e => { if (!e.target.closest('.term-share-wrap')) toggleShare(false); });
     $('term-kill').addEventListener('click', async () => {
       if (!current || !confirm(t('Sitzung beenden? Laufende Programme darin werden abgebrochen.'))) return;
       await fetch(`/api/terminal/sessions/${encodeURIComponent(current.id)}/close`, { method: 'POST' });
