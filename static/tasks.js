@@ -1,8 +1,10 @@
 /**
- * PiCore Dashboard - task log (like Proxmox): a small bar at the bottom of every page shows
- * running tasks; it opens the list of recent tasks with their log (live while running) and
- * lets you cancel one. Tasks run on the Pi on their own - closing the page changes nothing.
- * Other scripts can open a task with window.PiTasks.open(id); #aufgaben opens the list,
+ * PiCore Dashboard - task log (like Proxmox): a panel docked to the bottom of every page.
+ * Collapsed it is a slim strip with the running tasks; opened (click the strip) it shows the
+ * recent tasks on the left and the selected task's log on the right - live while it runs,
+ * with "Abbrechen". The height can be dragged; open/closed and height are remembered.
+ * Tasks run on the Pi on their own - closing the page changes nothing.
+ * Other scripts open a task with window.PiTasks.open(id); #aufgaben opens the panel,
  * #aufgabe=<id> one task.
  */
 (function () {
@@ -12,12 +14,17 @@
   const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
   const can = p => !window.PiAuth || window.PiAuth.can(p);
   const LEVEL = { running: 'warning', ok: 'good', error: 'critical', timeout: 'critical', lost: 'critical', cancelled: '' };
+  const PREF = 'picore-tasks-panel';
+  const MIN_H = 180;
   let data = null;
-  let bar = null, modal = null;
+  let dock = null;
   let filter = 'all';
-  let openId = null, offset = 0, logTimer = null;
+  let selected = null, offset = 0, logTimer = null;
   let pollTimer = null;
   const seenRunning = new Set();
+  const initialHash = location.hash;   // read now: the page's own scripts may rewrite the address before load() is done
+  const pref = (() => { try { return JSON.parse(localStorage.getItem(PREF) || '{}'); } catch (e) { return {}; } })();
+  const savePref = () => { try { localStorage.setItem(PREF, JSON.stringify(pref)); } catch (e) { /* storage blocked */ } };
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -26,6 +33,7 @@
     return e;
   }
   const raw = (tag, cls, text) => { const e = el(tag, cls, text); e.setAttribute('data-no-i18n', ''); return e; };
+  const $ = id => dock.querySelector(`[data-id="${id}"]`);
 
   function toast(message, type = 'info') {
     const box = document.getElementById('toast-container');
@@ -42,204 +50,218 @@
     return d;
   }
 
-  const fmtTs = ts => new Date(ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  function fmtTime(ts) {
+    const d = new Date(ts * 1000);
+    const today = d.toDateString() === new Date().toDateString();
+    return d.toLocaleString(LOCALE, today ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
   function fmtDur(s) {
     if (s < 60) return `${s} s`;
     if (s < 3600) return `${Math.floor(s / 60)} min ${s % 60} s`;
     return `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min`;
   }
+  const tag = task => el('span', `health-tag ${LEVEL[task.state] || ''}`, t(task.state_label));
 
   // ---------------------------------------------------------------------------
-  // Bar at the bottom
+  // Panel
   // ---------------------------------------------------------------------------
-  function buildBar() {
-    bar = el('button', 'task-bar');
-    bar.type = 'button';
-    bar.title = t('Aufgaben – laufen auf dem Pi weiter, auch wenn die Seite geschlossen ist');
-    bar.addEventListener('click', () => show());
-    document.body.appendChild(bar);
-    document.body.classList.add('has-task-bar');
-  }
-
-  function renderBar() {
-    if (!bar) buildBar();
-    bar.innerHTML = '';
-    const running = data.running;
-    const failed = data.failed_24h;
-    bar.className = `task-bar${running ? ' running' : failed ? ' failed' : ''}`;
-    bar.append(el('span', 'task-bar-dot'), el('span', '', t('Aufgaben')));
-    if (running) bar.appendChild(el('span', 'task-bar-count', t(running === 1 ? '1 läuft' : `${running} laufen`)));
-    else if (failed) bar.appendChild(el('span', 'task-bar-count', t(failed === 1 ? '1 fehlgeschlagen' : `${failed} fehlgeschlagen`)));
-  }
-
-  // ---------------------------------------------------------------------------
-  // List and log
-  // ---------------------------------------------------------------------------
-  function buildModal() {
-    modal = el('div', 'modal-backdrop tasks-modal');
-    modal.setAttribute('aria-hidden', 'true');
-    modal.innerHTML = `
-      <div class="modal-card sheet-card tasks-sheet" role="dialog" aria-modal="true" aria-labelledby="tasks-title">
-        <div class="sheet-head">
-          <div>
-            <h3 id="tasks-title">Aufgaben</h3>
-            <p class="card-subtitle" id="tasks-sub"></p>
-          </div>
-          <div class="sheet-head-actions">
-            <button class="btn-secondary" id="tasks-back" type="button" hidden>← Alle Aufgaben</button>
-            <button class="mini-icon-btn" id="tasks-close" title="Schließen (Esc)">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
-            </button>
-          </div>
+  function build() {
+    dock = el('section', 'task-dock');
+    dock.setAttribute('aria-label', t('Aufgaben'));
+    dock.innerHTML = `
+      <div class="task-dock-grip" data-id="grip" title="Höhe ziehen"></div>
+      <div class="task-dock-head" data-id="head">
+        <button class="task-dock-toggle" data-id="toggle" type="button" aria-expanded="false">
+          <span class="task-dock-dot"></span>
+          <span class="task-dock-title">Aufgaben</span>
+          <span class="task-dock-summary" data-id="summary"></span>
+        </button>
+        <div class="segmented task-dock-filter" data-id="filter" role="radiogroup" aria-label="Filter">
+          <button type="button" data-f="all" class="active">Alle</button>
+          <button type="button" data-f="running">Laufend</button>
+          <button type="button" data-f="failed">Fehlgeschlagen</button>
         </div>
-        <div id="tasks-list-view">
-          <div class="segmented" id="tasks-filter" role="radiogroup" aria-label="Filter">
-            <button type="button" data-f="all" class="active">Alle</button>
-            <button type="button" data-f="running">Laufend</button>
-            <button type="button" data-f="failed">Fehlgeschlagen</button>
-          </div>
-          <div class="table-scroll tasks-table-wrap"><table class="data-table tasks-table" id="tasks-table"></table></div>
-        </div>
-        <div id="tasks-log-view" hidden>
-          <div class="tasks-log-head" id="tasks-log-head"></div>
-          <pre class="tasks-log" id="tasks-log"></pre>
+        <button class="task-dock-chevron" data-id="chevron" type="button" title="Auf- oder zuklappen">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg>
+        </button>
+      </div>
+      <div class="task-dock-body" data-id="body">
+        <div class="task-dock-list" data-id="list" role="listbox" aria-label="Aufgaben"></div>
+        <div class="task-dock-detail" data-id="detail">
+          <div class="task-dock-detail-head" data-id="detail-head"></div>
+          <pre class="task-dock-log" data-id="log"></pre>
         </div>
       </div>`;
-    document.body.appendChild(modal);
-    const $ = id => modal.querySelector(`#${id}`);
-    $('tasks-close').addEventListener('click', hide);
-    $('tasks-back').addEventListener('click', () => showList());
-    modal.addEventListener('click', e => { if (e.target === modal) hide(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && modal.classList.contains('open')) hide(); });
-    modal.querySelectorAll('#tasks-filter button').forEach(b => b.addEventListener('click', () => {
+    document.body.appendChild(dock);
+    document.body.classList.add('has-task-dock');
+    const toggle = () => setOpen(!dock.classList.contains('open'));
+    $('toggle').addEventListener('click', toggle);
+    $('chevron').addEventListener('click', toggle);
+    dock.querySelectorAll('[data-id="filter"] button').forEach(b => b.addEventListener('click', () => {
       filter = b.dataset.f;
-      modal.querySelectorAll('#tasks-filter button').forEach(x => x.classList.toggle('active', x === b));
+      dock.querySelectorAll('[data-id="filter"] button').forEach(x => x.classList.toggle('active', x === b));
+      if (!dock.classList.contains('open')) setOpen(true);
       renderList();
     }));
+    dragHeight();
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && dock.classList.contains('open') && !e.target.closest('input, textarea, .xterm')) setOpen(false);
+    });
+    setHeight(pref.height || 300);
+    setOpen(!!pref.open);
   }
 
-  function stateTag(task) {
-    return el('span', `health-tag ${LEVEL[task.state] || ''}`, t(task.state_label));
+  function setHeight(h) {
+    const max = Math.max(MIN_H, window.innerHeight - 140);
+    pref.height = Math.round(Math.min(max, Math.max(MIN_H, h)));
+    document.documentElement.style.setProperty('--task-dock-h', `${pref.height}px`);
+  }
+
+  function dragHeight() {
+    const grip = $('grip');
+    grip.addEventListener('pointerdown', e => {
+      if (!dock.classList.contains('open')) return;
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      const startY = e.clientY, startH = pref.height;
+      dock.classList.add('dragging');
+      const move = ev => setHeight(startH + (startY - ev.clientY));
+      const up = () => {
+        dock.classList.remove('dragging');
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        savePref();
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
+  }
+
+  function setOpen(open) {
+    dock.classList.toggle('open', open);
+    document.body.classList.toggle('task-dock-open', open);
+    $('toggle').setAttribute('aria-expanded', String(open));
+    pref.open = open;
+    savePref();
+    if (open) {
+      renderList();
+      if (!selected && data && data.tasks.length) select((data.tasks.find(x => x.state === 'running') || data.tasks[0]).id);
+      else if (selected) pollLog();
+    } else {
+      clearTimeout(logTimer);
+      if (/^#aufgabe/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
+
+  function renderHead() {
+    const running = data.running, failed = data.failed_24h;
+    dock.classList.toggle('is-running', !!running);
+    dock.classList.toggle('is-failed', !running && !!failed);
+    const sum = $('summary');
+    sum.innerHTML = '';
+    const run = data.tasks.find(x => x.state === 'running');
+    if (run) {
+      sum.append(el('span', 'task-dock-count', t(running === 1 ? '1 läuft' : `${running} laufen`)), raw('span', 'task-dock-current', t(run.title)));
+    } else if (failed) {
+      sum.appendChild(el('span', 'task-dock-count', t(failed === 1 ? '1 fehlgeschlagen' : `${failed} fehlgeschlagen`)));
+    } else if (data.tasks[0]) {
+      sum.appendChild(raw('span', 'task-dock-current', `${t('Zuletzt')}: ${t(data.tasks[0].title)} · ${t(data.tasks[0].state_label)}`));
+    }
   }
 
   function renderList() {
-    if (!modal || !data) return;
-    const tbl = modal.querySelector('#tasks-table');
-    tbl.innerHTML = '';
-    const head = tbl.createTHead().insertRow();
-    ['Start', 'Dauer', 'Benutzer', 'Beschreibung', 'Status'].forEach(h => head.appendChild(el('th', '', t(h))));
-    const body = tbl.createTBody();
+    if (!data || !dock.classList.contains('open')) return;
+    const list = $('list');
+    list.innerHTML = '';
     const items = data.tasks.filter(x => filter === 'all' || (filter === 'running' ? x.state === 'running' : ['error', 'timeout', 'lost'].includes(x.state)));
     items.forEach(x => {
-      const r = body.insertRow();
-      r.className = `task-row ${x.state}`;
-      r.tabIndex = 0;
-      r.insertCell().textContent = fmtTs(x.started);
-      r.insertCell().textContent = fmtDur(x.duration);
-      r.insertCell().appendChild(raw('span', '', x.user || '–'));
-      r.insertCell().appendChild(raw('span', '', t(x.title)));
-      r.insertCell().appendChild(stateTag(x));
-      r.addEventListener('click', () => openTask(x.id));
-      r.addEventListener('keydown', e => { if (e.key === 'Enter') openTask(x.id); });
+      const row = el('button', `task-dock-item ${x.state}${x.id === selected ? ' selected' : ''}`);
+      row.type = 'button';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(x.id === selected));
+      const top = el('span', 'task-dock-item-top');
+      top.append(raw('span', 'task-dock-item-title', t(x.title)), tag(x));
+      const sub = el('span', 'task-dock-item-sub');
+      sub.append(raw('span', '', fmtTime(x.started)), el('span', '', fmtDur(x.duration)), raw('span', '', x.user || '–'));
+      row.append(top, sub);
+      row.addEventListener('click', () => select(x.id));
+      list.appendChild(row);
     });
-    if (!items.length) {
-      const r = body.insertRow();
-      const c = r.insertCell();
-      c.colSpan = 5;
-      c.className = 'field-hint';
-      c.textContent = t(filter === 'all' ? 'Noch keine Aufgaben.' : 'Keine Aufgaben für diesen Filter.');
+    if (!items.length) list.appendChild(el('p', 'task-dock-empty', t(filter === 'all' ? 'Noch keine Aufgaben.' : 'Keine Aufgaben für diesen Filter.')));
+    if (!selected) {
+      $('detail-head').innerHTML = '';
+      $('log').textContent = '';
+      $('detail-head').appendChild(el('p', 'task-dock-empty', data.durable
+        ? t('Laufen auf dem Pi weiter, auch wenn die Seite geschlossen wird oder das Dashboard neu startet.')
+        : t('Laufen weiter, wenn die Seite geschlossen wird – ein Neustart des Dashboards bricht sie ab (Linger für den Benutzer fehlt).')));
     }
-    modal.querySelector('#tasks-sub').textContent = data.durable
-      ? t('Laufen auf dem Pi weiter, auch wenn die Seite geschlossen wird oder das Dashboard neu startet.')
-      : t('Laufen weiter, wenn die Seite geschlossen wird – ein Neustart des Dashboards bricht sie ab (Linger für den Benutzer fehlt).');
   }
 
-  function showList() {
-    openId = null;
-    clearTimeout(logTimer);
-    modal.querySelector('#tasks-list-view').hidden = false;
-    modal.querySelector('#tasks-log-view').hidden = true;
-    modal.querySelector('#tasks-back').hidden = true;
-    modal.querySelector('#tasks-title').textContent = t('Aufgaben');
-    renderList();
-  }
-
-  function renderLogHead(task) {
-    const head = modal.querySelector('#tasks-log-head');
+  function renderDetailHead(task) {
+    const head = $('detail-head');
     head.innerHTML = '';
-    const facts = el('dl', 'backup-facts');
-    const add = (k, v) => { if (v) facts.append(el('dt', '', t(k)), raw('dd', '', v)); };
-    add('Gestartet', fmtTs(task.started));
-    add(task.state === 'running' ? 'Läuft seit' : 'Dauer', fmtDur(task.duration));
-    add('Benutzer', task.user);
-    if (task.exit != null && task.state !== 'ok') add('Exit-Code', String(task.exit));
-    const top = el('div', 'tasks-log-top');
-    top.append(stateTag(task), facts);
+    const title = el('div', 'task-dock-detail-title');
+    title.append(raw('strong', '', t(task.title)), tag(task));
+    const facts = el('div', 'task-dock-facts');
+    const fact = (k, v) => { if (v) { const s = el('span'); s.append(el('span', 'task-dock-fact-k', t(k)), raw('span', '', v)); facts.appendChild(s); } };
+    fact('Gestartet', fmtTime(task.started));
+    fact(task.state === 'running' ? 'Läuft seit' : 'Dauer', fmtDur(task.duration));
+    fact('Benutzer', task.user);
+    if (task.exit != null && task.state !== 'ok') fact('Exit-Code', String(task.exit));
+    const actions = el('div', 'task-dock-actions');
     if (task.state === 'running' && task.kind !== 'apt' && can('services.control')) {
       const stop = el('button', 'btn-secondary', t('Abbrechen'));
       stop.type = 'button';
       stop.addEventListener('click', async () => {
         if (!confirm(t('Aufgabe abbrechen?'))) return;
-        try { await api(`/api/tasks/${task.id}/cancel`, {}); } catch (err) { toast(err.message, 'error'); }
+        try { await api(`/api/tasks/${task.id}/cancel`, {}); pollLog(); } catch (err) { toast(err.message, 'error'); }
       });
-      top.appendChild(stop);
+      actions.appendChild(stop);
     }
-    head.appendChild(top);
+    head.append(title, facts, actions);
   }
 
-  async function openTask(id) {
-    if (!modal) buildModal();
-    openId = id;
+  function select(id) {
+    selected = id;
     offset = 0;
-    modal.querySelector('#tasks-list-view').hidden = true;
-    modal.querySelector('#tasks-log-view').hidden = false;
-    modal.querySelector('#tasks-back').hidden = false;
-    modal.querySelector('#tasks-log').textContent = '';
-    if (!modal.classList.contains('open')) open();
-    await pollLog();
+    $('log').textContent = '';
+    dock.classList.add('show-detail');   // phones: the log replaces the list
+    renderList();
+    pollLog();
   }
 
   async function pollLog() {
     clearTimeout(logTimer);
-    if (!openId) return;
-    const id = openId;
+    if (!selected || !dock.classList.contains('open')) return;
+    const id = selected;
     let r;
     try { r = await api(`/api/tasks/${id}/log?offset=${offset}`); } catch (err) {
-      modal.querySelector('#tasks-log').textContent = err.message;
+      $('log').textContent = err.message;
       return;
     }
-    if (id !== openId) return;
-    const pre = modal.querySelector('#tasks-log');
+    if (id !== selected) return;
+    const pre = $('log');
     const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
     if (r.truncated && !offset) pre.textContent = `… ${t('(Anfang gekürzt)')}\n`;
     pre.textContent += r.text;
     offset = r.offset;
-    if (atBottom) pre.scrollTop = pre.scrollHeight;
-    modal.querySelector('#tasks-title').textContent = t(r.task.title);
-    modal.querySelector('#tasks-title').setAttribute('data-no-i18n', '');
-    renderLogHead(r.task);
+    if (atBottom || offset === r.text.length) pre.scrollTop = pre.scrollHeight;
+    renderDetailHead(r.task);
     if (r.task.state === 'running') logTimer = setTimeout(pollLog, 1500);
   }
 
-  function open() {
-    modal.classList.add('open');
-    modal.setAttribute('aria-hidden', 'false');
+  async function openTask(id) {
+    if (!dock) return;
+    if (!dock.classList.contains('open')) setOpen(true);
+    select(id);
   }
 
-  function show() {
-    if (!modal) buildModal();
-    showList();
-    open();
-    load();
-  }
-
-  function hide() {
-    if (!modal) return;
-    modal.classList.remove('open');
-    modal.setAttribute('aria-hidden', 'true');
-    openId = null;
-    clearTimeout(logTimer);
-    if (/^#aufgabe/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  // Phones: back from the log to the list
+  function backButton() {
+    const back = el('button', 'task-dock-back', t('← Alle Aufgaben'));
+    back.type = 'button';
+    back.addEventListener('click', () => dock.classList.remove('show-detail'));
+    $('detail').prepend(back);
   }
 
   // ---------------------------------------------------------------------------
@@ -250,10 +272,11 @@
     try {
       data = await api('/api/tasks?limit=100');
     } catch (err) {
-      if (err.status === 401 || err.status === 403) { if (bar) bar.remove(); return; }   // not signed in / no permission
+      if (err.status === 401 || err.status === 403) { if (dock) { dock.remove(); document.body.classList.remove('has-task-dock', 'task-dock-open'); } return; }
       pollTimer = setTimeout(load, 30000);
       return;
     }
+    if (!dock) { build(); backButton(); }
     // Tell when a task that was running ends (also ones started on another device)
     data.tasks.forEach(x => {
       if (x.state === 'running') seenRunning.add(x.id);
@@ -262,12 +285,12 @@
         toast(`${t(x.title)}: ${t(x.state_label)}`, x.state === 'ok' ? 'success' : x.state === 'cancelled' ? 'info' : 'error');
       }
     });
-    renderBar();
-    if (modal && modal.classList.contains('open') && !openId) renderList();
+    renderHead();
+    renderList();
     pollTimer = setTimeout(load, document.hidden ? 60000 : data.running ? 3000 : 15000);
   }
 
-  window.PiTasks = { open: openTask, refresh: load, show };
+  window.PiTasks = { open: openTask, refresh: load, show: () => dock && setOpen(true) };
 
   (async () => {
     if (window.PiAuth) {
@@ -275,14 +298,14 @@
       if (!can('system.view')) return;
     }
     await load();
-    // #aufgaben opens the list, #aufgabe=<id> one task (links from events and alarms)
-    const fromHash = () => {
-      const m = location.hash.match(/^#aufgabe=([0-9a-f]{16})$/);
+    const fromHash = hash => {
+      const m = hash.match(/^#aufgabe=([0-9a-f]{16})$/);
       if (m) openTask(m[1]);
-      else if (location.hash === '#aufgaben') show();
+      else if (hash === '#aufgaben' && dock) setOpen(true);
     };
-    fromHash();
-    window.addEventListener('hashchange', fromHash);
+    fromHash(initialHash);
+    window.addEventListener('hashchange', () => fromHash(location.hash));
+    window.addEventListener('resize', () => { if (dock) setHeight(pref.height); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   })();
 })();
