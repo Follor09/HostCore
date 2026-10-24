@@ -63,6 +63,37 @@ target() {
     fi
 }
 
+# Renamed or moved repository on GitHub: git keeps working through GitHub's redirect, but only
+# until someone creates a repository under the old name. Once a day ask the API for the current
+# name (it follows the rename) and switch both copies over before that can happen.
+follow_rename() {
+    local stamp="$STATE/repo-checked" url path auth json name new
+    [ -f "$stamp" ] && [ -n "$(find "$stamp" -mmin -1440 2>/dev/null)" ] && return 0
+    touch "$stamp"
+    url="$(src_git remote get-url origin)"
+    [[ "$url" =~ ^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/?$ ]] || return 0
+    path="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+    auth=()
+    # Private repo: the stored token (https://user:TOKEN@github.com) authorises the API call
+    if [ -s "$CRED" ]; then
+        local token
+        token="$(sed -n 's#^https://[^:]*:\([^@]*\)@github\.com.*#\1#p' "$CRED" | head -n1)"
+        [ -n "$token" ] && auth=(-H "Authorization: Bearer $token")
+    fi
+    json="$(curl -fsSL --max-time 15 "${auth[@]}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$path" 2>/dev/null)" || return 0
+    name="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("full_name", ""))' <<<"$json" 2>/dev/null)"
+    [[ "$name" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 0
+    [ "${name,,}" = "${path,,}" ] && return 0
+    new="https://github.com/$name.git"
+    echo "🔀 Repository moved: $path -> $name, updating the remote address"
+    src_git remote set-url origin "$new"
+    case "$(git_ remote get-url origin)" in
+        git@github.com:*) git_ remote set-url origin "git@github.com:$name.git" ;;
+        https://github.com/*) git_ remote set-url origin "$new" ;;
+    esac
+}
+follow_rename || true
+
 # --- Root copy ---
 SRC_BRANCH="$(src_git rev-parse --abbrev-ref HEAD)"
 src_git fetch --quiet --tags --force origin "$SRC_BRANCH"
