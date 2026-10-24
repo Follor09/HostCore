@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - container page section "Datenbanken": PostgreSQL / MySQL / MariaDB containers
+ * HostCore Dashboard - container page section "Datenbanken": PostgreSQL / MySQL / MariaDB containers
  * with connections, sizes and growth, long-running queries, largest tables and dumps.
  */
 (function () {

@@ -6,7 +6,7 @@ Bitte **nicht** als öffentliches Issue. Stattdessen über GitHub: **Security �
 
 ## Wofür das Dashboard gedacht ist
 
-PiCore läuft im **Heimnetz oder hinter einem VPN** (z. B. NetBird, WireGuard, Tailscale). Es ist nicht dafür gebaut, direkt ins Internet gestellt zu werden – es bietet unter anderem ein Web-Terminal, Dienst- und Container-Steuerung und Datei-Zugriff. Wer es von außen erreichen will, sollte ein VPN oder einen Reverse-Proxy mit zusätzlicher Anmeldung und HTTPS davorsetzen.
+HostCore läuft im **Heimnetz oder hinter einem VPN** (z. B. NetBird, WireGuard, Tailscale). Es ist nicht dafür gebaut, direkt ins Internet gestellt zu werden – es bietet unter anderem ein Web-Terminal, Dienst- und Container-Steuerung und Datei-Zugriff. Wer es von außen erreichen will, sollte ein VPN oder einen Reverse-Proxy mit zusätzlicher Anmeldung und HTTPS davorsetzen.
 
 ## Sicherheitsmodell in Kürze
 

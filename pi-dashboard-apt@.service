@@ -1,5 +1,5 @@
 [Unit]
-Description=PiCore Dashboard: apt %i
+Description=HostCore Dashboard: apt %i
 After=network-online.target
 Wants=network-online.target
 

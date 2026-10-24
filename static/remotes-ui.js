@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Remote-Pis": add, test, rename, remove agents.
+ * HostCore Dashboard - settings section "Remote-Server": add, test, rename, remove agents.
  */
 (function () {
   'use strict';
@@ -31,7 +31,7 @@
     const box = $('remote-list');
     box.innerHTML = '';
     if (!items.length) {
-      box.appendChild(el('p', 'field-hint', t('Noch keine Remote-Pis.')));
+      box.appendChild(el('p', 'field-hint', t('Noch keine Remote-Server.')));
       return;
     }
     const current = window.PiHosts && window.PiHosts.current && window.PiHosts.current();
@@ -41,7 +41,9 @@
       const name = el('span', 'workload-name', r.name);
       name.setAttribute('data-no-i18n', '');
       const info = r.info || {};
-      const sub = el('span', 'workload-sub', [r.url, info.hostname, info.model, info.commit ? `Version ${info.commit.slice(0, 7)}` : ''].filter(Boolean).join(' · '));
+      // e.g. "Debian GNU/Linux 13 (trixie) · VM x86_64 (QEMU Standard PC …)" or "… · Raspberry Pi 5 Model B"
+      const kind = info.kind === 'pi' ? info.model : [{ vm: t('VM'), server: t('Server') }[info.kind], info.arch, info.model ? `(${info.model})` : ''].filter(Boolean).join(' ');
+      const sub = el('span', 'workload-sub', [r.url, info.hostname, info.os, kind || info.model, info.commit ? `Version ${info.commit.slice(0, 7)}` : ''].filter(Boolean).join(' · '));
       sub.setAttribute('data-no-i18n', '');
       main.append(name, sub);
       if (r.online === false && r.error) main.appendChild(el('span', 'workload-sub remote-err', r.error));
@@ -64,7 +66,7 @@
       const token = el('button', 'btn-secondary', t('Neuer Token'));
       token.type = 'button';
       token.addEventListener('click', async () => {
-        const tk = window.prompt(t('Neuer Token (./agent.sh token auf dem Remote-Pi)'), '');
+        const tk = window.prompt(t('Neuer Token (./agent.sh token auf dem Remote-Server)'), '');
         if (!tk || !tk.trim()) return;
         try { await api(`/api/remotes/${r.id}/update`, { token: tk.trim() }); msg(t('Token gespeichert.'), 'success'); load(); } catch (e) { msg(e.message, 'error'); }
       });
@@ -108,7 +110,7 @@
       msg(t('Verbinde…'));
       try {
         const r = await api('/api/remotes', form());
-        msg(`${r.name} ${t('hinzugefügt – oben rechts lässt sich jetzt zwischen den Pis wechseln.')}`, 'success');
+        msg(`${r.name} ${t('hinzugefügt – oben rechts lässt sich jetzt zwischen den Servern wechseln.')}`, 'success');
         $('remote-form').reset();
         load();
       } catch (err) { msg(err.message, 'error'); }

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - container page sections "Volumes & Netzwerke", "Docker aufräumen" and "Stack-Vorlagen".
+ * HostCore Dashboard - container page sections "Volumes & Netzwerke", "Docker aufräumen" and "Stack-Vorlagen".
  */
 (function () {
   'use strict';
@@ -200,8 +200,8 @@
     if (hosts) return hosts;
     try {
       const r = await api('/api/remotes/current');
-      hosts = [{ id: '', name: r.local || t('Dieser Pi'), online: true }, ...r.hosts];
-    } catch (e) { hosts = [{ id: '', name: t('Dieser Pi'), online: true }]; }
+      hosts = [{ id: '', name: r.local || t('Dieser Server'), online: true }, ...r.hosts];
+    } catch (e) { hosts = [{ id: '', name: t('Dieser Server'), online: true }]; }
     return hosts;
   }
 
@@ -286,8 +286,8 @@
     const wrap = $('tpl-form-wrap');
     wrap.innerHTML = '';
     wrap.hidden = false;
-    wrap.appendChild(el('h3', 'subhead', t('Vorlage aus einem Stack dieses Pis')));
-    if (!stacks.length) { wrap.appendChild(el('p', 'field-hint', t('Auf diesem Pi gibt es keine Compose-Stacks.'))); return; }
+    wrap.appendChild(el('h3', 'subhead', t('Vorlage aus einem Stack dieses Servers')));
+    if (!stacks.length) { wrap.appendChild(el('p', 'field-hint', t('Auf diesem Server gibt es keine Compose-Stacks.'))); return; }
     const row = el('div', 'fleet-pending-actions');
     const sel = el('select');
     stacks.forEach(s => { const o = raw('option', '', s.name); o.value = s.name; sel.appendChild(o); });
@@ -329,10 +329,10 @@
     env.placeholder = tp.env_hint || 'KEY=value';
     env.setAttribute('data-no-i18n', '');
     const field = (label, input) => { const w = el('label', 'login-field full'); w.append(el('span', '', t(label)), input); box.appendChild(w); };
-    box.appendChild(el('span', 'field-hint', t('Auf welchen Pis?')));
+    box.appendChild(el('span', 'field-hint', t('Auf welchen Servern?')));
     box.appendChild(targets);
     field('Stack-Name', name);
-    field('.env (optional – wird nur auf den Ziel-Pis gespeichert)', env);
+    field('.env (optional – wird nur auf den Ziel-Servern gespeichert)', env);
     const go = el('button', 'btn-primary', t('Stack anlegen'));
     go.type = 'submit';
     box.appendChild(go);
@@ -341,7 +341,7 @@
     box.addEventListener('submit', async e => {
       e.preventDefault();
       const ids = [...targets.querySelectorAll('input:checked')].map(c => c.value);
-      if (!ids.length) { toast(t('Mindestens einen Pi auswählen.'), 'error'); return; }
+      if (!ids.length) { toast(t('Mindestens einen Server auswählen.'), 'error'); return; }
       go.disabled = true;
       try {
         const r = await api(`/api/stack-templates/${tp.id}/deploy`, { targets: ids, name: name.value.trim(), env: env.value });

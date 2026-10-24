@@ -1,5 +1,5 @@
 [Unit]
-Description=Check GitHub for new PiCore Dashboard commits every minute
+Description=Check GitHub for new HostCore Dashboard commits every minute
 
 [Timer]
 OnBootSec=1min

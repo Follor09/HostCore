@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - combined live logs of several Docker containers on the containers
+ * HostCore Dashboard - combined live logs of several Docker containers on the containers
  * page: pick containers, lines are merged by time and colored per container, with text
  * filter, "errors only" and live follow (polling with since=last timestamp).
  */

@@ -199,7 +199,7 @@ def service_action(service_id: str, action: str) -> Dict[str, Any]:
     if res.returncode != 0:
         err = res.stderr.strip()
         if "password" in err.lower() or "not allowed" in err.lower():
-            return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
+            return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Server erneut ausführen."}
         return {"ok": False, "message": err[:200] or f"systemctl {action} fehlgeschlagen"}
     verb = {"start": "wird gestartet", "stop": "wird gestoppt", "restart": "wird neu gestartet"}[action]
     return {"ok": True, "message": f"{unit} {verb}…", "unit": unit}

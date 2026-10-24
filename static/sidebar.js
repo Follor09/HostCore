@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - collapsible sidebar on every page
+ * HostCore Dashboard - collapsible sidebar on every page
  *
  * One place for everything that used to be unlabeled icons in the header:
  * - Boards (the start page's boards; on the dashboard they switch in place)
@@ -23,6 +23,7 @@
     terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     wiki: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+    vm: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><rect x="6" y="7" width="5" height="6" rx="0.5"/><rect x="13" y="7" width="5" height="6" rx="0.5"/>',
     fleet: '<rect x="2" y="3" width="8" height="7" rx="1"/><rect x="14" y="3" width="8" height="7" rx="1"/><rect x="8" y="14" width="8" height="7" rx="1"/><path d="M6 10v2h12v-2M12 12v2"/>',
     shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
     toolbox: '<rect x="2" y="7" width="20" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M2 13h20"/>',
@@ -34,6 +35,7 @@
   const PAGES = [
     ['/system', 'tools', 'System-Werkzeuge', 'system.view'],
     ['/containers', 'box', 'Container', 'system.view'],
+    ['/vms', 'vm', 'VMs', 'system.view', 'vms'],
     ['/flotte', 'fleet', 'Flotte', 'system.view'],
     ['/doku', 'book', 'Dokumentation', ''],
     ['/nachweise', 'shield', 'Compliance', ''],
@@ -60,6 +62,7 @@
     if (tag === 'a') a.href = opts.href;
     else a.type = 'button';
     if (opts.perm) a.dataset.perm = opts.perm;
+    if (opts.cap) a.dataset.cap = opts.cap;   // caps.js hides it where the feature is off
     a.title = label;
     const ic = el('span', 'side-icon');
     ic.innerHTML = icon;
@@ -85,8 +88,8 @@
   const head = el('div', 'sidebar-head');
   const brand = el('a', 'sidebar-brand');
   brand.href = '/';
-  brand.title = 'PiCore';
-  brand.innerHTML = '<span class="sidebar-logo">P</span><span class="side-label">PI<b>CORE</b></span>';
+  brand.title = 'HostCore';
+  brand.innerHTML = '<span class="sidebar-logo">H</span><span class="side-label">HOST<b>CORE</b></span>';
   brand.setAttribute('data-no-i18n', '');
   const toggle = el('button', 'sidebar-toggle');
   toggle.type = 'button';
@@ -103,9 +106,9 @@
   side.append(head, scroll);
 
   // Pages, with the sections of the current page below it
-  PAGES.forEach(([href, icon, label, perm]) => {
+  PAGES.forEach(([href, icon, label, perm, cap]) => {
     const current = location.pathname === href || (href === '/doku' && location.pathname === '/docs');
-    const a = item('a', svg(ICON[icon]), t(label), { href, perm, cls: current ? 'active' : '' });
+    const a = item('a', svg(ICON[icon]), t(label), { href, perm, cap, cls: current ? 'active' : '' });
     if (current) a.setAttribute('aria-current', 'page');
     pagesGroup.appendChild(a);
     const nav = current && document.querySelector('.settings-nav');

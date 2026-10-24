@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - user editor and permission editor (settings page, admins only).
+ * HostCore Dashboard - user editor and permission editor (settings page, admins only).
  */
 (function () {
   'use strict';

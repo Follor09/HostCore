@@ -23,6 +23,7 @@
 #   pi-helper.sh ufw-preset <k3s|netbird|web>
 #   pi-helper.sh fan-curve set <t0> <t1> <t2> <t3> <s0> <s1> <s2> <s3>   (m°C, PWM 0-255)
 #   pi-helper.sh fan-curve reset
+#   pi-helper.sh libvirt-setup                  VMs: dashboard user into the libvirt group, default network + pool
 #   pi-helper.sh f2b-banned
 #   pi-helper.sh f2b-unban <ip>
 
@@ -69,15 +70,15 @@ geo_rules() {
         if [ "$f" = /etc/ufw/before.rules ]; then chain=ufw-before-input set=picore-geo4; else chain=ufw6-before-input set=picore-geo6; fi
         cp -p "$f" "$f.picore-bak"
         awk -v add="$1" -v chain="$chain" -v set="$set" '
-            /^# PiCore geoblock start/ { skip = 1; next }
-            /^# PiCore geoblock end/   { skip = 0; next }
+            /^# HostCore geoblock start/ { skip = 1; next }
+            /^# HostCore geoblock end/   { skip = 0; next }
             skip { next }
             { print }
             add == "add" && !done && $0 ~ "^-A " chain " -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT" {
-                print "# PiCore geoblock start (managed by the dashboard)"
+                print "# HostCore geoblock start (managed by the dashboard)"
                 print "-A " chain " -m set --match-set " set " src -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix \"[UFW BLOCK] \""
                 print "-A " chain " -m set --match-set " set " src -j DROP"
-                print "# PiCore geoblock end"
+                print "# HostCore geoblock end"
                 done = 1
             }
         ' "$f" > "$f.picore-tmp"
@@ -101,8 +102,8 @@ case "$CMD" in
         need ufw
         [ $# -eq 1 ] && is_port "$1" || die "Ungültiger SSH-Port."
         # Never lock yourself out: SSH and the dashboard stay reachable
-        ufw allow "$1/tcp" comment "SSH (PiCore)" >/dev/null
-        ufw allow "$DASHBOARD_PORT/tcp" comment "Dashboard (PiCore)" >/dev/null
+        ufw allow "$1/tcp" comment "SSH (HostCore)" >/dev/null
+        ufw allow "$DASHBOARD_PORT/tcp" comment "Dashboard (HostCore)" >/dev/null
         ufw --force enable
         ;;
     ufw-disable)
@@ -155,7 +156,7 @@ case "$CMD" in
         ;;
     geoblock-status)
         echo "ipset=$(command -v ipset >/dev/null && echo yes || echo no)"
-        echo "rules=$(grep -q '^# PiCore geoblock start' /etc/ufw/before.rules 2>/dev/null && echo yes || echo no)"
+        echo "rules=$(grep -q '^# HostCore geoblock start' /etc/ufw/before.rules 2>/dev/null && echo yes || echo no)"
         if command -v ipset >/dev/null; then
             for f in 4 6; do
                 N="$(ipset list "picore-geo$f" -terse 2>/dev/null | sed -n 's/^Number of entries: //p')"
@@ -196,7 +197,7 @@ case "$CMD" in
         ipset save picore-geo6 >> "$GEO_FILE.tmp"
         mv "$GEO_FILE.tmp" "$GEO_FILE"
         systemctl enable --quiet pi-dashboard-geoblock.service 2>/dev/null || true
-        if ! grep -q '^# PiCore geoblock start' /etc/ufw/before.rules; then
+        if ! grep -q '^# HostCore geoblock start' /etc/ufw/before.rules; then
             geo_rules add
             ufw status | grep -q '^Status: active' && ufw reload >/dev/null
         fi
@@ -302,16 +303,16 @@ case "$CMD" in
         need ufw
         case "${1:-}" in
             k3s)  # https://docs.k3s.io/installation/requirements#inbound-rules-for-k3s-nodes
-                ufw allow 6443/tcp comment "k3s API (PiCore)"
-                ufw allow from 10.42.0.0/16 to any comment "k3s Pods (PiCore)"
-                ufw allow from 10.43.0.0/16 to any comment "k3s Services (PiCore)"
+                ufw allow 6443/tcp comment "k3s API (HostCore)"
+                ufw allow from 10.42.0.0/16 to any comment "k3s Pods (HostCore)"
+                ufw allow from 10.43.0.0/16 to any comment "k3s Services (HostCore)"
                 ;;
             netbird)
-                ufw allow in on wt0 comment "NetBird VPN (PiCore)"
+                ufw allow in on wt0 comment "NetBird VPN (HostCore)"
                 ;;
             web)
-                ufw allow 80/tcp comment "HTTP (PiCore)"
-                ufw allow 443/tcp comment "HTTPS (PiCore)"
+                ufw allow 80/tcp comment "HTTP (HostCore)"
+                ufw allow 443/tcp comment "HTTPS (HostCore)"
                 ;;
             *) die "Unbekannte Vorlage." ;;
         esac
@@ -345,15 +346,15 @@ case "$CMD" in
         ls -1t "$CONFIG".picore-* 2>/dev/null | tail -n +6 | xargs -r rm -f
         TMP="$(mktemp "$(dirname "$CONFIG")/.config.txt.XXXXXX")"
         awk '
-            /^# PiCore fan curve start/ { skip = 1; next }
-            /^# PiCore fan curve end/   { skip = 0; next }
+            /^# HostCore fan curve start/ { skip = 1; next }
+            /^# HostCore fan curve end/   { skip = 0; next }
             skip { next }
             /^[[:space:]]*dtparam=fan_temp[0-3](_hyst|_speed)?=/ { next }
             { print }
         ' "$CONFIG" > "$TMP"
         if [ "$MODE" = set ]; then
             {
-                echo "# PiCore fan curve start (managed by the dashboard)"
+                echo "# HostCore fan curve start (managed by the dashboard)"
                 echo "[all]"
                 for i in 0 1 2 3; do
                     T_ARG=$((i + 1)); S_ARG=$((i + 5))
@@ -361,11 +362,41 @@ case "$CMD" in
                     echo "dtparam=fan_temp${i}_hyst=5000"
                     echo "dtparam=fan_temp${i}_speed=${!S_ARG}"
                 done
-                echo "# PiCore fan curve end"
+                echo "# HostCore fan curve end"
             } >> "$TMP"
         fi
         mv "$TMP" "$CONFIG"
         sync
+        echo "ok"
+        ;;
+    libvirt-setup)
+        # VMs page: dashboard user into the libvirt group (as powerful as root - like docker),
+        # libvirt running, default NAT network and image pool, then restart the dashboard so
+        # the new group applies. Safe to run again.
+        need virsh
+        getent group libvirt >/dev/null || die "Gruppe libvirt fehlt – Paket libvirt-daemon-system installieren."
+        DIR="$(cat /var/lib/pi-dashboard/dir 2>/dev/null || true)"
+        [ -d "$DIR" ] || die "Dashboard-Ordner unbekannt – install.sh erneut ausführen."
+        OWNER="$(stat -c %U "$DIR")"
+        [ "$OWNER" != root ] || die "Dashboard läuft als root."
+        usermod -aG libvirt "$OWNER"
+        getent group kvm >/dev/null && usermod -aG kvm "$OWNER"
+        echo "✔ $OWNER ist in der Gruppe libvirt"
+        systemctl enable --now libvirtd.service >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true
+        V="virsh -c qemu:///system"
+        if $V net-info default >/dev/null 2>&1; then
+            $V net-autostart default >/dev/null
+            $V net-info default | grep -q '^Active: *yes' || $V net-start default >/dev/null || echo "⚠️ Netzwerk default ließ sich nicht starten"
+            echo "✔ Netzwerk default (NAT) aktiv"
+        fi
+        if ! $V pool-info default >/dev/null 2>&1; then
+            $V pool-define-as default dir --target /var/lib/libvirt/images >/dev/null
+            $V pool-build default >/dev/null 2>&1 || true
+        fi
+        $V pool-autostart default >/dev/null
+        $V pool-info default | grep -q '^State: *running' || $V pool-start default >/dev/null
+        echo "✔ Speicher-Pool default (/var/lib/libvirt/images)"
+        systemd-run --on-active=3 --collect --quiet systemctl restart raspberry-dashboard.service || true
         echo "ok"
         ;;
     f2b-banned)

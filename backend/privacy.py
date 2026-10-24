@@ -28,7 +28,7 @@ LEGAL_BASES = {
     "f": "Art. 6 Abs. 1 lit. f – berechtigtes Interesse", "bdsg26": "§ 26 BDSG – Beschäftigungsverhältnis",
 }
 TOM_AREAS = [
-    ("zutritt", "Zutrittskontrolle", "Kein unbefugter Zutritt zu den Räumen und Geräten (Serverraum, Schrank, Standort des Pi)."),
+    ("zutritt", "Zutrittskontrolle", "Kein unbefugter Zutritt zu den Räumen und Geräten (Serverraum, Schrank, Standort des Servers)."),
     ("zugang", "Zugangskontrolle", "Keine unbefugte Nutzung der Systeme (Anmeldung, Passwörter, zweiter Faktor)."),
     ("zugriff", "Zugriffskontrolle", "Zugriff nur auf die Daten, die für die Aufgabe nötig sind (Rechte, Rollen, Prüfung)."),
     ("weitergabe", "Weitergabekontrolle", "Schutz bei Übertragung und Transport (Verschlüsselung, VPN, Freigabe-Links)."),

@@ -7,12 +7,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
   <script src="/static/theme.js"></script>
-  <title>System-Werkzeuge | PiCore Server</title>
+  <title>System-Werkzeuge | HostCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -162,7 +162,7 @@
             <option value="">LAN + WLAN</option>
           </select>
         </div>
-        <p class="section-desc">Wie viel der Pi empfangen und gesendet hat – pro Tag und Monat. VPN-Verkehr läuft zusätzlich über LAN/WLAN und ist deshalb nur einzeln wählbar.</p>
+        <p class="section-desc">Wie viel der Server empfangen und gesendet hat – pro Tag und Monat. VPN-Verkehr läuft zusätzlich über LAN/WLAN und ist deshalb nur einzeln wählbar.</p>
         <div class="bench-values ssh-stats" id="usage-stats"></div>
         <div class="nvme-chart-head">
           <h4 class="nvme-chart-title">Pro Tag (30 Tage)</h4>
@@ -239,7 +239,7 @@
           <h2>Geräte im Netzwerk</h2>
           <button data-perm="network.tools" class="btn-primary" id="lan-scan">Jetzt scannen</button>
         </div>
-        <p class="section-desc">Sucht alle Geräte im Heimnetz (LAN/WLAN des Pi). Gefundene Geräte werden gemerkt – auch wenn sie später offline sind. Namen kommen vom Router, Hersteller aus der MAC-Adresse.</p>
+        <p class="section-desc">Sucht alle Geräte im Heimnetz (LAN/WLAN des Servers). Gefundene Geräte werden gemerkt – auch wenn sie später offline sind. Namen kommen vom Router, Hersteller aus der MAC-Adresse.</p>
         <p class="field-hint" id="lan-status"></p>
         <div class="log-filters lan-filter">
           <input type="search" id="lan-filter" placeholder="Filtern: Name, IP, MAC, Hersteller…" autocomplete="off" spellcheck="false" aria-label="Geräte filtern">
@@ -268,7 +268,7 @@
             <button class="btn-secondary" id="nb-refresh" hidden>Neu laden</button>
           </div>
         </div>
-        <p class="section-desc">Präfixe, IP-Adressen, Geräte und VMs aus deiner NetBox – abgeglichen mit dem Geräte-Scan dieses Pi: was im Netz läuft, aber nicht dokumentiert ist, wo IP oder MAC abweichen und welche Adressen wirklich frei sind.</p>
+        <p class="section-desc">Präfixe, IP-Adressen, Geräte und VMs aus deiner NetBox – abgeglichen mit dem Geräte-Scan dieses Servers: was im Netz läuft, aber nicht dokumentiert ist, wo IP oder MAC abweichen und welche Adressen wirklich frei sind.</p>
         <div id="nb-setup" hidden>
           <p class="field-hint">NetBox ist noch nicht verbunden.</p>
           <a class="btn-secondary" href="/settings#netbox" data-perm="settings.manage">Jetzt verbinden</a>
@@ -316,7 +316,7 @@
             </button>
           </div>
         </div>
-        <p class="section-desc">Welche Ports der Pi öffnet und ob sie aus dem Heimnetz (LAN) oder über das VPN erreichbar sind – aus Bindung und Firewall-Regeln berechnet.</p>
+        <p class="section-desc">Welche Ports der Server öffnet und ob sie aus dem Heimnetz (LAN) oder über das VPN erreichbar sind – aus Bindung und Firewall-Regeln berechnet.</p>
         <div class="table-scroll">
           <table class="data-table" id="ports-table"></table>
         </div>
@@ -327,7 +327,7 @@
           <input type="text" id="port-test-ports" class="short" placeholder="Ports: 22,80,443" value="22,80,443" autocomplete="off" aria-label="Ports" required>
           <button type="submit" class="btn-primary">Testen</button>
         </form>
-        <p class="field-hint">Prüft vom Pi aus per TCP, ob ein Dienst antwortet (max. 100 Ports, Bereiche wie 8000-8010).</p>
+        <p class="field-hint">Prüft vom Server aus per TCP, ob ein Dienst antwortet (max. 100 Ports, Bereiche wie 8000-8010).</p>
         <div class="table-scroll" id="port-test-wrap" hidden>
           <table class="data-table" id="port-test-results"></table>
         </div>
@@ -473,7 +473,7 @@
                 <button type="button" class="btn-primary" id="geo-apply">Übernehmen</button>
               </div>
             </div>
-            <p class="field-hint">Sperrt alle Verbindungsversuche aus den gewählten Ländern, bevor die Regeln oben greifen. Antworten auf Verbindungen, die der Pi selbst aufbaut (Updates, DNS …), kommen weiter an; LAN und VPN sind nie betroffen. Das Land, aus dem du gerade verbunden bist, lässt sich nicht sperren.</p>
+            <p class="field-hint">Sperrt alle Verbindungsversuche aus den gewählten Ländern, bevor die Regeln oben greifen. Antworten auf Verbindungen, die der Server selbst aufbaut (Updates, DNS …), kommen weiter an; LAN und VPN sind nie betroffen. Das Land, aus dem du gerade verbunden bist, lässt sich nicht sperren.</p>
           </div>
           <p class="field-hint" id="fw-docker-hint" hidden>Hinweis: Ports, die Docker-Container veröffentlichen, umgehen ufw und sind trotzdem erreichbar.</p>
         </div>
@@ -613,7 +613,7 @@
             <button data-perm="settings.manage" class="btn-primary" id="bk-add" type="button">Backup überwachen</button>
           </div>
         </div>
-        <p class="section-desc">Prüft stündlich, ob restic-, Borg- oder Ordner-Backups aktuell sind, und warnt, wenn das letzte zu alt ist oder die Prüfung scheitert – in den Ereignissen, der Statusübersicht und per E-Mail. Das Repository muss für den Dashboard-Benutzer lesbar sein; Passwörter bleiben auf dem Pi.</p>
+        <p class="section-desc">Prüft stündlich, ob restic-, Borg- oder Ordner-Backups aktuell sind, und warnt, wenn das letzte zu alt ist oder die Prüfung scheitert – in den Ereignissen, der Statusübersicht und per E-Mail. Das Repository muss für den Dashboard-Benutzer lesbar sein; Passwörter bleiben auf dem Server.</p>
         <div class="docs-form" id="bk-form-wrap" hidden></div>
         <div class="backup-list" id="bk-list"></div>
       </section>
@@ -624,7 +624,7 @@
           <h2>Sensoren</h2>
           <span class="health-tag" id="sensors-live">live</span>
         </div>
-        <p class="section-desc">Alle Temperaturen, Spannungen und Ströme, die der Pi meldet. Die Kurven zeigen die letzten 24 Stunden.</p>
+        <p class="section-desc">Alle Temperaturen, Spannungen und Ströme, die der Server meldet. Die Kurven zeigen die letzten 24 Stunden.</p>
         <div id="sensor-groups"></div>
         <p class="field-hint" id="sensor-hint"></p>
       </section>
@@ -634,7 +634,7 @@
         <div class="section-head">
           <h2>Stromverbrauch</h2>
         </div>
-        <p class="section-desc">Was der Pi verbraucht und kostet – aus der Leistungsmessung des Pi 5 (PMIC), einmal pro Minute.</p>
+        <p class="section-desc">Was der Server verbraucht und kostet – aus der Leistungsmessung des Pi 5 (PMIC), einmal pro Minute.</p>
         <div id="power-body">
           <div class="bench-values ssh-stats" id="power-stats"></div>
           <div class="nvme-chart-head">
@@ -650,7 +650,7 @@
             <label class="fw-field power-cur"><span>Währung</span><input type="text" id="power-currency" maxlength="4" autocomplete="off"></label>
             <button type="submit" class="btn-primary">Speichern</button>
           </form>
-          <p class="field-hint">Der PMIC misst die Platine (SoC, RAM, Spannungswandler). Netzteil-Verluste, NVMe, USB-Geräte und Lüfter sieht er nur teilweise – mit dem Zuschlag lässt sich das ausgleichen (typisch 1–3 W; genau misst nur ein Zwischenstecker). Tage, an denen der Pi aus war, zählen nur die gemessene Zeit.</p>
+          <p class="field-hint">Der PMIC misst die Platine (SoC, RAM, Spannungswandler). Netzteil-Verluste, NVMe, USB-Geräte und Lüfter sieht er nur teilweise – mit dem Zuschlag lässt sich das ausgleichen (typisch 1–3 W; genau misst nur ein Zwischenstecker). Tage, an denen der Server aus war, zählen nur die gemessene Zeit.</p>
         </div>
         <p class="field-hint" id="power-hint"></p>
       </section>
@@ -742,7 +742,7 @@
             </button>
           </div>
         </div>
-        <p class="section-desc">Wann der Pi wegen Unterspannung (Netzteil) oder Hitze gebremst hat. Kurze Ereignisse zwischen zwei Messungen werden ebenfalls erkannt.</p>
+        <p class="section-desc">Wann der Server wegen Unterspannung (Netzteil) oder Hitze gebremst hat. Kurze Ereignisse zwischen zwei Messungen werden ebenfalls erkannt.</p>
         <div class="bench-values ssh-stats" id="throttle-stats"></div>
         <h3 class="subhead">Ereignisse (30 Tage)</h3>
         <div class="table-scroll tall">
@@ -988,7 +988,7 @@
             <button class="btn-secondary" id="hd-run" type="button">Jetzt prüfen</button>
           </div>
         </div>
-        <p class="section-desc">Die Sicherheits-Grundeinstellungen dieses Pi: SSH, Firewall, im Netz erreichbare Dienste, sudo, automatische Anmeldung und Updates. Jeder Punkt mit Bewertung und dem Befehl zur Behebung. Läuft zusätzlich einmal täglich; schwere Mängel erscheinen in der Statusübersicht.</p>
+        <p class="section-desc">Die Sicherheits-Grundeinstellungen dieses Servers: SSH, Firewall, im Netz erreichbare Dienste, sudo, automatische Anmeldung und Updates. Jeder Punkt mit Bewertung und dem Befehl zur Behebung. Läuft zusätzlich einmal täglich; schwere Mängel erscheinen in der Statusübersicht.</p>
         <div class="bench-values ssh-stats" id="hd-tiles"></div>
         <div class="st-groups" id="hd-groups"></div>
       </section>
@@ -1024,7 +1024,7 @@
             <a class="btn-secondary" id="sb-export-csv" href="/api/sbom/export?format=csv" download>CSV</a>
           </div>
         </div>
-        <p class="section-desc">Welche Software in welcher Version auf dem Pi läuft – Systempakete, die Python-Pakete des Dashboards und die Pakete in den Container-Images (aus der täglichen Trivy-Prüfung) – mit Lizenzen. Suche nach Name, Name und Version („openssl 3.0“) oder Lizenz; „Alle Pis“ sucht in der ganzen Flotte. Export als SBOM (CycloneDX) oder CSV.</p>
+        <p class="section-desc">Welche Software in welcher Version auf dem Server läuft – Systempakete, die Python-Pakete des Dashboards und die Pakete in den Container-Images (aus der täglichen Trivy-Prüfung) – mit Lizenzen. Suche nach Name, Name und Version („openssl 3.0“) oder Lizenz; „Alle Server“ sucht in der ganzen Flotte. Export als SBOM (CycloneDX) oder CSV.</p>
         <div class="bench-values ssh-stats" id="sb-tiles"></div>
         <form class="log-filters" id="sb-form">
           <input type="search" id="sb-query" placeholder="z.B. openssl 3.0, python3, GPL-3" autocomplete="off" spellcheck="false" aria-label="Suchbegriff">
@@ -1034,7 +1034,7 @@
             <option value="python">Python (Dashboard)</option>
             <option value="image">Container</option>
           </select>
-          <label class="sb-fleet"><input type="checkbox" id="sb-fleet"> <span>Alle Pis</span></label>
+          <label class="sb-fleet"><input type="checkbox" id="sb-fleet"> <span>Alle Server</span></label>
         </form>
         <div id="sb-results"></div>
         <details class="vu-ignored-wrap" id="sb-licenses-wrap">

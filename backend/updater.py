@@ -1,7 +1,7 @@
 """
 Git Auto-Updater Module for Raspberry Pi Dashboard.
 Supports:
-1. Periodic background polling for new GitHub commits (ideal for Pis behind home NAT/firewall).
+1. Periodic background polling for new GitHub commits (ideal for servers behind home NAT/firewall).
 2. GitHub Webhook endpoint for instant push updates.
 3. On-demand UI checks and one-click manual update execution.
 4. Auto-install of updated requirements.txt and systemd/process restart.
@@ -262,7 +262,7 @@ def run_update_now() -> Dict[str, Any]:
         return {"ok": False, "message": f"Update konnte nicht gestartet werden ({type(e).__name__})."}
     if res.returncode != 0:
         return {"ok": False, "message": (res.stderr or res.stdout).strip()[:200] or "Update konnte nicht gestartet werden."}
-    return {"ok": True, "message": "Update gestartet – der Pi holt die neueste Version und startet das Dashboard bei Bedarf neu."}
+    return {"ok": True, "message": "Update gestartet – der Server holt die neueste Version und startet das Dashboard bei Bedarf neu."}
 
 
 async def _restart_server_delayed():

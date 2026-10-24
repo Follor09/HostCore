@@ -6,7 +6,7 @@ together from what the dashboard already knows - so it is current without being 
   the backups that cover it, database dumps, the Git source (GitOps), volumes and host folders,
   and generated restore steps (folder, variables, data, database restore commands, start,
   check). Own steps, dependencies, a check and a runbook can be added per service.
-- General part: this Pi, emergency contacts, where credentials are kept (a hint only - the
+- General part: this server, emergency contacts, where credentials are kept (a hint only - the
   handbook never contains passwords), contracts with providers, domains, hardware.
 - Gaps (no backup, no current dump, failing backup, no profile ...) give a readiness value.
 - Export as Markdown or a print view (save as PDF in the browser), meant to be kept offline.
@@ -238,7 +238,7 @@ def _service(target: str, name: str, sdoc: Dict[str, Any], entry: Dict[str, Any]
         elif d:
             steps.append({"text": f"Ordner {d} aus der Sicherung zurückholen – er enthält {', '.join(os.path.basename(f) for f in stack['files']) or 'die Compose-Datei'}."})
         if svc["stack"]["env_file"]:
-            steps.append({"text": f"Variablen-Datei {svc['stack']['env_file']} zurückholen – sie enthält Zugangsdaten und liegt nur auf dem Pi."})
+            steps.append({"text": f"Variablen-Datei {svc['stack']['env_file']} zurückholen – sie enthält Zugangsdaten und liegt nur auf dem Server."})
         if mounts["folders"]:
             steps.append({"text": "Daten in diesen Host-Ordnern zurückholen: " + ", ".join(mounts["folders"])})
         if mounts["volumes"]:
@@ -354,7 +354,7 @@ def markdown() -> str:
     h = d["host"]
     g = d["general"]
     out: List[str] = [f"# Notfallhandbuch – {h['hostname']}", "",
-                      f"Stand: {_date(d['generated'])} · erzeugt vom PiCore Dashboard · {d['summary']['services']} Dienste, "
+                      f"Stand: {_date(d['generated'])} · erzeugt vom HostCore Dashboard · {d['summary']['services']} Dienste, "
                       f"{d['summary']['complete']} ohne Lücken", "",
                       "> Dieses Handbuch enthält keine Passwörter. Es beschreibt, wo Daten, Sicherungen und Zugangsdaten liegen "
                       "und in welcher Reihenfolge die Dienste zurückkommen.", ""]
@@ -369,7 +369,7 @@ def markdown() -> str:
         out += ["**Ablage dieses Handbuchs:** " + g["location"], ""]
     if g.get("notes"):
         out += ["## Hinweise", "", g["notes"], ""]
-    out += ["## Dieser Pi", "", f"- Hostname: `{h['hostname']}`", f"- Modell: {h['model']}", f"- System: {h['os']} · Kernel {h['kernel']}",
+    out += ["## Dieser Server", "", f"- Hostname: `{h['hostname']}`", f"- Modell: {h['model']}", f"- System: {h['os']} · Kernel {h['kernel']}",
             f"- Adresse: `{h['ip']}`"]
     for name, ip in (h.get("interfaces") or {}).items():
         out.append(f"  - {name}: `{ip if isinstance(ip, str) else ip}`")

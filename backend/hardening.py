@@ -1,5 +1,5 @@
 """
-Hardening check (System -> Sicherheit -> Härtung): the security basics of this Pi, each with a
+Hardening check (System -> Sicherheit -> Härtung): the security basics of this server, each with a
 rating and the command that fixes it.
 
 - SSH: root login, password login (with or without keys), empty passwords, fail2ban
@@ -192,7 +192,7 @@ def _account_checks() -> List[Dict[str, Any]]:
         rc, _ = _run(["sudo", "-n", "true"], timeout=5)
         nopw = glob.glob("/etc/sudoers.d/*nopasswd*")
         out.append(_r("sudo", g, "sudo ohne Passwort", "fail" if rc == 0 else "ok",
-                      "Der Dashboard-Benutzer wird ohne Passwort root – wer das Dashboard oder diesen Benutzer übernimmt, hat den ganzen Pi."
+                      "Der Dashboard-Benutzer wird ohne Passwort root – wer das Dashboard oder diesen Benutzer übernimmt, hat den ganzen Server."
                       if rc == 0 else "sudo verlangt ein Passwort (außer für die eng begrenzten Dashboard-Befehle)",
                       (f"sudo rm {nopw[0]}  # vorher sicherstellen, dass das eigene Passwort bekannt ist" if nopw else "sudo visudo  # NOPASSWD-Zeile für diesen Benutzer entfernen")
                       if rc == 0 else "", "critical"))

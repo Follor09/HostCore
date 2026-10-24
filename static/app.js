@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - Server & Homelab Edition
+ * HostCore Dashboard - Server & Homelab Edition
  * Frontend Controller & Real-Time Engine
  */
 
@@ -1795,7 +1795,7 @@
     set('power-subtitle', 'Board, ohne USB-Geräte');
     set('power-volt', pw.input_volt != null ? `${pw.input_volt.toFixed(2)} V` : '--');
     set('power-psu', pw.psu_max_ma != null ? `${(pw.psu_max_ma / 1000).toFixed(1)} A` : '--');
-    document.getElementById('power-psu').title = pw.psu_ok ? '' : 'Unter 5 A: der Pi begrenzt USB-Geräte auf 600 mA';
+    document.getElementById('power-psu').title = pw.psu_ok ? '' : 'Unter 5 A: der Server begrenzt USB-Geräte auf 600 mA';
     const core = (pw.top_rails || []).find(r => r.name === 'VDD_CORE');
     set('power-core', core ? `${core.watt.toFixed(2)} W` : '--');
 
@@ -1910,7 +1910,10 @@
     // Temperature & Throttling
     if (sys.temperature) {
       const temp = sys.temperature.celsius;
-      if (els.cpuTempVal) {
+      if (els.cpuTempVal && temp == null) {
+        els.cpuTempVal.textContent = '–';
+        els.cpuTempVal.className = 'metric-highlight-value temp-badge';
+      } else if (els.cpuTempVal) {
         els.cpuTempVal.textContent = `${temp}°C`;
         els.cpuTempVal.className = 'metric-highlight-value temp-badge';
         if (temp < 52) {
@@ -1920,12 +1923,12 @@
         }
       }
       if (els.tempSourceBadge) {
-        els.tempSourceBadge.textContent = sys.temperature.is_simulated
-          ? 'Sensor: Dev-Simulation'
+        els.tempSourceBadge.textContent = temp == null ? 'Kein Temperatursensor'
+          : sys.temperature.is_simulated ? 'Sensor: Dev-Simulation'
           : `Sensor: ${sys.temperature.source}`;
       }
 
-      state.history.temp.push(temp);
+      if (temp != null) state.history.temp.push(temp);
       if (state.history.temp.length > state.history.maxPoints) state.history.temp.shift();
       drawSparkline(els.tempChart, state.history.temp, '#ffb703', 'rgba(255, 183, 3, 0.25)');
     }
@@ -2116,13 +2119,13 @@
   function openModal(action) {
     state.modalAction = action;
     if (action === 'reboot') {
-      els.modalTitle.textContent = 'Raspberry Pi Neustart';
-      els.modalMessage.textContent = 'Möchtest du den Raspberry Pi jetzt neu starten? Laufende Serverdienste werden beendet.';
+      els.modalTitle.textContent = 'Server-Neustart';
+      els.modalMessage.textContent = 'Möchtest du den Server jetzt neu starten? Laufende Dienste werden beendet.';
       els.btnModalConfirm.className = 'btn-confirm';
       els.btnModalConfirm.style.background = 'var(--accent-amber)';
       els.btnModalConfirm.textContent = 'Jetzt Neustarten';
     } else if (action === 'shutdown') {
-      els.modalTitle.textContent = 'Raspberry Pi Herunterfahren';
+      els.modalTitle.textContent = 'Server herunterfahren';
       els.modalMessage.textContent = 'Möchtest du das System sicher ausschalten? Danach muss die Stromversorgung getrennt bzw. wiederhergestellt werden.';
       els.btnModalConfirm.className = 'btn-confirm';
       els.btnModalConfirm.style.background = 'var(--accent-rose)';
@@ -3369,7 +3372,7 @@
     bindSegmented('history-range', 'range', loadHistory);
     // Network data depends on the chosen interface, so switching to/from it reloads
     bindSegmented('history-metric', 'metric', () => (historyState.iface ? loadHistory() : renderHistory()));
-    // A saved metric this Pi can't measure (fan/power on a Pi 4) falls back to CPU, without overwriting the choice
+    // A saved metric this server can't measure (fan/power on a Pi 4) falls back to CPU, without overwriting the choice
     if (window.PiCaps) window.PiCaps.ready.then(() => {
       const active = document.querySelector('#history-metric button.active');
       if (!active || !active.classList.contains('cap-off')) return;

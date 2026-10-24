@@ -1,13 +1,13 @@
 """
 Software inventory / SBOM (System -> Schwachstellen & Support -> Software-Inventar): which software
-in which version runs on this Pi, with licenses.
+in which version runs on this server, with licenses.
 
 - System packages: dpkg (version, architecture, size, source package); licenses from the
   machine-readable /usr/share/doc/<package>/copyright files
 - Python packages of the dashboard itself (its venv)
 - Container images: the package lists Trivy writes during the daily vulnerability scan
 
-Searchable here and - via /api/fleet/sbom - across all Pis ("where does openssl 3.0 run?").
+Searchable here and - via /api/fleet/sbom - across all servers ("where does openssl 3.0 run?").
 Export as CycloneDX 1.5 JSON or CSV.
 """
 
@@ -225,7 +225,7 @@ def export(fmt: str) -> tuple:
         components.append(c)
     bom = {"bomFormat": "CycloneDX", "specVersion": "1.5", "serialNumber": f"urn:uuid:{uuid.uuid4()}", "version": 1,
            "metadata": {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "tools": {"components": [{"type": "application", "name": "PiCore Dashboard"}]},
+                        "tools": {"components": [{"type": "application", "name": "HostCore Dashboard"}]},
                         "component": {"type": "device", "name": platform.node() or "pi"}},
            "components": components}
     return f"sbom-{host}-{stamp}.cdx.json", "application/vnd.cyclonedx+json", json.dumps(bom, ensure_ascii=False, indent=1)

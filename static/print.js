@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - print view for Markdown reports (/druck?src=...): renders the report with the
+ * HostCore Dashboard - print view for Markdown reports (/druck?src=...): renders the report with the
  * safe Markdown renderer, laid out for paper. Only the known report sources are accepted.
  */
 (function () {
@@ -25,6 +25,6 @@
     doc.innerHTML = '';
     doc.appendChild(window.PiMarkdown.render(text));
     const h1 = doc.querySelector('h1');
-    if (h1) document.title = `${h1.textContent} | PiCore Server`;
+    if (h1) document.title = `${h1.textContent} | HostCore Server`;
   }).catch(() => { doc.textContent = t('Laden fehlgeschlagen.'); });
 })();

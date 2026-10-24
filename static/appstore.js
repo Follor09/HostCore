@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - app store on the containers page: recommended apps plus the
+ * HostCore Dashboard - app store on the containers page: recommended apps plus the
  * LinuxServer.io catalog with search, categories, sorting and logos; the install form
  * is built from each app's ports, folders, settings and devices, with a compose
  * preview and the live install output.
@@ -37,7 +37,7 @@
     return json;
   }
 
-  // Apps run on the Pi the dashboard shows (this one or the selected remote Pi)
+  // Apps run on the server the dashboard shows (this one or the selected remote server)
   function appUrl(open) {
     if (!open || !open.port) return '';
     let host = location.hostname;
@@ -46,7 +46,7 @@
     return `http://${host.includes(':') ? `[${host}]` : host}:${open.port}${open.path || ''}`;
   }
 
-  // Logo from the Pi's cache, two-letter tile as fallback
+  // Logo from the server's cache, two-letter tile as fallback
   function appIcon(app) {
     let h = 0;
     for (const ch of app.name) h = (h * 31 + ch.charCodeAt(0)) % 360;
@@ -248,11 +248,11 @@
       });
       form.appendChild(g);
     }
-    if (f.host_network) form.appendChild(el('p', 'field-hint', t('Diese App nutzt das Netzwerk des Pi direkt (network_mode: host) – ihre Ports lassen sich nicht umlegen.')));
+    if (f.host_network) form.appendChild(el('p', 'field-hint', t('Diese App nutzt das Netzwerk des Servers direkt (network_mode: host) – ihre Ports lassen sich nicht umlegen.')));
 
     if (f.folders.length) {
       form.appendChild(el('h4', '', t('Ordner')));
-      form.appendChild(el('p', 'field-hint', t('„./name“ legt einen Unterordner im App-Verzeichnis an; ein absoluter Pfad bindet einen vorhandenen Ordner des Pi ein.')));
+      form.appendChild(el('p', 'field-hint', t('„./name“ legt einen Unterordner im App-Verzeichnis an; ein absoluter Pfad bindet einen vorhandenen Ordner des Servers ein.')));
       const g = el('div', 'app-form-list');
       f.folders.forEach(fo => {
         const label = `${fo.label || fo.container} → ${fo.container}${fo.ro ? ` (${t('nur lesen')})` : ''}`;

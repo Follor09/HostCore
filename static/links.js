@@ -1,6 +1,6 @@
 /**
- * PiCore Dashboard - your own links (Home Assistant, router, ...) in the header.
- * Managed under Einstellungen -> Eigene Links, stored on the Pi (same on every device).
+ * HostCore Dashboard - your own links (Home Assistant, router, ...) in the header.
+ * Managed under Einstellungen -> Eigene Links, stored on the server (same on every device).
  */
 (function () {
   'use strict';

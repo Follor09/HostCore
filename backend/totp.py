@@ -43,7 +43,7 @@ def verify(secret: str, code: str, last_step: int = 0, now: Optional[float] = No
     return None
 
 
-def uri(secret: str, account: str, issuer: str = "PiCore") -> str:
+def uri(secret: str, account: str, issuer: str = "HostCore") -> str:
     return (f"otpauth://totp/{quote(issuer)}:{quote(account)}?secret={secret}&issuer={quote(issuer)}"
             f"&algorithm=SHA1&digits={DIGITS}&period={STEP}")
 

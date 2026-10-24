@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - Containers page: Kubernetes, Docker, compose stacks,
+ * HostCore Dashboard - Containers page: Kubernetes, Docker, compose stacks,
  * image updates and per-container statistics.
  */
 (function () {
@@ -942,7 +942,7 @@
       let d = '', gap = true;
       pts.forEach((p, i) => {
         const v = p[s.key];
-        // break the line where samples are missing (Pi off, container stopped)
+        // break the line where samples are missing (Server off, container stopped)
         if (v == null || (i && p.ts - pts[i - 1].ts > bucket * 3)) gap = true;
         if (v == null) return;
         d += `${gap ? 'M' : 'L'}${x(p.ts).toFixed(1)},${y(v).toFixed(1)}`;

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - planning cards: homelab kanban (card + full board with drag & drop)
+ * HostCore Dashboard - planning cards: homelab kanban (card + full board with drag & drop)
  * and recurring reminders (card + sheet with form). Both are shared by every device.
  * Fires "pi:planner" with what's due.
  */

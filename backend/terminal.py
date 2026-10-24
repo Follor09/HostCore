@@ -67,7 +67,7 @@ CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
 def issue_ticket(username: str, container: str = "", session: str = "", read_only: bool = False) -> str:
-    """container: open a shell inside this running Docker container instead of on the Pi.
+    """container: open a shell inside this running Docker container instead of on the server.
     session: attach to this existing (persistent) session instead of starting a new one;
     read_only: only watch it (a session shared for viewing)."""
     now = time.time()
@@ -81,7 +81,7 @@ def issue_ticket(username: str, container: str = "", session: str = "", read_onl
 
 def redeem_ticket(ticket: Optional[str], username: str) -> Optional[Tuple[str, str, bool]]:
     """One-time use: a ticket is consumed even if it turns out to be invalid.
-    Returns (container ("" = the Pi), session ("" = a new one), read_only) or None."""
+    Returns (container ("" = the server), session ("" = a new one), read_only) or None."""
     entry = _tickets.pop(ticket or "", None)
     if not entry or entry[0] != username or entry[1] < time.time():
         return None
@@ -355,7 +355,7 @@ def _terminate(proc: subprocess.Popen) -> None:
 
 async def run_session(websocket, username: str, client: str, rows: int, cols: int, container: str = "", sid: str = "",
                       read_only: bool = False) -> None:
-    """Bridge one accepted WebSocket to a shell (on the Pi or in a container) until either side closes.
+    """Bridge one accepted WebSocket to a shell (on the server or in a container) until either side closes.
     With tmux: to a persistent session (sid = attach to that one, otherwise a new one;
     read_only = a session shared for watching)."""
     if not TMUX:

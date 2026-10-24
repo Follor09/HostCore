@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - print view of the emergency handbook (/notfallhandbuch): the whole handbook
+ * HostCore Dashboard - print view of the emergency handbook (/notfallhandbuch): the whole handbook
  * as one document, laid out for paper; "Drucken" records the export.
  */
 (function () {
@@ -54,7 +54,7 @@
     if (g.location) doc.appendChild(kv([['Ablage dieses Handbuchs', g.location]]));
     if (g.notes) { doc.appendChild(el('h2', '', t('Hinweise'))); doc.appendChild(raw('p', 'hb-pre', g.notes)); }
 
-    doc.appendChild(el('h2', '', t('Dieser Pi')));
+    doc.appendChild(el('h2', '', t('Dieser Server')));
     doc.appendChild(kv([['Hostname', h.hostname], ['Modell', h.model], ['System', `${h.os} · Kernel ${h.kernel}`], ['Adresse', h.ip],
       ['Schnittstellen', Object.entries(h.interfaces || {}).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join(' · ')],
       ['Dashboard', h.dashboard_dir]]));

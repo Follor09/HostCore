@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - command palette (Ctrl+K / ⌘K, or the search button in the header)
+ * HostCore Dashboard - command palette (Ctrl+K / ⌘K, or the search button in the header)
  * Search pages, page sections and actions. Dashboard actions run directly on the
  * dashboard; from other pages they navigate there with #do=<action>.
  * Labels are German (the source language) and pass through I18N.t for display and search.
@@ -84,7 +84,7 @@
   // Hardware the command needs (caps.js); a Pi 4 has no fan curve or PMIC
   const CAPS = {
     'sec:/system#luefterkurve': 'fancurve', 'sec:/system#strom': 'pmic', 'sec:/system#drosselung': 'throttle',
-    'dash:history-fan': 'fan', 'dash:history-power': 'pmic'
+    'dash:history-fan': 'fan', 'dash:history-power': 'pmic', 'page:vms': 'vms', 'sec:/settings#vms': 'vmhost'
   };
   const hasCaps = c => !CAPS[c.id] || !window.PiCaps || window.PiCaps.has(CAPS[c.id]);
 
@@ -94,6 +94,7 @@
     page('page:dashboard', 'Dashboard', '/', 'start übersicht home');
     page('page:system', 'System-Werkzeuge', '/system', 'tools');
     page('page:containers', 'Container', '/containers', 'docker kubernetes k3s pods compose stacks images');
+    page('page:vms', 'Virtuelle Maschinen', '/vms', 'vm vms kvm qemu libvirt virtualisierung cockpit gast snapshot iso cloud-init');
     page('page:settings', 'Einstellungen', '/settings', 'settings konfiguration');
     page('page:docs', 'Dokumentation', '/doku', 'doku inventar tagebuch runbook steckbrief anleitung');
     page('page:compliance', 'Compliance', '/nachweise', 'grundschutz bsi cis datenschutz dsgvo vvt tom nachweis prüfer audit');

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system page section "Alarme": open, acknowledged and closed alarms with
+ * HostCore Dashboard - system page section "Alarme": open, acknowledged and closed alarms with
  * their history; acknowledge (with a note) or close them.
  */
 (function () {

@@ -1,8 +1,8 @@
 """
-End of life (System -> Lebenszyklus): how long the software on this Pi still gets updates.
+End of life (System -> Lebenszyklus): how long the software on this server still gets updates.
 
 Looks up the installed versions - operating system, kernel, Python, Docker, Kubernetes (k3s),
-Node.js, the Pi model itself - and the images of running containers (postgres:16, redis:7.2,
+Node.js, the server model itself - and the images of running containers (postgres:16, redis:7.2,
 nginx:1.27 ...) at endoflife.date, once a day (product data is cached for a week).
 
 Warnings 90 days before the end of security updates, critical 30 days before and after it -
@@ -264,7 +264,7 @@ def _evaluate(c: Dict[str, Any], prod: Optional[Dict[str, Any]], today: datetime
         out["note"] = f"{labels.get('eoas') or 'Regulärer Support'} beendet – nur noch {labels.get('eol') or 'Langzeit-Support'}"
     else:
         out["state"] = "ok"
-    # Debian backports fixes into its own Python and the Pi kernel follows its own branch: no hint there
+    # Debian backports fixes into its own Python and the server kernel follows its own branch: no hint there
     if version and r["latest"] and c["key"] in ("docker", "k3s", "node") and _older(version, r["latest"]):
         out["update"] = r["latest"]
     return out
@@ -325,7 +325,7 @@ def check() -> Dict[str, Any]:
     error = ""
     comps = _components()
     items = []
-    with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "PiCore-Dashboard"}) as client:
+    with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "HostCore-Dashboard"}) as client:
         for c in comps:
             prod = _product(c["product"], client, cache)
             if prod is None:

@@ -1,6 +1,6 @@
 """
 Image policies (Container -> Sicherheitscheck -> Image-Richtlinien): rules for the container
-images this Pi runs, checked for every running container and before every compose deployment.
+images this server runs, checked for every running container and before every compose deployment.
 
 Rules: allowed registries, a fixed version instead of "latest" / no tag, pinning by digest,
 blocked images (patterns like *:nightly), maximum image age. Exceptions per stack.

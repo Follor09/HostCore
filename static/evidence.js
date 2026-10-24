@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - compliance section "Nachweis-Paket": choose a period, build the ZIP for
+ * HostCore Dashboard - compliance section "Nachweis-Paket": choose a period, build the ZIP for
  * auditors (downloaded straight away), list of earlier exports with their SHA-256.
  */
 (function () {

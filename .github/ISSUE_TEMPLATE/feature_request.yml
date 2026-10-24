@@ -1,5 +1,5 @@
 name: Feature idea
-description: Suggest something PiCore should do
+description: Suggest something HostCore should do
 labels: [enhancement]
 body:
   - type: textarea
@@ -12,7 +12,7 @@ body:
   - type: textarea
     id: idea
     attributes:
-      label: How could it look in PiCore?
+      label: How could it look in HostCore?
   - type: textarea
     id: alternatives
     attributes:

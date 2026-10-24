@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - "What's new": after an auto-update the dashboard shows once
+ * HostCore Dashboard - "What's new": after an auto-update the dashboard shows once
  * which changes it brought (from the Git history). Also reachable from the footer
  * and the command palette.
  */

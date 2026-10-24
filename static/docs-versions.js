@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - documentation section "Änderungen": recent changes and deleted entries of
+ * HostCore Dashboard - documentation section "Änderungen": recent changes and deleted entries of
  * inventory, contracts, commands, journal, runbooks, service docs and wiki pages, with all
  * versions of an entry, comparison with the version before and restore.
  */

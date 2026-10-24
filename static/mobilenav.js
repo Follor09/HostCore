@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - bottom navigation on phones (hidden by CSS on wider screens).
+ * HostCore Dashboard - bottom navigation on phones (hidden by CSS on wider screens).
  * Replaces the header's page icons there, so the header can shrink to one row.
  */
 (function () {

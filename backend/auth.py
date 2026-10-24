@@ -4,7 +4,7 @@ Login, users and permission groups for the dashboard.
 - Several accounts, each in one permission group. Built-in groups: Administrator (all
   permissions, fixed), Bearbeiter, Benutzer, Betrachter; admins can edit those (except
   Administrator) and create their own groups in the dashboard.
-- The first password is set on the Pi with ./set-password.sh (never via the web, so
+- The first password is set on the server with ./set-password.sh (never via the web, so
   nobody on the network can claim a fresh install first). Admins add more users in the
   dashboard.
 - auth.json (untracked, mode 600) holds scrypt hashes, groups and a signing secret.
@@ -68,22 +68,24 @@ PERMISSIONS = [
     ("logs.view", "Logs lesen", "Log-Suche, Journal von Diensten, Container-Logs", "Ansehen"),
     ("security.view", "Sicherheit ansehen", "SSH-Anmeldungen, Firewall-Status, Aktivitätsprotokoll", "Ansehen"),
     ("files.read", "Dateien ansehen", "Datei-Browser, Vorschau, Herunterladen", "Dateien"),
-    ("files.write", "Dateien hochladen", "Dateien in Ordner hochladen, in die der Pi-Benutzer schreiben darf", "Dateien"),
+    ("files.write", "Dateien hochladen", "Dateien in Ordner hochladen, in die der Server-Benutzer schreiben darf", "Dateien"),
     ("files.share", "Dateien teilen", "Freigabe-Links erstellen und beenden", "Dateien"),
     ("board.edit", "Dashboard gestalten", "Boards, Kategorien, Apps und Widgets der Startseite anlegen, verschieben und ändern", "Dashboard"),
     ("notes.edit", "Notizen & Doku bearbeiten", "Notizen, Aufgaben, Erinnerungen und die Dokumentation (Inventar, Betriebstagebuch, Runbooks, Steckbriefe) ändern", "Dashboard"),
     ("actions.run", "Schnellaktionen ausführen", "Eigene Skripte starten und stoppen", "Dashboard"),
     ("services.control", "Dienste & Container steuern", "Starten, stoppen, neu starten", "System"),
+    ("vms.control", "VMs steuern", "Virtuelle Maschinen starten, herunterfahren, neu starten, anhalten", "System"),
+    ("vms.manage", "VMs verwalten", "VMs anlegen, ändern, löschen, klonen, Snapshots, Netzwerke und Speicher-Pools, Konsole der VMs", "System"),
     ("apps.install", "Apps installieren", "Docker-Apps aus dem App-Store einrichten (Ports, Ordner)", "System"),
-    ("processes.kill", "Prozesse beenden", "Prozesse des Pi-Benutzers beenden", "System"),
+    ("processes.kill", "Prozesse beenden", "Prozesse des Server-Benutzers beenden", "System"),
     ("system.config", "System einstellen", "CPU-Modus, Lüfterkurve, Aufräumen, Leistungstest", "System"),
     ("updates.install", "Updates installieren", "apt-Updates und Dashboard-Updates", "System"),
-    ("system.power", "Neustart & Herunterfahren", "Den Pi neu starten oder ausschalten", "System"),
+    ("system.power", "Neustart & Herunterfahren", "Den Server neu starten oder ausschalten", "System"),
     ("network.tools", "Netzwerk-Werkzeuge", "Geräte-Scan, Port-Test, DNS, Traceroute, Wake-on-LAN", "Netzwerk"),
     ("netbox.write", "NetBox bearbeiten", "IP-Adressen für Geräte aus dem Netzwerk-Abgleich in NetBox anlegen", "Netzwerk"),
     ("firewall.manage", "Firewall ändern", "ufw ein-/ausschalten, Regeln, fail2ban entsperren", "Netzwerk"),
     ("settings.manage", "Einstellungen ändern", "Wetter, Dienste, Wake-on-LAN-Geräte, Web-Dienste, Links, Verlauf, Ansehen ohne Login", "Verwaltung"),
-    ("terminal", "Web-Terminal", "Volle Shell als Pi-Benutzer (sudo nur mit Passwort)", "Verwaltung"),
+    ("terminal", "Web-Terminal", "Volle Shell als Server-Benutzer (sudo nur mit Passwort)", "Verwaltung"),
     ("changes.approve", "Änderungen freigeben", "Änderungsanträge anderer genehmigen oder ablehnen (Vier-Augen-Prinzip)", "Verwaltung"),
     ("users.manage", "Benutzer & Berechtigungen", "Benutzer anlegen, Gruppen und Rechte bearbeiten", "Verwaltung"),
 ]
@@ -94,7 +96,7 @@ BUILTIN_GROUPS: Dict[str, Dict[str, Any]] = {
               "perms": ALL_PERMISSIONS, "locked": True},
     "editor": {"name": "Bearbeiter", "description": "Kann Dienste steuern, Dateien verwalten und Einstellungen ändern – ohne Terminal, Neustart und Benutzerverwaltung.",
                "perms": ["system.view", "logs.view", "files.read", "files.write", "files.share", "board.edit", "notes.edit",
-                         "actions.run", "services.control", "network.tools", "netbox.write", "settings.manage"]},
+                         "actions.run", "services.control", "vms.control", "network.tools", "netbox.write", "settings.manage"]},
     "user": {"name": "Benutzer", "description": "Sieht alles Wichtige, darf Dateien ansehen und Notizen bearbeiten.",
              "perms": ["system.view", "files.read", "notes.edit"]},
     "viewer": {"name": "Betrachter", "description": "Nur das Dashboard ansehen.", "perms": []},
@@ -689,7 +691,7 @@ def totp_enable(username: str, code: str) -> List[str]:
             raise AuthError("Einrichtung abgelaufen – bitte neu beginnen.")
         step = totp.verify(pending["secret"], code)
         if step is None:
-            raise AuthError("Code stimmt nicht – Uhrzeit von Pi und Handy prüfen.")
+            raise AuthError("Code stimmt nicht – Uhrzeit von Server und Handy prüfen.")
         codes = totp.recovery_codes()
         u["totp"] = {"enabled": True, "secret": pending["secret"], "last_step": step, "since": int(time.time()),
                      "recovery": [totp.hash_recovery(c) for c in codes]}
@@ -1054,7 +1056,7 @@ def record_account_success(username: str) -> None:
 # CLI (used by set-password.sh)
 # ---------------------------------------------------------------------------
 def _cli() -> int:
-    parser = argparse.ArgumentParser(description="PiCore Dashboard Login verwalten")
+    parser = argparse.ArgumentParser(description="HostCore Dashboard Login verwalten")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("set-password", help="Passwort setzen (legt den Benutzer an; der erste wird Administrator)")
     sub.add_parser("users", help="Benutzer und Gruppen anzeigen")
@@ -1093,7 +1095,7 @@ def _cli() -> int:
         print("✅ Ansehen ohne Login: " + ("an (Aktionen brauchen weiterhin Login)" if args.state == "on" else "aus"))
         return 0
 
-    # set-password: an admin that forgot the password can always recover on the Pi
+    # set-password: an admin that forgot the password can always recover on the server
     default = canonical_username() or "admin"
     username = input(f"Benutzername [{default}]: ").strip() or default
     exists = bool(canonical_username(username))

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - Settings page
+ * HostCore Dashboard - Settings page
  * Account, public view, weather location, visible services, auto-update, history, system info.
  */
 (function () {
@@ -480,6 +480,19 @@
         setMsg(msg, err.message, 'error');
       } finally {
         $('account-save').disabled = false;
+      }
+    });
+
+    // Virtual machines on/off (the section only exists where VMs are possible - never on a Pi)
+    api('/api/settings/vms').then(f => { $('vms-feature').checked = f.enabled; }).catch(() => {});
+    $('vms-feature').addEventListener('change', async e => {
+      try {
+        const r = await api('/api/settings/vms', { enabled: e.target.checked });
+        toast(r.message, 'success');
+        if (window.PiCaps) setTimeout(() => location.reload(), 1200);   // sidebar and search follow the switch
+      } catch (err) {
+        e.target.checked = !e.target.checked;
+        toast(err.message, 'error');
       }
     });
 

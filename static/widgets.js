@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - quick actions card and web services (health checks) card.
+ * HostCore Dashboard - quick actions card and web services (health checks) card.
  */
 (function () {
   'use strict';

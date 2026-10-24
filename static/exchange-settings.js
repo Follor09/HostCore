@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings: exchange links (a public upload and/or download link for a folder).
+ * HostCore Dashboard - settings: exchange links (a public upload and/or download link for a folder).
  */
 (function () {
   'use strict';

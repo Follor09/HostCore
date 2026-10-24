@@ -1,7 +1,7 @@
 """
-Fleet overview (page /flotte): this Pi and every remote Pi in one table - reachability,
+Fleet overview (page /flotte): this server and every remote server in one table - reachability,
 dashboard version, apt updates, temperature, load, memory and storage - and apt update /
-upgrade for several Pis at once (each Pi runs it in its own systemd unit, as on its own page).
+upgrade for several servers at once (each server runs it in its own systemd unit, as on its own page).
 """
 
 import asyncio
@@ -42,7 +42,7 @@ def _compact(snap: Dict[str, Any], updates: Dict[str, Any], version: Dict[str, A
 def _local() -> Dict[str, Any]:
     data = _compact(system_info.get_system_snapshot(), homelab.get_updates(), updater.update_state or {}, homelab.get_apt_run(),
                     _pkg_status())
-    return {"id": "", "name": "Dieser Pi", "url": "", "online": True, **data}
+    return {"id": "", "name": "Dieser Server", "url": "", "online": True, **data}
 
 
 async def _remote(client: httpx.AsyncClient, r: Dict[str, Any]) -> Dict[str, Any]:
@@ -65,7 +65,7 @@ async def overview() -> Dict[str, Any]:
     async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
         local_task = asyncio.to_thread(_local)
         rows = await asyncio.gather(local_task, *(_remote(client, r) for r in remotes._all()))
-    rows[0]["name"] = platform.node() or "Dieser Pi"
+    rows[0]["name"] = platform.node() or "Dieser Server"
     return {"pis": rows, "checked": int(time.time())}
 
 
@@ -78,10 +78,10 @@ def _pkg_status() -> Dict[str, Any]:
 
 
 async def _call(pid: str, method: str, path: str, body: Any = None, user: str = "") -> Dict[str, Any]:
-    """One request to a remote Pi's agent (the main Pi is handled by the caller)."""
+    """One request to a remote server's agent (the main server is handled by the caller)."""
     r = next((x for x in remotes._all() if x["id"] == pid), None)
     if not r:
-        raise ValueError("Unbekannter Pi.")
+        raise ValueError("Unbekannter Server.")
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         res = await client.request(method, f"{r['url']}{path}", json=body,
                                    headers={"Authorization": f"Bearer {r['token']}", "X-PiCore-User": user})
@@ -92,8 +92,8 @@ async def _call(pid: str, method: str, path: str, body: Any = None, user: str = 
 
 
 async def upgrade_packages(targets: Dict[str, List[str]], user: str = "") -> Dict[str, Any]:
-    """Upgrade chosen packages per Pi ({pi id: [package names]}, "" = this Pi) - only newer
-    versions of installed packages, each Pi in its own apt unit."""
+    """Upgrade chosen packages per server ({pi id: [package names]}, "" = this server) - only newer
+    versions of installed packages, each server in its own apt unit."""
     import packages
 
     async def one(pid: str, names: List[str]) -> Dict[str, Any]:
@@ -117,7 +117,7 @@ async def upgrade_packages(targets: Dict[str, List[str]], user: str = "") -> Dic
 
 
 async def job_log(pid: str) -> Dict[str, Any]:
-    """Output of the running / last apt job of one Pi (system upgrade or package upgrade)."""
+    """Output of the running / last apt job of one server (system upgrade or package upgrade)."""
     if pid == "":
         apt, pkg = await asyncio.to_thread(homelab.get_apt_run), await asyncio.to_thread(_pkg_status)
     else:
@@ -136,7 +136,7 @@ async def job_log(pid: str) -> Dict[str, Any]:
 
 
 async def dashboard_update(ids: List[str], user: str = "") -> Dict[str, Any]:
-    """Let the given Pis pull the newest dashboard version right away (instead of at the next timer run)."""
+    """Let the given servers pull the newest dashboard version right away (instead of at the next timer run)."""
     import updater
 
     async def one(pid: str) -> Dict[str, Any]:
@@ -149,7 +149,7 @@ async def dashboard_update(ids: List[str], user: str = "") -> Dict[str, Any]:
         except ValueError as e:
             msg = str(e)
             if "404" in msg or "Not Found" in msg:
-                msg = "Dieser Pi kennt das noch nicht – er aktualisiert sich innerhalb einer Minute selbst."
+                msg = "Dieser Server kennt das noch nicht – er aktualisiert sich innerhalb einer Minute selbst."
             return {"id": pid, "ok": False, "message": msg}
         except httpx.HTTPError as e:
             return {"id": pid, "ok": False, "message": f"Nicht erreichbar ({type(e).__name__})"}
@@ -158,15 +158,15 @@ async def dashboard_update(ids: List[str], user: str = "") -> Dict[str, Any]:
 
 
 async def capacity() -> Dict[str, Any]:
-    """Capacity summary of every Pi (for the fleet page)."""
+    """Capacity summary of every server (for the fleet page)."""
     import capacity as cap
 
     async def one(r: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if r is None:
             try:
-                return {"id": "", "name": platform.node() or "Dieser Pi", **(await asyncio.to_thread(cap.summary))}
+                return {"id": "", "name": platform.node() or "Dieser Server", **(await asyncio.to_thread(cap.summary))}
             except Exception as e:
-                return {"id": "", "name": platform.node() or "Dieser Pi", "error": f"{type(e).__name__}"}
+                return {"id": "", "name": platform.node() or "Dieser Server", "error": f"{type(e).__name__}"}
         try:
             return {"id": r["id"], "name": r["name"], **(await _call(r["id"], "GET", "/api/capacity/summary"))}
         except (ValueError, httpx.HTTPError) as e:
@@ -176,7 +176,7 @@ async def capacity() -> Dict[str, Any]:
 
 
 async def apt(ids: List[str], mode: str, user: str = "") -> Dict[str, Any]:
-    """Start apt update/upgrade on the given Pis ("" = this Pi); returns one result per Pi."""
+    """Start apt update/upgrade on the given servers ("" = this server); returns one result per server."""
     if mode not in homelab.APT_MODES:
         raise ValueError("Unbekannte Aktion.")
     by_id = {r["id"]: r for r in remotes._all()}
@@ -187,7 +187,7 @@ async def apt(ids: List[str], mode: str, user: str = "") -> Dict[str, Any]:
             return {"id": "", "ok": res["ok"], "message": res["message"]}
         r = by_id.get(pid)
         if not r:
-            return {"id": pid, "ok": False, "message": "Unbekannter Pi."}
+            return {"id": pid, "ok": False, "message": "Unbekannter Server."}
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
                 res = await client.post(f"{r['url']}/api/updates/apt", json={"mode": mode},
@@ -201,7 +201,7 @@ async def apt(ids: List[str], mode: str, user: str = "") -> Dict[str, Any]:
 
 
 async def sbom_search(q: str, kind: str = "") -> Dict[str, Any]:
-    """Software inventory search on every Pi: [{pi, online, items, total, error}]."""
+    """Software inventory search on every server: [{pi, online, items, total, error}]."""
     import sbom
     params = {"q": q, "kind": kind}
 
@@ -218,5 +218,5 @@ async def sbom_search(q: str, kind: str = "") -> Dict[str, Any]:
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
         local, *rows = await asyncio.gather(asyncio.to_thread(sbom.search, q, kind), *(remote(client, r) for r in remotes._all()))
-    first = {"pi": platform.node() or "Dieser Pi", "id": "", "items": local["items"], "total": local["total"], "error": ""}
+    first = {"pi": platform.node() or "Dieser Server", "id": "", "items": local["items"], "total": local["total"], "error": ""}
     return {"pis": [first, *rows], "q": q}

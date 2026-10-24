@@ -102,7 +102,7 @@ def _current(cfg: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for v in (d.get("packages") or {}).get("items", []):
         if v.get("fixed") and not v.get("obsolete"):
-            out[f"pkg|{v['id']}|{v['package']}"] = {"id": v["id"], "package": v["package"], "target": "Pakete des Pi", "kind": "package",
+            out[f"pkg|{v['id']}|{v['package']}"] = {"id": v["id"], "package": v["package"], "target": "Pakete des Servers", "kind": "package",
                                                     "severity": _severity(v["severity"], v.get("remote", False), cfg), "remote": v.get("remote", False)}
     for i in d.get("images", []):
         for v in i.get("vulns", []):

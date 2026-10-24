@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - IT toolbox (/werkzeuge): network calculator, Base64, URL encoding, JSON,
+ * HostCore Dashboard - IT toolbox (/werkzeuge): network calculator, Base64, URL encoding, JSON,
  * hashes, JWT, passwords & UUIDs, timestamps and cron expressions.
  * Everything runs in the browser. Hashes are computed here too (crypto.subtle only exists on
  * https, the dashboard usually runs on plain http in the home network).

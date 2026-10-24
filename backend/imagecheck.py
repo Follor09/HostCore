@@ -157,7 +157,7 @@ def _check() -> None:
             item["local"].update(u["local"])
             if u["user"] not in item["users"]:
                 item["users"].append(u["user"])
-        with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "PiCore-Dashboard"}) as client:
+        with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "HostCore-Dashboard"}) as client:
             for item in images.values():
                 if item["pinned"]:
                     item.update(status="pinned", remote="", error="")
@@ -335,7 +335,7 @@ def releases(ref: str, refresh: bool = False) -> Dict[str, Any]:
         return hit["data"]
     local = _local_image(item)
     labels = local.get("labels") or {}
-    with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "PiCore-Dashboard"}) as client:
+    with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "HostCore-Dashboard"}) as client:
         gh = _github_repo(item, labels, guess=False)
         if not gh:
             try:

@@ -12,7 +12,7 @@ import subprocess
 import time
 import socket
 import psutil
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Cache previous network counters for bandwidth rate calculation
 _last_net_time = 0
@@ -85,9 +85,23 @@ def get_capabilities() -> dict:
         caps.append("throttle")
     if pi5:
         caps.append("pi5")
-    data = {"model": get_pi_model(), "pi": is_raspberry_pi(), "caps": caps}
+    kind = host_kind()
+    if kind == "pi":
+        caps.append("pi")
+    if os.path.exists("/dev/kvm"):
+        caps.append("kvm")
+    if kind != "pi" and platform.system() == "Linux" and platform.machine() in ("x86_64", "aarch64"):
+        caps.append("vmhost")      # VMs possible here (never on a Pi) - the switch in the settings
+        import settings_store
+        if settings_store.get("vms_enabled", True):
+            caps.append("vms")
+    data = {"model": get_pi_model(), "pi": kind == "pi", "kind": kind, "caps": caps}
     _caps_cache.update(ts=now, data=data)
     return data
+
+
+def reset_capabilities() -> None:
+    _caps_cache.update(ts=0.0, data=None)
 
 
 def get_pi_model() -> str:
@@ -98,6 +112,12 @@ def get_pi_model() -> str:
                 return f.read().strip("\x00 \n\t")
         except Exception:
             pass
+
+    # Servers, PCs and VMs: vendor and product from DMI, otherwise the CPU
+    if platform.system() == "Linux":
+        model = _dmi_model()
+        if model:
+            return model
 
     # Fallback to general platform info
     uname = platform.uname()
@@ -112,12 +132,59 @@ def get_pi_model() -> str:
     return f"{uname.system} {uname.machine} ({uname.node})"
 
 
+DMI_JUNK = re.compile(r"^(to be filled.*|default string|system product name|system manufacturer|not specified|none|o\.e\.m\.?|"
+                      r"oem|unknown|0123456789|x+)$", re.I)
+
+
+def _dmi_model() -> str:
+    """e.g. "Dell Inc. PowerEdge R740", "QEMU Standard PC (Q35 + ICH9, 2009)", or the CPU model."""
+    def dmi(key: str) -> str:
+        val = _read_sysfs(f"/sys/class/dmi/id/{key}")
+        return "" if DMI_JUNK.match(val or "x") else val
+    vendor, product = dmi("sys_vendor"), dmi("product_name")
+    if not product:
+        vendor, product = dmi("board_vendor"), dmi("board_name")
+    if product:
+        return product if vendor and product.lower().startswith(vendor.split()[0].lower()) else f"{vendor} {product}".strip()
+    return cpu_model()
+
+
+def cpu_model() -> str:
+    """CPU name from /proc/cpuinfo (x86 "model name"; arm64 boards often only have "Hardware" or nothing)."""
+    try:
+        with open("/proc/cpuinfo") as f:
+            text = f.read()
+    except OSError:
+        return ""
+    m = re.search(r"^(model name|Hardware|cpu model)\s*:\s*(.+)$", text, re.M)
+    return re.sub(r"\s+", " ", m.group(2)).strip() if m else ""
+
+
+def host_kind() -> str:
+    """"pi", "vm" (virtual machine / container per systemd-detect-virt) or "server"."""
+    if is_raspberry_pi():
+        return "pi"
+    try:
+        out = subprocess.run(["systemd-detect-virt"], capture_output=True, text=True, timeout=3).stdout.strip()
+        if out and out != "none":
+            return "vm"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "server"
+
+
 def get_cpu_temp() -> dict:
     """
     Get CPU temperature.
     Supports Raspberry Pi vcgencmd / thermal_zone, Linux hwmon/sensors,
     and falls back to realistic simulation on macOS/Dev.
     """
+    # 0. Servers / PCs: the CPU package sensor (thermal_zone0 is often the ACPI board zone there)
+    if not is_raspberry_pi():
+        pkg = _cpu_package_temp()
+        if pkg:
+            return pkg
+
     # 1. Raspberry Pi thermal zone
     thermal_paths = [
         "/sys/class/thermal/thermal_zone0/temp",
@@ -153,10 +220,39 @@ def get_cpu_temp() -> dict:
     except Exception:
         pass
 
-    # 4. Realistic fallback based on CPU load for dev/macOS preview
+    # 4. Linux without any sensor (usually a VM): no value rather than a made-up one
+    if platform.system() == "Linux":
+        return {"celsius": None, "source": "", "is_simulated": True, "available": False}
+
+    # 5. Realistic fallback based on CPU load for dev/macOS preview
     cpu_percent = psutil.cpu_percent(interval=None)
     simulated_temp = round(38.0 + (cpu_percent * 0.35) + (time.time() % 3 * 0.4), 1)
     return {"celsius": simulated_temp, "source": "Dev-Simulation", "is_simulated": True}
+
+
+CPU_SENSORS = ("coretemp", "k10temp", "zenpower", "cpu_thermal", "soc_thermal", "x86_pkg_temp")
+
+
+def _cpu_package_temp() -> Optional[dict]:
+    """Intel coretemp "Package id 0", AMD k10temp/zenpower "Tctl"/"Tdie", or the first CPU zone."""
+    try:
+        temps = psutil.sensors_temperatures()
+    except Exception:
+        temps = {}
+    for chip in CPU_SENSORS:
+        entries = [e for e in temps.get(chip, []) if e.current]
+        if not entries:
+            continue
+        best = next((e for e in entries if re.match(r"^(Package id 0|Tdie|Tctl)$", e.label or "")), entries[0])
+        return {"celsius": round(best.current, 1), "source": f"{chip}{f' ({best.label})' if best.label else ''}", "is_simulated": False}
+    for zone in sorted(glob.glob("/sys/class/thermal/thermal_zone*")):
+        if _read_sysfs(f"{zone}/type") in ("x86_pkg_temp", "cpu-thermal", "cpu_thermal"):
+            try:
+                return {"celsius": round(int(_read_sysfs(f"{zone}/temp")) / 1000.0, 1), "source": _read_sysfs(f"{zone}/type"),
+                        "is_simulated": False}
+            except ValueError:
+                continue
+    return None
 
 
 def get_throttled_status() -> dict:

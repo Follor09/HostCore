@@ -1,8 +1,8 @@
 /**
- * PiCore Dashboard - text editor for config files (file browser, compose stacks).
+ * HostCore Dashboard - text editor for config files (file browser, compose stacks).
  * A transparent textarea over a highlighted <pre>: native editing, undo, IME and
  * mobile keyboards keep working. Highlighting is a small per-line tokenizer for the
- * formats that live on a Pi (YAML, JSON, INI/env, shell, Python, Dockerfile, …).
+ * formats that live on a server (YAML, JSON, INI/env, shell, Python, Dockerfile, …).
  *
  *   PiEditor.open(path, { onSaved(result), readOnly })
  */

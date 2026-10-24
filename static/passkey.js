@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - passkeys in the browser (WebAuthn): sign in, confirm again and add a passkey.
+ * HostCore Dashboard - passkeys in the browser (WebAuthn): sign in, confirm again and add a passkey.
  * The server sends options with base64url strings; the browser API wants ArrayBuffers.
  * Passkeys need HTTPS (or http://localhost) - window.PiPasskey.supported() says whether they work here.
  */

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - compliance sections "Verarbeitungstätigkeiten" (Art. 30 DSGVO) and "TOM"
+ * HostCore Dashboard - compliance sections "Verarbeitungstätigkeiten" (Art. 30 DSGVO) and "TOM"
  * (Art. 32 DSGVO): controller, processing activities with legal basis and systems, measures per
  * control area with the evidence the dashboard determines itself.
  */

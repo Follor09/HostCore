@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - documentation section "Notfallhandbuch": readiness, general part (contacts,
+ * HostCore Dashboard - documentation section "Notfallhandbuch": readiness, general part (contacts,
  * where credentials are kept, where the copy lies) and per service the generated restore steps
  * with priority, backups, own steps and a check. Export: print view and Markdown.
  */

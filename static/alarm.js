@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - page /alarm: acknowledge an alarm with the link from the alarm mail
+ * HostCore Dashboard - page /alarm: acknowledge an alarm with the link from the alarm mail
  * (no login - the link is the permission). The token is removed from the address bar right away.
  * Acknowledging needs a click, so mail scanners that open links do not acknowledge by accident.
  */

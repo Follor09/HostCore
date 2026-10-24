@@ -34,10 +34,12 @@ DEFAULT_TRUSTED = ["127.0.0.0/8", "::1/128", "172.16.0.0/12", "10.42.0.0/16"]   
 DEFAULTS: Dict[str, Any] = {
     "proxy": "none", "trusted": DEFAULT_TRUSTED, "twofa": "none",
     "reauth": True, "reauth_minutes": 15,
-    "reauth_perms": ["users.manage", "firewall.manage", "system.power", "updates.install", "apps.install"],
-    "restrict": False, "restrict_perms": ["terminal", "users.manage", "firewall.manage", "system.power"],
+    "reauth_perms": ["users.manage", "firewall.manage", "system.power", "updates.install", "apps.install", "vms.manage"],
+    "restrict": False, "restrict_perms": ["terminal", "users.manage", "firewall.manage", "system.power", "vms.manage"],
     "internal_networks": [], "notify_new_login": True, "hsts": True, "anon_rate": 120, "password_reset": True,
 }
+# Settings saved before "known_perms" was stored knew every permission except these
+NEW_PERMS = {"vms.control", "vms.manage"}
 # Home network / VPN: private ranges, CGNAT (NetBird, Tailscale), link-local, IPv6 ULA
 INTERNAL = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
                                                 "127.0.0.0/8", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10")]
@@ -56,7 +58,15 @@ def config() -> Dict[str, Any]:
     now = time.time()
     if _cfg_cache["cfg"] is None or now - _cfg_cache["ts"] > 5:
         c = settings_store.get(KEY) or {}
-        _cfg_cache.update(ts=now, cfg={**DEFAULTS, **(c if isinstance(c, dict) else {})})
+        c = c if isinstance(c, dict) else {}
+        cfg = {**DEFAULTS, **c}
+        if c:
+            # Permissions added after the settings were saved get their default protection
+            known = c.get("known_perms")
+            for key in ("reauth_perms", "restrict_perms"):
+                new = [p for p in DEFAULTS[key] if (p not in known if known else p in NEW_PERMS) and p not in cfg[key]]
+                cfg[key] = list(cfg[key]) + new
+        _cfg_cache.update(ts=now, cfg=cfg)
     return _cfg_cache["cfg"]
 
 
@@ -289,7 +299,7 @@ def save(fields: Dict[str, Any]) -> Dict[str, Any]:
     for key in ("reauth_perms", "restrict_perms"):
         if key in fields:
             c[key] = [p for p in fields[key] or [] if p in valid]
-    settings_store.set(KEY, {k: c[k] for k in DEFAULTS})
+    settings_store.set(KEY, {**{k: c[k] for k in DEFAULTS}, "known_perms": list(auth.ALL_PERMISSIONS)})
     _cfg_cache["cfg"] = None
     return public_config()
 
@@ -316,7 +326,7 @@ def checklist(request: Any) -> List[Dict[str, Any]]:
         add("proxy", "ok" if seen or not _trusted_peer(request) else "warning", "Echte Besucher-Adresse",
             f"Deine Adresse: {ip}" + ("" if seen else f" (der Proxy {peer} schickt keine Besucher-Adresse – Proxy-Einstellung prüfen)"))
     add("public-view", "warning" if auth.public_view() else "ok", "Ansehen ohne Login",
-        "Eingeschaltet – im Internet sieht so jeder Systemdaten des Pi." if auth.public_view() else "aus")
+        "Eingeschaltet – im Internet sieht so jeder Systemdaten des Servers." if auth.public_view() else "aus")
     users = auth.list_users()
     admins = [u for u in users if u["group"] == "admin" and not u["disabled"]]
     no2fa = [u["username"] for u in admins if not u["totp"] and not u["passkeys"]]

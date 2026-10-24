@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - weekly report (last 7 days), printable.
+ * HostCore Dashboard - weekly report (last 7 days), printable.
  */
 (function () {
   'use strict';
@@ -104,7 +104,7 @@
     root.appendChild(k);
 
     // Availability
-    const a = section('Verfügbarkeit', 'Dienste auf dem Pi und deine Web-Dienste.');
+    const a = section('Verfügbarkeit', 'Dienste auf dem Server und deine Web-Dienste.');
     a.appendChild(table(['Dienst', 'Verfügbar', 'Ausfälle'],
       r.services.filter(s => !s.never_up).map(s => [s.name, uptimeTag(s.uptime), String(s.outages)])));
     if (r.web_services.length) {

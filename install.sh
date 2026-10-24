@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# One-time setup on the Raspberry Pi (safe to re-run):
+# One-time setup on the server - Debian, Ubuntu or Raspberry Pi OS (safe to re-run):
 # venv + dependencies, dashboard service, and GitHub auto-update timer.
-# Usage (inside the cloned repo): ./install.sh            normal dashboard
-#                                  ./install.sh --agent    agent for a main dashboard (no own UI)
+# Usage (inside the cloned repo): ./install.sh                         normal dashboard
+#                                  ./install.sh --agent                 agent for a main dashboard (no own UI)
+#                                  ./install.sh --agent --from <ip>     agent that only accepts the main dashboard's address
+# Works on a Raspberry Pi as well as on Debian 12+ / Ubuntu 22.04+ machines and VMs (x86_64, arm64).
 #
 # Root never runs code from the dashboard folder: that folder belongs to the dashboard
 # user, so anything root executes from there would let that user become root.
@@ -17,6 +19,42 @@ STATE=/var/lib/pi-dashboard
 SRC="$STATE/src"
 CRED="$STATE/github-credentials"
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Options: --agent, --from <ip|net>
+AGENT_FROM=""
+ARGS=("$@")
+for i in "${!ARGS[@]}"; do
+    [ "${ARGS[$i]}" = "--from" ] && AGENT_FROM="${ARGS[$((i + 1))]:-}"
+done
+
+# apt on a fresh VM or cloud image: the package lists may be empty - fetch them once
+APT_UPDATED=""
+apt_install() {
+    if [ -z "$APT_UPDATED" ]; then
+        apt-get update -qq || echo "   ⚠️  apt-get update failed"
+        APT_UPDATED=1
+    fi
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@"
+}
+
+# --- Base requirements (fresh Debian/Ubuntu servers and VMs lack some of them) ------
+case "$(uname -m)" in
+    x86_64|aarch64) ;;
+    *) echo "⚠️  $(uname -m) is not tested (supported: x86_64, aarch64 / 64-bit Raspberry Pi OS)." ;;
+esac
+command -v apt-get >/dev/null || { echo "❌ Needs a Debian-based system (Debian, Ubuntu, Raspberry Pi OS)."; exit 1; }
+MISSING=()
+command -v git >/dev/null || MISSING+=(git)
+command -v python3 >/dev/null || MISSING+=(python3)
+command -v curl >/dev/null || MISSING+=(curl)
+[ -e /etc/ssl/certs/ca-certificates.crt ] || MISSING+=(ca-certificates)
+command -v hostname >/dev/null || MISSING+=(hostname)
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "📦 Installing base packages: ${MISSING[*]}..."
+    apt_install "${MISSING[@]}"
+fi
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' \
+    || { echo "❌ Python 3.10 or newer needed (found $(python3 -V 2>&1)) – Debian 12+ / Ubuntu 22.04+."; exit 1; }
 
 # Dashboard folder (the user's clone): where this script was started from, or - when
 # running from the root copy - what the last install recorded.
@@ -84,7 +122,7 @@ echo "📦 Python venv & dependencies (user: $OWNER, dir: $DIR)..."
 if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
     echo "🔧 venv missing or broken, recreating..."
     as_owner rm -rf "$DIR/venv"
-    python3 -c 'import ensurepip' 2>/dev/null || apt-get install -y python3-venv
+    python3 -c 'import ensurepip' 2>/dev/null || apt_install python3-venv
     as_owner python3 -m venv "$DIR/venv"
 fi
 as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
@@ -96,6 +134,19 @@ case " $* " in
     *" --agent "*) AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" enable)" ;;
 esac
 [ -z "$AGENT_TOKEN" ] && [ -f "$DIR/agent.json" ] && AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" token || true)"
+if [ -n "$AGENT_TOKEN" ] && [ -n "$AGENT_FROM" ]; then
+    as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" allow "$AGENT_FROM" >/dev/null \
+        || { echo "❌ --from: keine gültige IP-Adresse oder Netz ($AGENT_FROM)."; exit 1; }
+fi
+# Agent behind an active ufw: open the dashboard port (only for the main dashboard with --from)
+if [ -n "$AGENT_TOKEN" ] && command -v ufw >/dev/null && ufw status | grep -q '^Status: active'; then
+    if [ -n "$AGENT_FROM" ]; then
+        ufw allow from "$AGENT_FROM" to any port 8000 proto tcp comment "HostCore agent" >/dev/null
+    else
+        ufw allow 8000/tcp comment "HostCore agent" >/dev/null
+    fi
+    echo "🧱 ufw: port 8000 open for ${AGENT_FROM:-every address}"
+fi
 
 echo "⚙️  Installing systemd units..."
 for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer pi-dashboard-apt@.service pi-dashboard-geoblock.service; do
@@ -105,13 +156,13 @@ done
 # Country blocking in the firewall uses ipset (small, only with ufw)
 if command -v ufw >/dev/null && ! command -v ipset >/dev/null; then
     echo "🌍 Installing ipset for country blocking..."
-    apt-get install -y -qq ipset || echo "   ⚠️  ipset install failed, country blocking stays unavailable"
+    apt_install ipset || echo "   ⚠️  ipset install failed, country blocking stays unavailable"
 fi
 
 # Persistent web terminal: the shell lives in tmux, so a dropped connection does not end it
 if ! command -v tmux >/dev/null; then
     echo "🖥️  Installing tmux for persistent terminal sessions..."
-    apt-get install -y -qq tmux || echo "   ⚠️  tmux install failed, terminal sessions end with the connection"
+    apt_install tmux || echo "   ⚠️  tmux install failed, terminal sessions end with the connection"
 fi
 
 # Tasks and terminal sessions run as systemd user units of the dashboard user, so they keep
@@ -124,7 +175,7 @@ fi
 # NVMe health: smartctl needs root, so allow exactly one read-only command
 if [ -e /dev/nvme0 ] && ! command -v smartctl >/dev/null; then
     echo "💽 Installing smartmontools for NVMe health..."
-    apt-get install -y -qq smartmontools || echo "   ⚠️  smartmontools install failed, NVMe health stays limited"
+    apt_install smartmontools || echo "   ⚠️  smartmontools install failed, NVMe health stays limited"
 fi
 
 # Narrow sudo rules: restart the dashboard (Update button / webhook), run apt via its
@@ -177,9 +228,10 @@ fi
 IP="$(hostname -I | awk '{print $1}')"
 echo ""
 if [ -n "$AGENT_TOKEN" ]; then
-    echo "✅ Done! PiCore-Agent läuft. Im Haupt-Dashboard unter Einstellungen → Remote-Pis eintragen:"
+    echo "✅ Done! HostCore-Agent läuft. Im Haupt-Dashboard unter Einstellungen → Remote-Server eintragen:"
     echo "   Adresse: http://${IP}:8000"
     echo "   Token:   $AGENT_TOKEN      (später wieder anzeigen: ./agent.sh token)"
+    echo "   Erlaubt: $(as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" allowed)   (ändern: ./agent.sh allow <IP des Haupt-Dashboards>)"
 else
 echo "✅ Done! Dashboard: http://${IP}:8000"
 fi

@@ -9,9 +9,9 @@ Compose stacks from Git (GitOps): a stack lives in a clone of a Git repository u
   the diff that touch the stack's folder; "Ausrollen" checks the new commit out and runs
   `docker compose up -d --remove-orphans` as a task (databases dumped first, health check last -
   like the safe stack update). Automatic mode deploys new commits by itself.
-- Drift: files changed on the Pi, services that do not run, and containers on other images than
+- Drift: files changed on the server, services that do not run, and containers on other images than
   the compose file asks for are reported (status overview, events).
-- Local variables (.env) stay on the Pi, outside the repository (--env-file).
+- Local variables (.env) stay on the server, outside the repository (--env-file).
 - A deploy webhook per stack (/hook/gitops/<token>) lets GitHub/Gitea/GitLab trigger a check at once.
 """
 
@@ -189,7 +189,7 @@ def _exclude_local_files(s: Dict[str, Any]) -> None:
         current = open(path).read() if os.path.exists(path) else ""
         if LIMITS_FILE not in current:
             with open(path, "a") as f:
-                f.write(f"\n# PiCore Dashboard\n{LIMITS_FILE}\n")
+                f.write(f"\n# HostCore Dashboard\n{LIMITS_FILE}\n")
     except OSError:
         pass
 

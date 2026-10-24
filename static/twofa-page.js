@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - page /2fa: the forced first setup of the two-factor login.
+ * HostCore Dashboard - page /2fa: the forced first setup of the two-factor login.
  */
 (function () {
   'use strict';

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - public exchange page (/x/<token>): upload into and/or download from a folder.
+ * HostCore Dashboard - public exchange page (/x/<token>): upload into and/or download from a folder.
  */
 (function () {
   'use strict';
@@ -45,7 +45,7 @@
 
   async function load() {
     let res;
-    try { res = await fetch(base); } catch (e) { fail(t('Der Pi ist gerade nicht erreichbar.')); return; }
+    try { res = await fetch(base); } catch (e) { fail(t('Der Server ist gerade nicht erreichbar.')); return; }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { fail(data.detail || t('Link ungültig.')); return; }
     info = data;

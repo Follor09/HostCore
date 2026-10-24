@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - footer with copyright, version and credits (every page but the terminal).
+ * HostCore Dashboard - footer with copyright, version and credits (every page but the terminal).
  */
 (function () {
   'use strict';
@@ -38,7 +38,7 @@
     const copy = document.createElement('span');
     copy.textContent = `© ${about.year || new Date().getFullYear()} ${OWNER}`;
     copy.setAttribute('data-no-i18n', '');
-    main.append(copy, sep(), document.createTextNode(about.name || 'PiCore Server'));
+    main.append(copy, sep(), document.createTextNode(about.name || 'HostCore Server'));
     if (about.commit) {
       const v = document.createElement('span');
       v.className = 'footer-version';

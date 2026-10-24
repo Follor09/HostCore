@@ -1,9 +1,9 @@
 /**
- * PiCore Dashboard - Web terminal (xterm.js <-> /ws/terminal)
+ * HostCore Dashboard - Web terminal (xterm.js <-> /ws/terminal)
  * Flow: password -> one-time ticket -> WebSocket -> login shell in a PTY.
  * With ?container=<name> the shell runs inside that Docker container (docker exec).
  *
- * Persistent sessions (tmux on the Pi): the server sends the session id and a resume token,
+ * Persistent sessions (tmux on the server): the server sends the session id and a resume token,
  * kept in sessionStorage for this tab. When the connection drops (network, dashboard restart)
  * the page reconnects by itself with the token - no password - and also after a reload.
  * Running sessions can be taken over (password) or ended from the unlock card.
@@ -248,7 +248,7 @@
       row.className = 'term-session';
       const info = document.createElement('div');
       const name = document.createElement('b');
-      name.textContent = (x.container ? `${t('Container')} ${x.container}` : t('Shell auf dem Pi'))
+      name.textContent = (x.container ? `${t('Container')} ${x.container}` : t('Shell auf dem Server'))
         + (x.role === 'view' || x.role === 'write' ? ` · ${t('geteilt von')} ${x.user}` : '');
       name.setAttribute('data-no-i18n', '');
       const sub = document.createElement('small');

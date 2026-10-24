@@ -3,7 +3,7 @@ Automatic updates for compose stacks (like Watchtower, but per stack and visible
 at the chosen time the stack is updated with the same job as the "Aktualisieren" button
 (docker compose pull + up -d). Every run is logged; failures show up as events.
 
-A run that was missed because the Pi was off is caught up within three hours.
+A run that was missed because the server was off is caught up within three hours.
 """
 
 import asyncio

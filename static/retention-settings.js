@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Datenaufbewahrung": limits per kind of data and the space each store takes.
+ * HostCore Dashboard - settings section "Datenaufbewahrung": limits per kind of data and the space each store takes.
  */
 (function () {
   'use strict';

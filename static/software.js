@@ -1,7 +1,7 @@
 /**
- * PiCore Dashboard - system page sections "Schwachstellen" (CVEs in packages and container images),
+ * HostCore Dashboard - system page sections "Schwachstellen" (CVEs in packages and container images),
  * "Lebenszyklus" (end of security support of the installed software) and "Software-Inventar"
- * (searchable SBOM of this Pi or the whole fleet, export as CycloneDX / CSV).
+ * (searchable SBOM of this server or the whole fleet, export as CycloneDX / CSV).
  */
 (function () {
   'use strict';
@@ -401,7 +401,7 @@
     const wrap = el('div', 'table-scroll tall');
     const table = el('table', 'data-table');
     const head = table.createTHead().insertRow();
-    [...(withPi ? ['Pi'] : []), 'Name', 'Version', 'Art', 'Ort', 'Lizenz'].forEach(h => head.appendChild(el('th', '', t(h))));
+    [...(withPi ? ['Server'] : []), 'Name', 'Version', 'Art', 'Ort', 'Lizenz'].forEach(h => head.appendChild(el('th', '', t(h))));
     const body = table.createTBody();
     items.forEach(p => {
       const r = body.insertRow();

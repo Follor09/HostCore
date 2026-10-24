@@ -1,10 +1,10 @@
 """
 Docker app store: a curated list of recommended apps plus the LinuxServer.io catalog
 (api.linuxserver.io - around 200 images with ports, folders, settings and devices),
-filtered to images that exist for this Pi's architecture.
+filtered to images that exist for this server's architecture.
 
 The LinuxServer.io catalog is fetched at most once a day and kept in appstore_cache.json,
-so the store keeps working offline. Logos are fetched by the Pi and cached in
+so the store keeps working offline. Logos are fetched by the server and cached in
 appstore_logos/, the browser never talks to GitHub.
 
 Installing an app writes a docker-compose.yml into its own folder (default ~/picore-apps/<name>)
@@ -64,7 +64,7 @@ def _tz() -> str:
 # Catalog
 #   ports:   {key, label, container, default, proto?}          -> "host:container"
 #   folders: {key, label, container, default?, ro?, user?}    -> bind mount; default is below the app folder,
-#            "user": the form asks for an existing folder on the Pi (e.g. media)
+#            "user": the form asks for an existing folder on the server (e.g. media)
 #   env:     {key, label, default?, secret?}                   -> environment variable
 #   open:    port key (or literal port) for the "Öffnen" link, path optional
 # ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "pihole", "name": "Pi-hole", "category": "Netzwerk",
-        "description": "Werbe- und Tracker-Blocker fürs ganze Heimnetz. Danach im Router den Pi als DNS-Server eintragen.",
+        "description": "Werbe- und Tracker-Blocker fürs ganze Heimnetz. Danach im Router den Server als DNS-Server eintragen.",
         "image": "pihole/pihole:latest", "ram": "≈ 100 MB",
         "ports": [{"key": "dns", "label": "DNS (TCP+UDP)", "container": 53, "default": 53, "proto": "both"},
                   {"key": "web", "label": "Weboberfläche", "container": 80, "default": 8053}],
@@ -149,7 +149,7 @@ CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "syncthing", "name": "Syncthing", "category": "Dateien",
-        "description": "Ordner zwischen PC, Handy und Pi synchronisieren – ohne Cloud, direkt von Gerät zu Gerät.",
+        "description": "Ordner zwischen PC, Handy und Server synchronisieren – ohne Cloud, direkt von Gerät zu Gerät.",
         "image": "syncthing/syncthing:latest", "ram": "≈ 80 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 8384, "default": 8384},
                   {"key": "sync", "label": "Synchronisation (TCP+UDP)", "container": 22000, "default": 22000, "proto": "both"}],
@@ -160,7 +160,7 @@ CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "gitea", "name": "Gitea", "category": "Entwicklung",
-        "description": "Eigener Git-Server wie GitHub: Repositories, Issues, Pull Requests – leicht genug für den Pi.",
+        "description": "Eigener Git-Server wie GitHub: Repositories, Issues, Pull Requests – leicht genug für den Server.",
         "image": "gitea/gitea:latest", "ram": "≈ 150 MB",
         "ports": [{"key": "web", "label": "Weboberfläche", "container": 3000, "default": 3002},
                   {"key": "ssh", "label": "Git über SSH", "container": 22, "default": 2222}],
@@ -229,7 +229,7 @@ def _read_cache() -> Optional[Dict[str, Any]]:
 def refresh() -> Dict[str, Any]:
     """Fetch the LinuxServer.io catalog now (blocking) and store it."""
     try:
-        res = httpx.get(LSIO_URL, timeout=30, follow_redirects=True, headers={"User-Agent": "PiCore-Dashboard"})
+        res = httpx.get(LSIO_URL, timeout=30, follow_redirects=True, headers={"User-Agent": "HostCore-Dashboard"})
         res.raise_for_status()
         images = res.json()["data"]["repositories"]["linuxserver"]
         if not isinstance(images, list) or not images:
@@ -291,7 +291,7 @@ def _lsio_app(i: Dict[str, Any], arch: str) -> Optional[Dict[str, Any]]:
         if not path.startswith("/"):
             continue
         if path in ("/var/run/docker.sock", "/run/docker.sock"):
-            continue    # Docker access is root on the Pi: never offered as a checkbox
+            continue    # Docker access is root on the server: never offered as a checkbox
         sub = re.sub(r"[^\w.-]+", "-", path.strip("/")) or f"v{n}"
         # Real host paths (/lib/modules, /dev/shm …) are kept; "/path/to/…" placeholders become a subfolder
         host = str(v.get("host_path") or "")
@@ -360,9 +360,9 @@ def _advanced(app: Dict[str, Any]) -> List[str]:
     """Settings that give the container more than usual - shown as a warning."""
     out = []
     if app["privileged"]:
-        out.append("Privilegierter Modus (voller Zugriff auf den Pi)")
+        out.append("Privilegierter Modus (voller Zugriff auf den Server)")
     if app["host_network"]:
-        out.append("Host-Netzwerk (nutzt die Ports des Pi direkt)")
+        out.append("Host-Netzwerk (nutzt die Ports des Servers direkt)")
     for c in app["caps"]:
         if not c["optional"]:
             out.append(f"Zusatzrecht {c['name']}")
@@ -376,7 +376,7 @@ def _advanced(app: Dict[str, Any]) -> List[str]:
 
 
 def _listening_ports() -> Dict[int, str]:
-    """Ports something on the Pi already listens on (TCP and UDP), with the program if known."""
+    """Ports something on the server already listens on (TCP and UDP), with the program if known."""
     out: Dict[int, str] = {}
     try:
         conns = psutil.net_connections(kind="inet")
@@ -491,7 +491,7 @@ def _q(v: Any) -> str:
 def _build(v: Dict[str, Any]) -> str:
     app = v["app"]
     service = re.sub(r"[^a-z0-9-]+", "-", app["name"].lower()).strip("-") or "app"
-    lines = [f"# Installiert über den PiCore App-Store ({app['name']}) am {time.strftime('%d.%m.%Y %H:%M')}",
+    lines = [f"# Installiert über den HostCore App-Store ({app['name']}) am {time.strftime('%d.%m.%Y %H:%M')}",
              "services:", f"  {service}:",
              f"    image: {_q(app['image'])}", f"    container_name: {_q(v['name'])}", "    restart: unless-stopped"]
     if app["host_network"]:
@@ -624,7 +624,7 @@ def _validate(app_id: str, req: Dict[str, Any], strict: bool = True) -> Dict[str
         if on and not os.path.exists(d["host_path"]):
             if d["optional"]:
                 continue
-            raise AppStoreError(f"Gerät {d['host_path']} gibt es auf diesem Pi nicht.")
+            raise AppStoreError(f"Gerät {d['host_path']} gibt es auf diesem Server nicht.")
         devices[d["key"]] = on
     return {"app": app, "name": name, "dir": app_dir, "ports": ports, "folders": folders, "env": env, "devices": devices}
 
@@ -678,7 +678,7 @@ def forget_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Logos: fetched once by the Pi, served from here
+# Logos: fetched once by the server, served from here
 # ---------------------------------------------------------------------------
 _LOGO_TYPES = {b"\x89PNG": ("png", "image/png"), b"\xff\xd8\xff": ("jpg", "image/jpeg"), b"GIF8": ("gif", "image/gif"),
                b"RIFF": ("webp", "image/webp")}
@@ -702,7 +702,7 @@ def logo(app_id: str) -> Optional[tuple]:
     if urlparse(url).scheme != "https" or urlparse(url).hostname not in LOGO_HOSTS:
         return None
     try:
-        with httpx.stream("GET", url, timeout=15, follow_redirects=True, headers={"User-Agent": "PiCore-Dashboard"}) as res:
+        with httpx.stream("GET", url, timeout=15, follow_redirects=True, headers={"User-Agent": "HostCore-Dashboard"}) as res:
             res.raise_for_status()
             body = b""
             for chunk in res.iter_bytes():

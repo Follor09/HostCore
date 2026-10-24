@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "E-Mail-Benachrichtigungen": SMTP connection, what is sent, test mails.
+ * HostCore Dashboard - settings section "E-Mail-Benachrichtigungen": SMTP connection, what is sent, test mails.
  */
 (function () {
   'use strict';

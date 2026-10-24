@@ -90,7 +90,7 @@ if [ "$LOCAL" != "$REMOTE" ]; then
         chmod 644 "$REQ"
         as_owner "$DIR/venv/bin/pip" install -q -r "$REQ"
     fi
-    # The Pi is a deploy target: GitHub is the source of truth (also handles force-pushes)
+    # The server is a deploy target: GitHub is the source of truth (also handles force-pushes)
     git_ reset --hard --quiet "$REMOTE"
     RESTART=1
 fi

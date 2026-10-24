@@ -604,7 +604,7 @@ def _write_override(stack: Dict[str, Any], services: Dict[str, Dict[str, Any]]) 
     if not active and not os.path.isfile(path):
         return
     # Once used, compose remembers the file in the stack's labels: keep it (empty) instead of deleting it
-    lines = ["# Ressourcen-Limits aus dem PiCore-Dashboard – wird dort verwaltet", "services:" if active else "services: {}"]
+    lines = ["# Ressourcen-Limits aus dem HostCore-Dashboard – wird dort verwaltet", "services:" if active else "services: {}"]
     for svc, l in sorted(active.items()):
         lines.append(f"  {json.dumps(svc)}:")
         if l.get("cpus"):
@@ -865,7 +865,7 @@ def _size(text: Any) -> int:
 
 def _need_docker() -> None:
     if not shutil.which("docker"):
-        raise ContainerError("Docker ist auf diesem Pi nicht installiert.")
+        raise ContainerError("Docker ist auf diesem Server nicht installiert.")
 
 
 def _container_mounts() -> Dict[str, List[str]]:
@@ -995,7 +995,7 @@ def volumes_and_networks() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# New stack from a template (Container -> Stack-Vorlagen, also on remote Pis)
+# New stack from a template (Container -> Stack-Vorlagen, also on remote servers)
 # ---------------------------------------------------------------------------
 STACK_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 

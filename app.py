@@ -1,5 +1,5 @@
 """
-Raspberry Pi All-in-One Dashboard Server (Server & Homelab Edition).
+HostCore - server & homelab dashboard for Debian, Ubuntu and Raspberry Pi OS.
 FastAPI backend with WebSocket real-time live streaming, services monitoring,
 drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 """
@@ -116,6 +116,7 @@ import problems
 import privacy
 import baseline
 import evidence
+import vms
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("pi_dashboard")
@@ -184,7 +185,7 @@ def _proxy() -> httpx.AsyncClient:
 
 
 def _remote_for(request_or_ws) -> Optional[dict]:
-    """The remote Pi this browser has switched to (cookie), if any - never in agent mode."""
+    """The remote server this browser has switched to (cookie), if any - never in agent mode."""
     if AGENT:
         return None
     return remotes.selected(request_or_ws.cookies.get(remotes.COOKIE))
@@ -193,7 +194,7 @@ def _remote_for(request_or_ws) -> Optional[dict]:
 @app.middleware("http")
 async def remote_proxy(request: Request, call_next):
     """Innermost middleware (after login, permissions and the activity log): API calls for a
-    selected remote Pi go to its agent, with this dashboard's permissions already checked."""
+    selected remote server go to its agent, with this dashboard's permissions already checked."""
     path = request.url.path
     remote = _remote_for(request) if path.startswith("/api/") else None
     if not remote or remotes.LOCAL_ONLY.match(path):
@@ -301,6 +302,8 @@ async def require_login(request: Request, call_next):
         if path.startswith("/api/"):
             if not agent.check(request.headers.get("authorization", "")):
                 return JSONResponse({"detail": "Agent: Token fehlt oder falsch."}, status_code=401)
+            if not agent.allowed(websec.client_ip(request)):
+                return JSONResponse({"detail": "Agent: diese Adresse ist nicht freigegeben (./agent.sh allow)."}, status_code=403)
             request.state.user = agent.remote_user(request.headers)
             request.state.audit_user = request.state.user
             return await call_next(request)
@@ -429,7 +432,7 @@ def _about() -> dict:
     except (OSError, subprocess.SubprocessError):
         pass
     commit = updater.update_state.get("current_commit") or ""
-    data = {"name": "PiCore Server", "commit": commit if re.fullmatch(r"[0-9a-f]{4,40}", commit) else "",
+    data = {"name": "HostCore Server", "commit": commit if re.fullmatch(r"[0-9a-f]{4,40}", commit) else "",
             "date": date, "repo": url, "year": time.localtime().tm_year, "version": updater.update_state.get("version") or ""}
     _about_cache.update(ts=now, data=data)
     return data
@@ -469,7 +472,7 @@ async def api_me(request: Request):
 async def api_login(req: LoginRequest, request: Request):
     ip = websec.client_ip(request)
     if not auth.is_configured():
-        raise HTTPException(status_code=503, detail="Noch kein Passwort gesetzt. Auf dem Pi ausführen: ~/pi-dashboard/set-password.sh")
+        raise HTTPException(status_code=503, detail="Noch kein Passwort gesetzt. Auf dem Server ausführen: ~/pi-dashboard/set-password.sh")
     if not _same_origin(request):
         raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
 
@@ -766,7 +769,7 @@ def _sso_page(title: str, message: str, target: str = "", close: bool = False, s
     link = f'<a class="login-public" href="{html_escape(target or "/login")}">Weiter →</a>' if not close else ""
     script = '<script src="/static/sso-close.js"></script>' if close else ""
     html = (f'<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
-            f'{refresh}<title>{html_escape(title)} | PiCore Server</title><script src="/static/theme.js"></script>'
+            f'{refresh}<title>{html_escape(title)} | HostCore Server</title><script src="/static/theme.js"></script>'
             f'<link rel="stylesheet" href="/static/style.css"></head><body class="theme-cyber login-page"><main class="login-wrap">'
             f'<div class="glass-card login-card"><h1>{html_escape(title)}</h1><p class="card-subtitle">{html_escape(message)}</p>{link}</div>'
             f'</main>{script}</body></html>')
@@ -913,11 +916,11 @@ def _send_reset(username: str, ip: str) -> None:
         return
     token = auth.create_reset(username)
     link = f"{base}/passwort?token={token}"
-    text = (f"Hallo {username},\n\nfür dein Konto am PiCore-Dashboard ({base}) wurde ein neues Passwort angefordert "
+    text = (f"Hallo {username},\n\nfür dein Konto am HostCore-Dashboard ({base}) wurde ein neues Passwort angefordert "
             f"(von {ip}).\n\nNeues Passwort festlegen (30 Minuten gültig, einmal benutzbar):\n{link}\n\n"
             "Warst du das nicht, ignoriere diese Mail – dein Passwort bleibt unverändert.\n")
     try:
-        notify.send("[PiCore] Passwort zurücksetzen", text, None, to=[info["email"]])
+        notify.send("[HostCore] Passwort zurücksetzen", text, None, to=[info["email"]])
     except notify.NotifyError as e:
         logger.warning(f"Password reset mail failed: {e}")
 
@@ -966,8 +969,8 @@ async def api_auth_reset(req: ResetRequest, request: Request):
     if info and info["email"]:
         def tell():
             try:
-                notify.send("[PiCore] Dein Passwort wurde geändert",
-                            f"Hallo {name},\n\ndein Passwort am PiCore-Dashboard wurde gerade über den E-Mail-Link geändert (von {ip}). "
+                notify.send("[HostCore] Dein Passwort wurde geändert",
+                            f"Hallo {name},\n\ndein Passwort am HostCore-Dashboard wurde gerade über den E-Mail-Link geändert (von {ip}). "
                             "Alle Geräte wurden abgemeldet.\n\nWarst du das nicht, sofort einen Administrator informieren.\n", None,
                             to=[info["email"]])
             except notify.NotifyError:
@@ -1490,8 +1493,8 @@ async def api_files_zip(ticket: str, request: Request):
 @app.post("/api/files/share")
 async def api_files_share(req: ShareRequest, request: Request):
     if _remote_for(request):
-        # Share links are served by this Pi - they can't hand out a remote Pi's files
-        raise HTTPException(status_code=400, detail="Freigabe-Links gibt es nur für Dateien dieses Pis.")
+        # Share links are served by this server - they can't hand out a remote server's files
+        raise HTTPException(status_code=400, detail="Freigabe-Links gibt es nur für Dateien dieses Servers.")
     request.state.audit_detail = f"{req.path[:200]} · {req.hours} Std."
     return await _files_call(lambda p: files.create_share(p, req.hours, request.state.user), req.path)
 
@@ -1621,13 +1624,13 @@ class FleetAptRequest(BaseModel):
 
 
 class FleetPackagesRequest(BaseModel):
-    targets: dict   # {pi id ("" = this Pi): [package names]}
+    targets: dict   # {pi id ("" = this server): [package names]}
 
 
 @app.post("/api/fleet/packages")
 async def api_fleet_packages(req: FleetPackagesRequest, request: Request):
     targets = {str(k): [str(n) for n in (v or [])] for k, v in req.targets.items()}
-    request.state.audit_detail = f"{sum(len(v) for v in targets.values())} Pakete · {len(targets)} Pis"
+    request.state.audit_detail = f"{sum(len(v) for v in targets.values())} Pakete · {len(targets)} Server"
     return await fleet.upgrade_packages(targets, request.state.user or "")
 
 
@@ -1643,7 +1646,7 @@ async def api_fleet_job(id: str = ""):
 
 @app.post("/api/fleet/apt")
 async def api_fleet_apt(req: FleetAptRequest, request: Request):
-    request.state.audit_detail = f"{req.mode} · {len(req.ids)} Pis"
+    request.state.audit_detail = f"{req.mode} · {len(req.ids)} Server"
     try:
         return await fleet.apt([str(i) for i in req.ids][:50], req.mode, request.state.user or "")
     except ValueError as e:
@@ -2280,7 +2283,7 @@ async def api_tools_fan_curve_reset():
 # ---------------------------------------------------------------------------
 class TerminalTicketRequest(BaseModel):
     password: str = ""
-    container: str = ""      # shell inside this Docker container instead of on the Pi
+    container: str = ""      # shell inside this Docker container instead of on the server
     session: str = ""        # take over this running (persistent) session instead of a new shell
 
 
@@ -2292,7 +2295,7 @@ class TerminalResumeRequest(BaseModel):
 async def internal_call(user: str, method: str, path: str, params: Optional[dict] = None, json_body: Any = None,
                         host: str = "", timeout: float = 120) -> Any:
     """Call this dashboard's own API in-process as `user` (permissions, activity log and remote-Pi
-    forwarding apply as for a browser). host = remote Pi id, '' = this Pi."""
+    forwarding apply as for a browser). host = remote server id, '' = this server."""
     transport = httpx.ASGITransport(app=app)
     headers = {INTERNAL_HEADER: INTERNAL_KEY, INTERNAL_USER_HEADER: user}
     cookies = {remotes.COOKIE: host} if host else None
@@ -2438,7 +2441,7 @@ async def api_settings_email_test(payload: dict = None):
             items = await asyncio.to_thread(notify.deadlines)
             text, body = notify._render("Tagesübersicht (Vorschau)", "So sieht die tägliche Übersicht heute aus.",
                                         [("Fällig und bald fällig", items or [("good", "Heute ist nichts fällig.", "")])], "/")
-            await asyncio.to_thread(notify.send, "[PiCore] Tagesübersicht (Vorschau)", text, body)
+            await asyncio.to_thread(notify.send, "[HostCore] Tagesübersicht (Vorschau)", text, body)
         else:
             await asyncio.to_thread(notify.send_test)
     except notify.NotifyError as e:
@@ -2469,7 +2472,7 @@ async def api_settings_retention_cleanup():
 
 
 # ---------------------------------------------------------------------------
-# Alarms: acknowledgement and escalation (per Pi)
+# Alarms: acknowledgement and escalation (per server)
 # ---------------------------------------------------------------------------
 def _alert_call(fn, *args):
     try:
@@ -2545,7 +2548,7 @@ async def api_alarm_ack(req: AlertTokenAck, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Tasks: long-running work with its own log (per Pi)
+# Tasks: long-running work with its own log (per server)
 # ---------------------------------------------------------------------------
 def _task_call(fn, *args):
     try:
@@ -2576,7 +2579,7 @@ async def api_task_cancel(task_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Compose security check (per Pi)
+# Compose security check (per server)
 # ---------------------------------------------------------------------------
 def _stackcheck_call(fn, *args):
     try:
@@ -2603,7 +2606,7 @@ async def api_stack_check_ignore(payload: dict, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Database monitor (per Pi)
+# Database monitor (per server)
 # ---------------------------------------------------------------------------
 def _db_call(fn, *args):
     try:
@@ -2640,7 +2643,7 @@ async def api_databases_settings(name: str, payload: dict, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Backup check (per Pi)
+# Backup check (per server)
 # ---------------------------------------------------------------------------
 def _backup_call(fn, *args):
     try:
@@ -2677,7 +2680,7 @@ async def api_backups_delete(job_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Vulnerabilities, end of life, self-test (per Pi)
+# Vulnerabilities, end of life, self-test (per server)
 # ---------------------------------------------------------------------------
 @app.get("/api/vulns")
 async def api_vulns():
@@ -2770,7 +2773,7 @@ async def api_selftest_repair(payload: dict, request: Request):
 @app.post("/api/terminal/ticket")
 async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     """Re-check the password before handing out a one-time terminal ticket.
-    For a remote Pi the password is checked here and the agent issues the ticket."""
+    For a remote server the password is checked here and the agent issues the ticket."""
     if AGENT:
         # the main dashboard already checked the password; the token proves it's the main dashboard
         return await asyncio.to_thread(_terminal_issue, request.state.user, req.container, req.session)
@@ -2972,7 +2975,7 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
     # WebSockets bypass the HTTP middleware: check session, origin and ticket here
     if AGENT:
         await websocket.accept()
-        if not agent.check(websocket.headers.get("authorization", "")):
+        if not agent.check(websocket.headers.get("authorization", "")) or not agent.allowed(websec.client_ip(websocket)):
             await websocket.close(code=4401)
             return
         user = agent.remote_user(websocket.headers)
@@ -3012,6 +3015,358 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
     finally:
         minutes = max(1, round((time.time() - started) / 60))
         await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}getrennt nach {minutes} Min.")
+
+
+# ---------------------------------------------------------------------------
+# Virtual machines (KVM / libvirt) - page /vms, console /vm-konsole
+# ---------------------------------------------------------------------------
+@app.get("/vms")
+async def get_vms_page(request: Request):
+    # With a remote server selected its API decides (the page then shows its answer)
+    if not vms.enabled() and not _remote_for(request):
+        return RedirectResponse("/settings#vms" if vms.available() else "/", status_code=303)
+    return _serve_page("vms.html")
+
+
+@app.get("/vm-konsole")
+async def get_vm_console_page():
+    return _serve_page("vmconsole.html")
+
+
+def _vm_call(fn, *args):
+    try:
+        vms.require_enabled()
+        return fn(*args)
+    except vms.VmDisabled as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except vms.VmError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except tasks.TaskError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Zeitüberschreitung.")
+
+
+async def _vm(fn, *args):
+    return await asyncio.to_thread(_vm_call, fn, *args)
+
+
+class VmSettingsRequest(BaseModel):
+    vcpus: Optional[int] = None
+    memory_mb: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+class VmNameRequest(BaseModel):
+    name: str
+
+
+class VmFlagRequest(BaseModel):
+    enabled: bool = False
+
+
+class VmDiskRequest(BaseModel):
+    pool: str = "default"
+    size_gb: int = 10
+    bus: str = "virtio"
+
+
+class VmMediaRequest(BaseModel):
+    path: str = ""
+
+
+class VmInterfaceRequest(BaseModel):
+    kind: str = "network"
+    source: str = "default"
+    model: str = "virtio"
+
+
+class VmSnapshotRequest(BaseModel):
+    name: str
+    description: str = ""
+
+
+class VmNetworkRequest(BaseModel):
+    name: str
+    cidr: str
+    mode: str = "nat"
+    dhcp: bool = True
+
+
+class VmPoolRequest(BaseModel):
+    name: str
+    path: str
+
+
+class VmImageRequest(BaseModel):
+    id: str = ""
+    url: str = ""
+    sha: str = ""
+    kind: str = "iso"
+    pool: str = "default"
+    volume: str = ""
+
+
+class VmFeatureRequest(BaseModel):
+    enabled: bool
+
+
+@app.get("/api/settings/vms")
+async def api_settings_vms():
+    return vms.feature()
+
+
+@app.post("/api/settings/vms")
+async def api_settings_vms_save(req: VmFeatureRequest, request: Request):
+    request.state.audit_detail = "an" if req.enabled else "aus"
+    try:
+        return await asyncio.to_thread(vms.set_enabled, req.enabled)
+    except vms.VmError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/vms")
+async def api_vms():
+    return await _vm(vms.overview)
+
+
+@app.get("/api/vms/catalog")
+async def api_vms_catalog():
+    return await _vm(vms.catalog)
+
+
+@app.get("/api/vms/networks")
+async def api_vms_networks():
+    return await _vm(vms.networks)
+
+
+@app.get("/api/vms/pools")
+async def api_vms_pools():
+    return await _vm(vms.pools)
+
+
+@app.post("/api/vms/setup/{step}")
+async def api_vms_setup(step: str, request: Request):
+    request.state.audit_detail = step
+    return await _vm(vms.setup, step)
+
+
+@app.post("/api/vms/create")
+async def api_vms_create(payload: dict, request: Request):
+    request.state.audit_detail = f"{str(payload.get('name', ''))[:63]} ({payload.get('source', '')}, {payload.get('vcpus')} vCPU, {payload.get('memory_mb')} MB)"
+    return await _vm(vms.create, payload, request.state.user or "")
+
+
+@app.post("/api/vms/images/fetch")
+async def api_vms_fetch(req: VmImageRequest, request: Request):
+    request.state.audit_detail = req.id or req.url[:200]
+    return await _vm(vms.fetch_image, req.id, req.url, req.sha, req.kind, req.pool, req.volume, request.state.user or "")
+
+
+@app.post("/api/vms/networks")
+async def api_vms_network_create(req: VmNetworkRequest, request: Request):
+    request.state.audit_detail = f"{req.name} {req.cidr} ({req.mode})"
+    return await _vm(vms.network_create, req.name, req.cidr, req.mode, req.dhcp)
+
+
+@app.post("/api/vms/net/{name}/{act}")
+async def api_vms_network_action(name: str, act: str, request: Request):
+    request.state.audit_detail = f"{name}: {act}"
+    return await _vm(vms.network_action, name, act)
+
+
+@app.post("/api/vms/pools")
+async def api_vms_pool_create(req: VmPoolRequest, request: Request):
+    request.state.audit_detail = f"{req.name} ({req.path})"
+    return await _vm(vms.pool_create, req.name, req.path)
+
+
+@app.post("/api/vms/pool/{name}/volumes/{vol}/delete")
+async def api_vms_volume_delete(name: str, vol: str, request: Request):
+    request.state.audit_detail = f"{name}/{vol}"
+    return await _vm(vms.volume_delete, name, vol)
+
+
+@app.post("/api/vms/pool/{name}/{act}")
+async def api_vms_pool_action(name: str, act: str, request: Request):
+    request.state.audit_detail = f"{name}: {act}"
+    return await _vm(vms.pool_action, name, act)
+
+
+@app.get("/api/vms/vm/{name}")
+async def api_vm_detail(name: str):
+    return await _vm(vms.detail, name)
+
+
+@app.post("/api/vms/vm/{name}/autostart")
+async def api_vm_autostart(name: str, req: VmFlagRequest, request: Request):
+    request.state.audit_detail = f"{name}: Autostart {'an' if req.enabled else 'aus'}"
+    return await _vm(vms.set_autostart, name, req.enabled)
+
+
+@app.post("/api/vms/vm/{name}/delete")
+async def api_vm_delete(name: str, req: VmFlagRequest, request: Request):
+    request.state.audit_detail = f"{name}{' samt Laufwerken' if req.enabled else ''}"
+    return await _vm(vms.delete, name, req.enabled)
+
+
+@app.post("/api/vms/vm/{name}/settings")
+async def api_vm_settings(name: str, req: VmSettingsRequest, request: Request):
+    request.state.audit_detail = f"{name}: vCPU {req.vcpus or '–'}, RAM {req.memory_mb or '–'} MB"
+    return await _vm(vms.settings, name, req.vcpus, req.memory_mb, req.title, req.description)
+
+
+@app.post("/api/vms/vm/{name}/rename")
+async def api_vm_rename(name: str, req: VmNameRequest, request: Request):
+    request.state.audit_detail = f"{name} → {req.name}"
+    return await _vm(vms.rename, name, req.name)
+
+
+@app.post("/api/vms/vm/{name}/clone")
+async def api_vm_clone(name: str, req: VmNameRequest, request: Request):
+    request.state.audit_detail = f"{name} → {req.name}"
+    return await _vm(vms.clone, name, req.name, request.state.user or "")
+
+
+@app.post("/api/vms/vm/{name}/disks")
+async def api_vm_disk_add(name: str, req: VmDiskRequest, request: Request):
+    request.state.audit_detail = f"{name}: {req.size_gb} GB ({req.pool})"
+    return await _vm(vms.add_disk, name, req.pool, req.size_gb, req.bus)
+
+
+@app.post("/api/vms/vm/{name}/disks/{target}/detach")
+async def api_vm_disk_detach(name: str, target: str, req: VmFlagRequest, request: Request):
+    request.state.audit_detail = f"{name}: {target}{' gelöscht' if req.enabled else ''}"
+    return await _vm(vms.detach_disk, name, target, req.enabled)
+
+
+@app.post("/api/vms/vm/{name}/media")
+async def api_vm_media(name: str, req: VmMediaRequest, request: Request):
+    request.state.audit_detail = f"{name}: {os.path.basename(req.path) or 'auswerfen'}"
+    return await _vm(vms.change_media, name, req.path)
+
+
+@app.post("/api/vms/vm/{name}/interfaces")
+async def api_vm_iface_add(name: str, req: VmInterfaceRequest, request: Request):
+    request.state.audit_detail = f"{name}: {req.kind} {req.source}"
+    return await _vm(vms.add_interface, name, req.kind, req.source, req.model)
+
+
+@app.post("/api/vms/vm/{name}/interfaces/{mac}/{act}")
+async def api_vm_iface_action(name: str, mac: str, act: str, request: Request):
+    request.state.audit_detail = f"{name}: {mac} {act}"
+    return await _vm(vms.interface_action, name, mac, act)
+
+
+@app.post("/api/vms/vm/{name}/snapshots")
+async def api_vm_snapshot_create(name: str, req: VmSnapshotRequest, request: Request):
+    request.state.audit_detail = f"{name}: {req.name}"
+    return await _vm(vms.snapshot_create, name, req.name, req.description)
+
+
+@app.post("/api/vms/vm/{name}/snapshots/{snap}/{act}")
+async def api_vm_snapshot_action(name: str, snap: str, act: str, request: Request):
+    request.state.audit_detail = f"{name}: {snap} {act}"
+    return await _vm(vms.snapshot_action, name, snap, act)
+
+
+@app.post("/api/vms/vm/{name}/console")
+async def api_vm_console(name: str, request: Request):
+    """One-time ticket (60 s) for the console WebSocket - issued where the VM runs (an agent for a remote host)."""
+    request.state.audit_detail = name
+    info = await _vm(vms.console_info, name)
+    return {**info, "ticket": vms.issue_ticket(request.state.user or "", name), "expires_in": vms.TICKET_TTL}
+
+
+@app.post("/api/vms/vm/{name}/{act}")
+async def api_vm_action(name: str, act: str, request: Request):
+    request.state.audit_detail = f"{name}: {act}"
+    logger.info(f"VM {name} {act} by '{request.state.user}'")
+    return await _vm(vms.action, name, act)
+
+
+@app.websocket("/ws/vm-console")
+async def ws_vm_console(websocket: WebSocket, ticket: str = "", kind: str = "serial", rows: int = 24, cols: int = 80):
+    """kind=serial: text console (virsh console, same protocol as the web terminal);
+    kind=vnc: raw VNC bytes for noVNC, to the VM's VNC port on 127.0.0.1."""
+    if kind not in ("serial", "vnc"):
+        await websocket.close(code=4400)
+        return
+    if AGENT:
+        await websocket.accept()
+        if not agent.check(websocket.headers.get("authorization", "")) or not agent.allowed(websec.client_ip(websocket)):
+            await websocket.close(code=4401)
+            return
+        user = agent.remote_user(websocket.headers)
+    else:
+        user = auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME))
+        origin = websocket.headers.get("origin", "")
+        same_origin = origin.split("://", 1)[-1] == websocket.headers.get("host", "")
+        await websocket.accept()
+        if not user or not auth.can(user, "vms.manage") or not same_origin:
+            await websocket.close(code=4401)
+            return
+        if websec.blocked_from_outside("vms.manage", websec.client_ip(websocket)):
+            await websocket.close(code=4403)
+            return
+        remote = _remote_for(websocket)
+        if remote:
+            await _ws_relay(websocket, remote, f"/ws/vm-console?ticket={quote(ticket)}&kind={kind}&rows={int(rows)}&cols={int(cols)}", user)
+            return
+    name = vms.redeem_ticket(ticket, user or "")
+    if not name or not vms.enabled():
+        await websocket.close(code=4401)
+        return
+    client = websec.client_ip(websocket)
+    label = "serielle Konsole" if kind == "serial" else "grafische Konsole"
+    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/vm-console", 200, f"VM {name}: {label} geöffnet")
+    started = time.time()
+    try:
+        if kind == "serial":
+            await terminal._bridge(websocket, user, client, rows, cols, argv=vms.serial_argv(name))
+        else:
+            await _vnc_bridge(websocket, name)
+    except vms.VmError as e:
+        with contextlib.suppress(Exception):
+            await websocket.close(code=4404, reason=str(e)[:120])
+    finally:
+        minutes = max(1, round((time.time() - started) / 60))
+        await asyncio.to_thread(audit.record, user, client, "WS", "/ws/vm-console", 200, f"VM {name}: {label} getrennt nach {minutes} Min.")
+
+
+async def _vnc_bridge(websocket: WebSocket, name: str) -> None:
+    port = await asyncio.to_thread(vms.vnc_port, name)
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+
+    async def down():
+        while True:
+            data = await reader.read(65536)
+            if not data:
+                return
+            await websocket.send_bytes(data)
+
+    async def up():
+        while True:
+            m = await websocket.receive()
+            if m["type"] == "websocket.disconnect":
+                return
+            data = m.get("bytes")
+            if data is None and m.get("text") is not None:
+                data = m["text"].encode()
+            if data:
+                writer.write(data)
+                await writer.drain()
+
+    pumps = [asyncio.create_task(down()), asyncio.create_task(up())]
+    try:
+        await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for t in pumps:
+            t.cancel()
+        writer.close()
+        with contextlib.suppress(Exception):
+            await websocket.close()
 
 
 # ---------------------------------------------------------------------------
@@ -3324,14 +3679,28 @@ async def api_packages_run(req: PackagesRequest, request: Request):
 
 @app.get("/api/agent/info")
 async def api_agent_info():
-    """For the main dashboard: is this an agent, and which Pi is it."""
+    """For the main dashboard: is this an agent, and which server is it."""
     if not AGENT:
         raise HTTPException(status_code=404, detail="Kein Agent.")
     snap = await asyncio.to_thread(system_info.get_system_snapshot)
     up = snap.get("uptime") or {}
+    caps = await asyncio.to_thread(system_info.get_capabilities)
     return {"agent": True, "hostname": snap.get("host_name") or platform.node(), "model": snap.get("model", ""),
+            "os": _os_name(), "kind": caps.get("kind", ""), "arch": platform.machine(),
             "ip": (snap.get("network_ip") or {}).get("primary_ip", "") if isinstance(snap.get("network_ip"), dict) else snap.get("network_ip", ""), "commit": (updater.update_state or {}).get("current_commit", ""),
             "uptime": up.get("formatted", "") if isinstance(up, dict) else up}
+
+
+def _os_name() -> str:
+    """PRETTY_NAME from /etc/os-release, e.g. "Debian GNU/Linux 13 (trixie)"."""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    return line.split("=", 1)[1].strip().strip('"')[:80]
+    except OSError:
+        pass
+    return platform.system()
 
 
 class RemoteRequest(BaseModel):
@@ -3780,7 +4149,7 @@ async def api_stack_templates_delete(template_id: str):
 @app.post("/api/stack-templates/{template_id}/deploy")
 async def api_stack_templates_deploy(template_id: str, payload: dict, request: Request):
     targets = [str(t) for t in (payload.get("targets") or [])][:20]
-    request.state.audit_detail = f"{payload.get('name', '')} · {len(targets)} Pis"
+    request.state.audit_detail = f"{payload.get('name', '')} · {len(targets)} Server"
     try:
         return await stacktemplates.deploy(template_id, targets, str(payload.get("name") or ""), str(payload.get("env") or ""),
                                            request.state.user or "")
@@ -3999,7 +4368,7 @@ async def api_appstore_install(app_id: str, req: AppInstallRequest, request: Req
 
 @app.get("/api/capabilities")
 async def api_capabilities():
-    """Hardware features of this Pi (or of the selected remote Pi, via the proxy)."""
+    """Hardware features of this server (or of the selected remote server, via the proxy)."""
     return await asyncio.to_thread(system_info.get_capabilities)
 
 
@@ -4295,11 +4664,11 @@ async def api_costs():
 
 
 # ---------------------------------------------------------------------------
-# Latency between the Pis, dashboard versions and capacity of the fleet
+# Latency between the servers, dashboard versions and capacity of the fleet
 # ---------------------------------------------------------------------------
 @app.get("/api/tools/ping-peers")
 async def api_ping_peers(targets: str = ""):
-    """Called by the main dashboard on every Pi: ping the other Pis."""
+    """Called by the main dashboard on every server: ping the other servers."""
     return await asyncio.to_thread(latency.ping_many, [t.strip() for t in targets.split(",") if t.strip()][:20])
 
 
@@ -4325,7 +4694,7 @@ class FleetIdsRequest(BaseModel):
 
 @app.post("/api/fleet/dashboard-update")
 async def api_fleet_dashboard_update(req: FleetIdsRequest, request: Request):
-    request.state.audit_detail = f"{len(req.ids)} Pis"
+    request.state.audit_detail = f"{len(req.ids)} Server"
     return await fleet.dashboard_update([str(i) for i in req.ids][:50], request.state.user or "")
 
 
@@ -5227,13 +5596,13 @@ async def api_reboot():
     if system_info.is_raspberry_pi():
         try:
             subprocess.Popen(["sudo", "reboot"])
-            return {"status": "success", "message": "Raspberry Pi wird jetzt neu gestartet..."}
+            return {"status": "success", "message": "Server wird jetzt neu gestartet..."}
         except Exception as e:
             return {"status": "error", "message": str(e)}
     else:
         return {
             "status": "simulated",
-            "message": "[Simulation] Neustart-Befehl erfolgreich empfangen. Auf einem echten Pi wird 'sudo reboot' ausgeführt."
+            "message": "[Simulation] Neustart-Befehl erfolgreich empfangen. Auf einem echten Server wird 'sudo reboot' ausgeführt."
         }
 
 
@@ -5243,13 +5612,13 @@ async def api_shutdown():
     if system_info.is_raspberry_pi():
         try:
             subprocess.Popen(["sudo", "poweroff"])
-            return {"status": "success", "message": "Raspberry Pi wird heruntergefahren..."}
+            return {"status": "success", "message": "Server wird heruntergefahren..."}
         except Exception as e:
             return {"status": "error", "message": str(e)}
     else:
         return {
             "status": "simulated",
-            "message": "[Simulation] Herunterfahren-Befehl erfolgreich empfangen. Auf einem echten Pi wird 'sudo poweroff' ausgeführt."
+            "message": "[Simulation] Herunterfahren-Befehl erfolgreich empfangen. Auf einem echten Server wird 'sudo poweroff' ausgeführt."
         }
 
 
@@ -5262,7 +5631,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # Middleware doesn't cover WebSockets: check the session here
     await websocket.accept()
     if AGENT:
-        if not agent.check(websocket.headers.get("authorization", "")):
+        if not agent.check(websocket.headers.get("authorization", "")) or not agent.allowed(websec.client_ip(websocket)):
             await websocket.close(code=4401)
             return
     else:

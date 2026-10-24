@@ -1,11 +1,11 @@
 """
 Network tools for the system page:
 
-- LAN device scan: ping every address of the Pi's LAN/WLAN subnets (that also fills the
+- LAN device scan: ping every address of the server's LAN/WLAN subnets (that also fills the
   kernel's neighbour table), then read the neighbour table for IP + MAC. Names come from
   reverse DNS (the router's DHCP names), manufacturers from the IEEE OUI list if installed.
   Seen devices are remembered, so offline ones stay listed; each can get its own name.
-- Port check: which of the Pi's listening ports are reachable from LAN / VPN, taking
+- Port check: which of the server's listening ports are reachable from LAN / VPN, taking
   the bind address and the ufw rules into account - plus a manual TCP test to any host.
 No root needed.
 """
@@ -247,7 +247,7 @@ def _source_scope(source: str, lans: List[ipaddress.IPv4Network]) -> str:
         return "other"
     if net.version == 4 and net.subnet_of(ipaddress.ip_network("100.64.0.0/10")):
         return "vpn"  # NetBird / Tailscale range
-    # Only the Pi's own LAN counts, not e.g. the k3s pod network 10.42.0.0/16
+    # Only the server's own LAN counts, not e.g. the k3s pod network 10.42.0.0/16
     return "lan" if any(net.version == lan.version and net.overlaps(lan) for lan in lans) else "other"
 
 

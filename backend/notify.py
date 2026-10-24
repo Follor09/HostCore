@@ -11,7 +11,7 @@ E-mail notifications via SMTP (Einstellungen -> E-Mail-Benachrichtigungen):
 - Alarms (alerting.py) use the same SMTP settings; while they are on, the event mail leaves
   out what the alarms already send.
 
-Settings in settings.json "email" (the password never leaves the Pi again), progress in
+Settings in settings.json "email" (the password never leaves the server again), progress in
 "email_state" so a restart neither repeats nor loses mails.
 """
 
@@ -69,7 +69,7 @@ def public() -> Dict[str, Any]:
     c, s = config(), _state()
     return {"enabled": bool(c.get("enabled")), "host": c.get("host", ""), "port": c.get("port", 587),
             "security": c.get("security", "starttls"), "insecure": bool(c.get("insecure")), "username": c.get("username", ""),
-            "has_password": bool(c.get("password")), "sender": c.get("sender", ""), "sender_name": c.get("sender_name", "PiCore"),
+            "has_password": bool(c.get("password")), "sender": c.get("sender", ""), "sender_name": c.get("sender_name", "HostCore"),
             "recipients": c.get("recipients", []), "dashboard_url": c.get("dashboard_url", ""),
             "events_level": c.get("events_level", "critical"), "daily": c.get("daily", True), "daily_hour": c.get("daily_hour", 7),
             "weekly": c.get("weekly", True), "weekly_day": c.get("weekly_day", 0), "weekly_hour": c.get("weekly_hour", 8),
@@ -122,7 +122,7 @@ def save(fields: Dict[str, Any]) -> Dict[str, Any]:
     c.update(enabled=bool(fields.get("enabled")), host=host, port=_int(fields.get("port") or 587, 1, 65535, "Port"),
              security=security, insecure=bool(fields.get("insecure")),
              username=str(fields.get("username") or "").strip()[:200], sender=sender,
-             sender_name=re.sub(r"[\r\n<>\"]", "", str(fields.get("sender_name") or "PiCore"))[:60] or "PiCore",
+             sender_name=re.sub(r"[\r\n<>\"]", "", str(fields.get("sender_name") or "HostCore"))[:60] or "HostCore",
              recipients=recipients, dashboard_url=url, events_level=level,
              daily=bool(fields.get("daily")), daily_hour=_int(fields.get("daily_hour", 7), 0, 23, "Uhrzeit"),
              weekly=bool(fields.get("weekly")), weekly_day=_int(fields.get("weekly_day", 0), 0, 6, "Wochentag"),
@@ -188,7 +188,7 @@ def _render(title: str, intro: str, sections: List[Tuple[str, List[tuple]]], foo
     link = _link(footer_link or "/")
     if link:
         text.append(f"Im Dashboard: {link}")
-    text.append(f"-- PiCore auf {host}")
+    text.append(f"-- HostCore auf {host}")
 
     # ---- HTML
     parts = []
@@ -252,7 +252,7 @@ def _render(title: str, intro: str, sections: List[Tuple[str, List[tuple]]], foo
     parts.append('<tr><td class="pad" style="background:#f8fafc;padding:22px 28px 26px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 14px 14px">'
                  + "".join(body_rows) + "</td></tr>")
     settings = _link("/settings#email")
-    footer = f"PiCore auf {e(host)}"
+    footer = f"HostCore auf {e(host)}"
     if settings:
         footer += f' · <a href="{e(settings)}" style="color:#64748b">Benachrichtigungen einstellen</a>'
     parts.append(f'<tr><td style="padding:16px 8px;text-align:center;font-size:12px;color:#94a3b8">{footer}</td></tr>')
@@ -280,7 +280,7 @@ def send(subject: str, text: str, html_body: Optional[str] = None, cfg: Optional
         raise NotifyError("SMTP-Server, Absender und Empfänger eintragen.")
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = formataddr((c.get("sender_name") or "PiCore", c["sender"]))
+    msg["From"] = formataddr((c.get("sender_name") or "HostCore", c["sender"]))
     msg["To"] = ", ".join(to or c["recipients"])
     msg["Message-ID"] = make_msgid(domain=c["sender"].split("@")[-1])
     msg["Date"] = datetime.datetime.now().astimezone().strftime("%a, %d %b %Y %H:%M:%S %z")
@@ -320,7 +320,7 @@ def send(subject: str, text: str, html_body: Optional[str] = None, cfg: Optional
 def send_test(fields: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     c = dict(config())
     text, body = _render("Test-Nachricht", "Der E-Mail-Versand des Dashboards funktioniert.", [])
-    send("[PiCore] Test-Nachricht", text, body, c)
+    send("[HostCore] Test-Nachricht", text, body, c)
     return public()
 
 
@@ -359,7 +359,7 @@ def _event_mail(now: int) -> None:
         worst = max(new, key=lambda e: LEVELS[e["level"]])
         lines = [(e["level"], f"{e['title']}{f' – ' + e['detail'] if e.get('detail') else ''}", e.get("link", ""), _fmt_ts(e["ts"]))
                  for e in new]
-        subject = f"[PiCore] {worst['title']}" if len(new) == 1 else f"[PiCore] {len(new)} neue Ereignisse ({LEVEL_LABEL[worst['level']]})"
+        subject = f"[HostCore] {worst['title']}" if len(new) == 1 else f"[HostCore] {len(new)} neue Ereignisse ({LEVEL_LABEL[worst['level']]})"
         text, body = _render("Neue Ereignisse", f"{_hostname()} · seit {_fmt_ts(since)}", [("Ereignisse", lines)], "/system#ereignisse",
                              overall=worst["level"])
         if not _send_quiet(subject, text, body):
@@ -427,7 +427,7 @@ def _daily_mail() -> bool:
     text, body = _render("Tagesübersicht", f"{_hostname()} · {time.strftime('%d.%m.%Y')}",
                          sections, "/", overall=["good", "info", "warning", "critical"][worst])
     n = len(items)
-    return _send_quiet(f"[PiCore] Tagesübersicht: {n} {'Punkt' if n == 1 else 'Punkte'}", text, body)
+    return _send_quiet(f"[HostCore] Tagesübersicht: {n} {'Punkt' if n == 1 else 'Punkte'}", text, body)
 
 
 def weekly_content() -> Tuple[str, str, str]:
@@ -491,7 +491,7 @@ def weekly_content() -> Tuple[str, str, str]:
     text, body = _render("Wochenbericht", f"{_hostname()} · {period}",
                          [("Was gerade Aufmerksamkeit braucht", status), ("Verfügbarkeit", avail), ("Sicherheit", security),
                           ("Änderungen", changes[:20]), ("Größte CPU-Verbraucher", top)], "/report", tiles=tiles, overall=overall)
-    return f"[PiCore] Wochenbericht {period}", text, body
+    return f"[HostCore] Wochenbericht {period}", text, body
 
 
 def _weekly_mail() -> bool:
@@ -511,7 +511,7 @@ def approval_requested(item: Dict[str, Any]) -> None:
         text, body = _render("MCP-Aktion wartet auf Freigabe",
                              f"Claude möchte eine Aktion ausführen. Freigeben oder ablehnen bis {_fmt_ts(item['expires'])}.",
                              [("Aktion", lines)], "/settings#mcp-aktivitaet")
-        _send_quiet(f"[PiCore] Freigabe: {item['tool']}", text, body)
+        _send_quiet(f"[HostCore] Freigabe: {item['tool']}", text, body)
     threading.Thread(target=run, daemon=True).start()
 
 

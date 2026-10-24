@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - page /passwort: set a new password with the single-use link from the e-mail.
+ * HostCore Dashboard - page /passwort: set a new password with the single-use link from the e-mail.
  * The token is removed from the address bar right away (it stays out of history and screenshots).
  */
 (function () {

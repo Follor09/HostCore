@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - documentation section "Änderungsanträge": planned changes with risk, plan,
+ * HostCore Dashboard - documentation section "Änderungsanträge": planned changes with risk, plan,
  * rollback plan and check; four-eyes approval, carrying out and result with timeline.
  */
 (function () {

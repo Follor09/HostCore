@@ -1,6 +1,6 @@
 /**
- * PiCore Dashboard - notes card
- * Shared notes stored on the Pi (settings.json), so every device sees the same text.
+ * HostCore Dashboard - notes card
+ * Shared notes stored on the server (settings.json), so every device sees the same text.
  * View mode renders a small subset of Markdown: "# heading", "- item", "- [ ] / - [x]"
  * checklists (clickable) and links. Edit mode saves automatically while typing.
  * If another device saved in between, the server answers 409 and nothing is overwritten.

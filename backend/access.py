@@ -59,6 +59,14 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/gitops/[a-z0-9_-]{1,41}/deploy$", "services.control"),
     ("POST", r"^/api/gitops(/[a-z0-9_-]{1,41}/(update|hook|delete))?$", "apps.install"),
     ("POST", r"^/api/stack-templates(/.*)?$", "apps.install"),
+    ("GET", r"^/api/settings/vms$", "system.view"),
+    ("POST", r"^/api/settings/vms$", "users.manage"),   # switches the whole VM feature on/off
+    ("GET", r"^/vms$", "system.view"),
+    ("GET", r"^/vm-konsole$", "vms.manage"),
+    ("GET", r"^/api/vms(/.*)?$", "system.view"),
+    ("POST", r"^/api/vms/vm/[^/]+/(start|shutdown|reboot|suspend|resume)$", "vms.control"),
+    ("POST", r"^/api/vms/setup/[a-z]+$", "users.manage"),     # installs packages, puts the dashboard user into the libvirt group
+    ("POST", r"^/api/vms(/.*)?$", "vms.manage"),
     ("GET", r"^/terminal$", "terminal"),
     ("GET", r"^/settings$", "login"),
 
@@ -137,7 +145,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/containers/images/source$", "services.control"),
     ("*", r"^/api/settings/webhooks(/.*)?$", "settings.manage"),
 
-    # --- Remote Pis: switching is for everyone logged in, managing them for admins
+    # --- Remote servers: switching is for everyone logged in, managing them for admins
     ("GET", r"^/api/remotes/current$", "login"),
     ("POST", r"^/api/remotes/select$", "login"),
     ("GET", r"^/api/remotes$", "users.manage"),
