@@ -653,6 +653,7 @@
     const head = el('div', 'stack-job-head');
     const label = job.status === 'running' ? `${t(job.label)} ${t('läuft…')}` : job.status === 'ok' ? `${t(job.label)}: ${t('fertig')}` : `${t(job.label)}: ${t('fehlgeschlagen')}`;
     head.append(tag(job.status === 'ok' ? 'active' : job.status === 'error' ? 'error' : 'warning', label));
+    if (job.task && window.PiTasks) head.appendChild(button('Protokoll', 'text-btn', () => window.PiTasks.open(job.task)));
     if (job.status !== 'running') {
       const close = button('Ausblenden', 'text-btn', () => { delete state.jobs[job.id]; renderStacks(); });
       head.appendChild(close);

@@ -31,10 +31,12 @@
     '/system': {
       title: 'System-Werkzeuge',
       groups: [
-        { id: 'zustand', label: 'Zustand', desc: 'Ereignisse, Verfügbarkeit und Auslastung', sections: ['ereignisse', 'auffaelligkeiten', 'verfuegbarkeit', 'ressourcen', 'kapazitaet'],
+        { id: 'zustand', label: 'Zustand', desc: 'Alarme, Ereignisse, Verfügbarkeit und Auslastung', sections: ['alarme', 'ereignisse', 'auffaelligkeiten', 'verfuegbarkeit', 'ressourcen', 'kapazitaet'],
           facts: async () => {
-            const e = await get('/api/events?days=1');
+            const [e, al] = await Promise.all([get('/api/events?days=1'), get('/api/alerts').catch(() => null)]);
             const c = e.counts || {};
+            const open = al && al.counts ? al.counts.open : 0;
+            if (open) return [{ level: 'critical', text: `${n(open, 'Alarm', 'Alarme')} nicht quittiert` }];
             return [c.critical ? { level: 'critical', text: `${n(c.critical, 'kritisches Ereignis', 'kritische Ereignisse')} (24 Std.)` }
               : c.warning ? { level: 'warning', text: `${n(c.warning, 'Warnung', 'Warnungen')} (24 Std.)` }
                 : { level: 'good', text: 'Keine Warnungen in 24 Std.' }];
@@ -146,7 +148,7 @@
             return out;
           } },
         { id: 'dashboard', label: 'Dashboard', desc: 'Sprache, Darstellung, Wetter, Dienste, Links und Wake-on-LAN', sections: ['sprache', 'darstellung', 'wetter', 'dienste', 'links', 'wake-on-lan'] },
-        { id: 'ueberwachung', label: 'Überwachung', desc: 'Web-Dienste, Wartungsfenster und öffentliche Statusseite', sections: ['web-dienste', 'wartung', 'statusseite'],
+        { id: 'ueberwachung', label: 'Überwachung', desc: 'Web-Dienste, Alarmierung, Wartungsfenster und öffentliche Statusseite', sections: ['web-dienste', 'alarmierung', 'wartung', 'statusseite'],
           facts: async () => {
             const h = await get('/api/health');
             const checks = h.checks || [];
@@ -185,6 +187,15 @@
             const running = cs.filter(c => c.state === 'running').length;
             return [{ level: running < cs.length ? 'info' : 'good', text: `${running} von ${cs.length} Containern laufen` },
               { level: 'info', text: n((o.stacks || []).length, 'Stack', 'Stacks') }];
+          } },
+        { id: 'datenbanken', label: 'Datenbanken', desc: 'PostgreSQL, MySQL und MariaDB in Containern: Zustand, Größe und Dumps', sections: ['datenbanken'],
+          facts: async () => {
+            const d = await get('/api/containers/databases');
+            const dbs = d.databases || [];
+            if (!dbs.length) return [{ level: 'info', text: 'Keine Datenbank-Container gefunden' }];
+            const probs = dbs.flatMap(x => x.problems || []);
+            const worst = probs.some(p => p.level === 'critical') ? 'critical' : probs.length ? 'warning' : 'good';
+            return [{ level: worst, text: probs.length ? `${n(probs.length, 'Problem', 'Probleme')} bei ${n(dbs.length, 'Datenbank', 'Datenbanken')}` : `${n(dbs.length, 'Datenbank', 'Datenbanken')} in Ordnung` }];
           } },
         { id: 'kubernetes', label: 'Kubernetes', desc: 'Workloads, Pods, Services und Nodes', sections: ['kubernetes'],
           facts: async () => {

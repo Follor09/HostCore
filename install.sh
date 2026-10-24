@@ -103,6 +103,19 @@ if command -v ufw >/dev/null && ! command -v ipset >/dev/null; then
     apt-get install -y -qq ipset || echo "   ⚠️  ipset install failed, country blocking stays unavailable"
 fi
 
+# Persistent web terminal: the shell lives in tmux, so a dropped connection does not end it
+if ! command -v tmux >/dev/null; then
+    echo "🖥️  Installing tmux for persistent terminal sessions..."
+    apt-get install -y -qq tmux || echo "   ⚠️  tmux install failed, terminal sessions end with the connection"
+fi
+
+# Tasks and terminal sessions run as systemd user units of the dashboard user, so they keep
+# running when the dashboard restarts - that needs the user's own systemd manager (lingering)
+if command -v loginctl >/dev/null && [ "$(loginctl show-user "$OWNER" -p Linger --value 2>/dev/null)" != "yes" ]; then
+    echo "⏳ Enabling lingering for $OWNER (background tasks survive dashboard restarts)..."
+    loginctl enable-linger "$OWNER" || echo "   ⚠️  enable-linger failed, tasks end when the dashboard restarts"
+fi
+
 # NVMe health: smartctl needs root, so allow exactly one read-only command
 if [ -e /dev/nvme0 ] && ! command -v smartctl >/dev/null; then
     echo "💽 Installing smartmontools for NVMe health..."

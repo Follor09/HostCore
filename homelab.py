@@ -8,6 +8,7 @@ Everything slow is cached so the Pi isn't hammered by open browser tabs.
 
 import glob
 import json
+import logging
 import os
 import platform
 import re
@@ -17,6 +18,8 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
+
+logger = logging.getLogger("pi_dashboard.homelab")
 
 IS_LINUX = platform.system() == "Linux"
 
@@ -139,7 +142,7 @@ def get_apt_run() -> Dict[str, Any]:
             "finished": status.get("finished"), "log": log if running or status else ""}
 
 
-def start_apt_run(mode: str) -> Dict[str, Any]:
+def start_apt_run(mode: str, user: str = "") -> Dict[str, Any]:
     if mode not in APT_MODES:
         return {"ok": False, "message": "Unbekannte Aktion."}
     if not IS_LINUX:
@@ -158,6 +161,13 @@ def start_apt_run(mode: str) -> Dict[str, Any]:
         if "password" in err.lower() or "not allowed" in err.lower():
             return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
         return {"ok": False, "message": err[:200] or "Start fehlgeschlagen."}
+    try:
+        # Shows up in the task list with apt's own log (the run itself belongs to its root unit)
+        import tasks
+        tasks.register_external("apt", "Paketlisten aktualisieren (apt update)" if mode == "update" else "Systemupdate (apt full-upgrade)",
+                                user, os.path.join(APT_STATE_DIR, "apt.log"), os.path.join(APT_STATE_DIR, "apt.status"), key="apt")
+    except Exception as e:
+        logger.warning(f"apt task entry: {e}")
     return {"ok": True, "message": "Paketlisten werden aktualisiert…" if mode == "update" else "Update & Upgrade gestartet…"}
 
 

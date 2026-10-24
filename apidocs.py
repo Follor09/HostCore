@@ -19,7 +19,7 @@ GROUPS = [
     (r"^/api/(updates|packages|fleet|remotes|agent)", "Updates & Flotte"),
     (r"^/api/tools/(lan|dns|traceroute|port-test|network|connections)|^/api/(wol|netbox|latency|dns-watch)", "Netzwerk"),
     (r"^/api/tools/(firewall|fail2ban|ssh|geoip|geoblock|activity)", "Sicherheit"),
-    (r"^/api/tools|^/api/(events|report|disk-forecast|monitor|anomalies|capacity|backups|logs)", "Werkzeuge & Auswertung"),
+    (r"^/api/tools|^/api/(events|report|disk-forecast|monitor|anomalies|capacity|backups|logs|alerts|tasks)", "Werkzeuge & Auswertung"),
     (r"^/api/files|^/api/exchange", "Dateien"),
     (r"^/api/(docs|wiki|notes|kanban|reminders|costs|search|maintenance|incidents)", "Doku & Planung"),
     (r"^/api/(boards|links|calendar|weather|health)", "Dashboard"),

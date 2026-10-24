@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="referrer" content="no-referrer">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <script src="/static/theme.js"></script>
+  <title>Alarm quittieren | PiCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber login-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <main class="login-wrap">
+    <form class="glass-card login-card" id="alarm-form" novalidate>
+      <div class="login-brand">
+        <div class="card-icon-pill icon-cyan">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+        </div>
+        <div>
+          <h1>Alarm quittieren</h1>
+          <p class="card-subtitle" id="alarm-sub">Prüfe den Link…</p>
+        </div>
+      </div>
+      <div class="alarm-box" id="alarm-box" hidden>
+        <span class="health-tag" id="alarm-level"></span>
+        <p class="alarm-title" id="alarm-title" data-no-i18n></p>
+        <p class="field-hint" id="alarm-detail" data-no-i18n></p>
+        <p class="field-hint" id="alarm-when"></p>
+      </div>
+      <div id="alarm-fields" hidden>
+        <label class="login-field">
+          <span>Notiz (optional)</span>
+          <input type="text" id="alarm-note" maxlength="300" placeholder="z. B. Schaue ich mir an">
+        </label>
+        <p class="field-hint">Die anderen Empfänger erfahren per E-Mail, dass du dich kümmerst, und die Eskalation stoppt.</p>
+        <button type="submit" class="login-submit" id="alarm-submit">Ich kümmere mich – quittieren</button>
+      </div>
+      <div class="login-error" id="alarm-error" role="alert" hidden></div>
+      <a class="login-public" href="/system#alarme">Zum Dashboard →</a>
+    </form>
+  </main>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/alarm.js"></script>
+</body>
+</html>

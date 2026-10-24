@@ -41,6 +41,7 @@
           <a class="term-snippets-manage" href="/doku#befehle">Befehle verwalten →</a>
         </div>
       </div>
+      <button class="btn-secondary" id="term-kill" type="button" hidden title="Shell beenden – sonst läuft sie nach dem Schließen der Seite weiter">Sitzung beenden</button>
       <button class="btn-secondary" id="term-reconnect" hidden>Neu verbinden</button>
       <div class="user-chip" id="user-chip" hidden>
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -66,6 +67,10 @@
       </label>
       <div class="login-error" id="term-error" role="alert" hidden></div>
       <button type="submit" class="login-submit" id="term-open">Terminal öffnen</button>
+      <div class="term-sessions" id="term-sessions" hidden>
+        <h3 class="subhead">Laufende Sitzungen</h3>
+        <div id="term-sessions-list"></div>
+      </div>
       <p class="field-hint" id="term-hint">Die Shell läuft als dein Benutzer – für Root-Befehle <code>sudo</code> verwenden. Nach 30 Min. ohne Eingabe wird sie geschlossen.</p>
     </form>
     <div class="terminal-box" id="terminal" hidden></div>

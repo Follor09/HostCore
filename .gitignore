@@ -28,3 +28,5 @@ sbom_images.json
 sbom_images.json.tmp
 sessions.json
 sessions.json.tmp
+db-dumps/
+tasks/

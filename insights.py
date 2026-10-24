@@ -199,8 +199,12 @@ THROTTLE_TITLE = {"undervoltage": ("critical", "Unterspannung"), "throttled": ("
                   "freq_capped": ("warning", "Takt begrenzt"), "soft_temp": ("warning", "Temperaturgrenze erreicht")}
 
 
-def _ev(ts, level, category, title, detail="", link="") -> Dict[str, Any]:
-    return {"ts": int(ts), "level": level, "category": category, "title": title, "detail": detail, "link": link}
+def _ev(ts, level, category, title, detail="", link="", key="") -> Dict[str, Any]:
+    """key: ties a problem to its all-clear (alarms close by themselves); optional."""
+    e = {"ts": int(ts), "level": level, "category": category, "title": title, "detail": detail, "link": link}
+    if key:
+        e["key"] = key
+    return e
 
 
 def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
@@ -325,10 +329,11 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
 
     for mod, cat, link in (("anomalies", "anomaly", "/system#auffaelligkeiten"), ("dnswatch", "network", "/system#dns-ueberwachung"),
                            ("incidents", "incident", "/doku#stoerungen"), ("vulns", "security", "/system#schwachstellen"),
-                           ("eol", "system", "/system#lebenszyklus"), ("websec", "security", "/settings#sicherheit")):
+                           ("eol", "system", "/system#lebenszyklus"), ("websec", "security", "/settings#sicherheit"),
+                           ("dbmonitor", "database", "/containers#datenbanken"), ("tasks", "task", "#aufgaben")):
         try:
             for e in __import__(mod).events_since(since):
-                out.append(_ev(e["ts"], e["level"], cat, e["title"], e.get("detail", ""), link))
+                out.append(_ev(e["ts"], e["level"], cat, e["title"], e.get("detail", ""), e.get("link") or link, e.get("key", "")))
         except Exception as e:
             logger.warning(f"Events ({mod}): {e}")
     try:
@@ -402,12 +407,19 @@ def status_summary() -> Dict[str, Any]:
     for mod, fn, link in (("anomalies", "active", "/system#auffaelligkeiten"), ("dnswatch", "alerts", "/system#dns-ueberwachung"),
                           ("incidents", "open_alerts", "/doku#stoerungen"), ("vulns", "alerts", "/system#schwachstellen"),
                           ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose"),
-                          ("hardening", "alerts", "/system#haertung")):
+                          ("hardening", "alerts", "/system#haertung"), ("dbmonitor", "alerts", "/containers#datenbanken")):
         try:
             for a in getattr(__import__(mod), fn)():
                 add(a.get("level", "warning"), a["text"], link)
         except Exception as e:
             logger.warning(f"Status ({mod}): {e}")
+    try:
+        import alerting
+        n = alerting.open_count()
+        if n:
+            add("critical", f"{n} {'Alarm' if n == 1 else 'Alarme'} nicht quittiert", "/system#alarme")
+    except Exception as e:
+        logger.warning(f"Status (alerts): {e}")
     try:
         import netscan
         day = time.time() - 86400

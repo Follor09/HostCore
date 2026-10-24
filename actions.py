@@ -8,24 +8,18 @@ Each script may describe itself in its first lines:
     # timeout: 900          (seconds, default 300, max 3600)
 
 Scripts run as the dashboard user (no root - use your own sudo rule if a script needs
-it), without arguments, in the actions folder. Output is kept in memory for the last
-runs and streamed to the browser by polling.
+it), without arguments, in the actions folder. Each run is a task (tasks.py): it keeps
+running without the page and across dashboard restarts, its output is kept in the task log.
 """
 
 import os
 import re
-import signal
-import subprocess
-import threading
-import time
-import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 ACTIONS_DIR = os.environ.get("PI_DASHBOARD_ACTIONS", os.path.expanduser("~/pi-dashboard-actions"))
 DEFAULT_TIMEOUT = 300
 MAX_TIMEOUT = 3600
 MAX_OUTPUT = 200_000           # characters kept per run (the tail)
-KEEP_RUNS = 20
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\r(?!\n)")
 
 EXAMPLE = """#!/usr/bin/env bash
@@ -41,8 +35,6 @@ echo "== Temperatur"
 vcgencmd measure_temp 2>/dev/null || echo "vcgencmd nicht verfügbar"
 """
 
-_runs: Dict[str, Dict[str, Any]] = {}
-_lock = threading.Lock()
 
 
 def _ensure_dir() -> None:
@@ -83,7 +75,9 @@ def _resolve(action_id: str) -> str:
 
 
 def list_actions() -> Dict[str, Any]:
+    import tasks
     _ensure_dir()
+    recent = tasks.overview(limit=100, kind="action")["tasks"]
     items: List[Dict[str, Any]] = []
     skipped: List[str] = []
     for name in sorted(os.listdir(ACTIONS_DIR), key=str.lower):
@@ -100,8 +94,7 @@ def list_actions() -> Dict[str, Any]:
             timeout = max(5, min(int(meta.get("timeout", DEFAULT_TIMEOUT)), MAX_TIMEOUT))
         except ValueError:
             timeout = DEFAULT_TIMEOUT
-        last = next((r for r in sorted(_runs.values(), key=lambda r: r["started"], reverse=True)
-                     if r["action"] == name), None)
+        last = next((t for t in recent if t["key"] == f"action:{name}"), None)
         items.append({"id": name, "name": meta.get("name") or re.sub(r"\.[a-z0-9]+$", "", name),
                       "description": meta.get("description", ""),
                       "confirm": meta.get("confirm", "").lower() in ("yes", "ja", "true", "1"),
@@ -111,94 +104,52 @@ def list_actions() -> Dict[str, Any]:
     return {"dir": shown, "actions": items, "skipped": skipped}
 
 
-def _summary(run: Dict[str, Any]) -> Dict[str, Any]:
-    return {k: run[k] for k in ("id", "action", "name", "state", "exit_code", "started", "finished", "user")}
+STATE = {"running": "running", "ok": "done", "error": "failed", "lost": "failed", "cancelled": "stopped", "timeout": "timeout"}
 
 
-def _reader(run: Dict[str, Any], proc: subprocess.Popen) -> None:
-    for chunk in iter(lambda: proc.stdout.read1(4096) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096), b""):
-        text = ANSI.sub("", chunk.decode("utf-8", errors="replace"))
-        with _lock:
-            run["output"] += text
-            if len(run["output"]) > MAX_OUTPUT:
-                cut = len(run["output"]) - MAX_OUTPUT
-                run["output"] = run["output"][cut:]
-                run["dropped"] += cut
-
-
-def _watch(run: Dict[str, Any], proc: subprocess.Popen, timeout: int) -> None:
-    reader = threading.Thread(target=_reader, args=(run, proc), daemon=True)
-    reader.start()
-    try:
-        code = proc.wait(timeout=timeout)
-        state = "stopped" if run.get("stop_requested") else ("done" if code == 0 else "failed")
-    except subprocess.TimeoutExpired:
-        _kill(proc)
-        code = proc.wait()
-        state = "timeout"
-    reader.join(timeout=2)
-    with _lock:
-        run.update(state=state, exit_code=code, finished=time.time())
-
-
-def _kill(proc: subprocess.Popen) -> None:
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError):
-            return
-        try:
-            proc.wait(timeout=3)
-            return
-        except subprocess.TimeoutExpired:
-            continue
+def _summary(task: Dict[str, Any]) -> Dict[str, Any]:
+    d = task.get("data") or {}
+    return {"id": task["id"], "action": d.get("action", ""), "name": d.get("name", task["title"]), "state": STATE.get(task["state"], "failed"),
+            "exit_code": task.get("exit"), "started": task["started"], "finished": task.get("ended"), "user": task.get("user", "")}
 
 
 def run_action(action_id: str, user: str) -> Dict[str, Any]:
+    import tasks
     path = _resolve(action_id)
-    with _lock:
-        if any(r["action"] == action_id and r["state"] == "running" for r in _runs.values()):
-            raise RuntimeError("Diese Aktion läuft bereits.")
     meta = _meta(path)
     try:
         timeout = max(5, min(int(meta.get("timeout", DEFAULT_TIMEOUT)), MAX_TIMEOUT))
     except ValueError:
         timeout = DEFAULT_TIMEOUT
-    env = {"HOME": os.path.expanduser("~"), "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-           "LANG": os.environ.get("LANG", "C.UTF-8"), "USER": os.environ.get("USER", ""),
-           "PICORE_USER": user or "", "TERM": "dumb"}
-    proc = subprocess.Popen([path], cwd=os.path.realpath(ACTIONS_DIR), env=env, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-    run = {"id": uuid.uuid4().hex[:12], "action": action_id, "name": meta.get("name") or action_id,
-           "state": "running", "exit_code": None, "started": time.time(), "finished": None,
-           "output": "", "dropped": 0, "user": user, "pid": proc.pid, "proc": proc, "timeout": timeout}
-    with _lock:
-        _runs[run["id"]] = run
-        # forget the oldest finished runs
-        done = sorted((r for r in _runs.values() if r["state"] != "running"), key=lambda r: r["started"])
-        for r in done[:max(0, len(_runs) - KEEP_RUNS)]:
-            _runs.pop(r["id"], None)
-    threading.Thread(target=_watch, args=(run, proc, timeout), daemon=True).start()
-    return get_run(run["id"])
+    name = meta.get("name") or action_id
+    env = {"PICORE_USER": user or "", "TERM": "dumb"}
+    try:
+        task = tasks.start("action", f"Aktion: {name}", [{"argv": [path], "show": name}], user=user, key=f"action:{action_id}",
+                           cwd=os.path.realpath(ACTIONS_DIR), env=env, timeout=timeout,
+                           data={"action": action_id, "name": name, "timeout": timeout})
+    except tasks.TaskError:
+        raise RuntimeError("Diese Aktion läuft bereits.")
+    return get_run(task["id"])
 
 
 def get_run(run_id: str, offset: int = 0) -> Dict[str, Any]:
-    with _lock:
-        run = _runs.get(run_id)
-        if not run:
-            raise ValueError("Lauf nicht gefunden.")
-        # offset counts characters since the start, including dropped ones
-        start = max(0, offset - run["dropped"])
-        return {**_summary(run), "output": run["output"][start:], "offset": run["dropped"] + len(run["output"]),
-                "timeout": run["timeout"], "truncated": run["dropped"] > 0 and offset < run["dropped"]}
-
-
-def stop_run(run_id: str) -> Dict[str, Any]:
-    with _lock:
-        run = _runs.get(run_id)
-    if not run:
+    import tasks
+    try:
+        r = tasks.log(run_id, offset, limit=MAX_OUTPUT)
+    except tasks.TaskError:
         raise ValueError("Lauf nicht gefunden.")
-    if run["state"] == "running":
-        run["stop_requested"] = True
-        threading.Thread(target=_kill, args=(run["proc"],), daemon=True).start()
+    task = r["task"]
+    if task["kind"] != "action":
+        raise ValueError("Lauf nicht gefunden.")
+    return {**_summary(task), "output": ANSI.sub("", r["text"]), "offset": r["offset"],
+            "timeout": (task.get("data") or {}).get("timeout", DEFAULT_TIMEOUT), "truncated": r["truncated"]}
+
+
+def stop_run(run_id: str, user: str = "") -> Dict[str, Any]:
+    import tasks
+    try:
+        tasks.cancel(run_id, user)
+    except tasks.TaskError as e:
+        if "nicht gefunden" in str(e):
+            raise ValueError("Lauf nicht gefunden.")
     return get_run(run_id)

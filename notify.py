@@ -8,6 +8,8 @@ E-mail notifications via SMTP (Einstellungen -> E-Mail-Benachrichtigungen):
   to say.
 - Weekly report: the most important figures of /report.
 - MCP approvals: a mail as soon as a MCP action waits for confirmation.
+- Alarms (alerting.py) use the same SMTP settings; while they are on, the event mail leaves
+  out what the alarms already send.
 
 Settings in settings.json "email" (the password never leaves the Pi again), progress in
 "email_state" so a restart neither repeats nor loses mails.
@@ -339,6 +341,7 @@ def _fmt_ts(ts: int) -> str:
 
 
 def _event_mail(now: int) -> None:
+    import alerting
     import insights
     c = config()
     level = c.get("events_level", "critical")
@@ -349,7 +352,8 @@ def _event_mail(now: int) -> None:
     threshold = LEVELS[level]
     days = max(1, min(7, int((now - since) / 86400) + 1))
     new = [e for e in insights.events(days, 1000)["events"]
-           if e["ts"] > since and LEVELS.get(e["level"], 0) >= threshold and e["category"] != "journal"]
+           if e["ts"] > since and LEVELS.get(e["level"], 0) >= threshold and e["category"] != "journal"
+           and not alerting.handles(e)]   # alarms mail those themselves
     if new:
         new.sort(key=lambda e: e["ts"])
         worst = max(new, key=lambda e: LEVELS[e["level"]])

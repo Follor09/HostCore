@@ -528,9 +528,9 @@ def multi_logs(names: List[str], since: float = 0, tail: int = 200) -> Dict[str,
 
 
 # ---------------------------------------------------------------------------
-# Jobs: long compose commands run in the background, output polled by the page
+# Jobs: long compose commands run as tasks (tasks.py) - they keep running without the page
+# and across dashboard restarts; the page polls them in the old "job" shape
 # ---------------------------------------------------------------------------
-_jobs: Dict[str, Dict[str, Any]] = {}
 STACK_ACTIONS = {
     "up": ("Starten", [["up", "-d"]]),
     "stop": ("Stoppen", [["stop"]]),
@@ -538,31 +538,31 @@ STACK_ACTIONS = {
     "update": ("Aktualisieren", [["pull"], ["up", "-d"]]),
     "down": ("Entfernen", [["down"]]),
 }
+JOB_STATUS = {"running": "running", "ok": "ok"}
 
 
-def _run_job(job: Dict[str, Any], base: List[str], steps: List[List[str]], cwd: str) -> None:
-    try:
-        for step in steps:
-            job["output"] += f"$ docker compose {' '.join(step)}\n"
-            proc = subprocess.Popen(["docker", "compose", *base, *step], cwd=cwd, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True, errors="replace")
-            job["pid"] = proc.pid
-            for line in proc.stdout:
-                job["output"] = (job["output"] + line)[-200_000:]
-            proc.wait(timeout=1800)
-            if proc.returncode != 0:
-                job.update(status="error", exit=proc.returncode)
-                return
-        job["status"] = "ok"
-        if job["action"] == "update":
-            import imagecheck
-            imagecheck.start_check()   # the "update available" marks should go away
-    except Exception as e:
-        job["output"] += f"\n{e}\n"
-        job["status"] = "error"
-    finally:
-        job["ended"] = time.time()
-        invalidate()
+def _job(task: Dict[str, Any], output: bool = True) -> Dict[str, Any]:
+    import tasks
+    d = task.get("data") or {}
+    return {"id": task["id"], "stack": d.get("stack", ""), "action": d.get("action", ""), "label": d.get("label", ""),
+            "status": JOB_STATUS.get(task["state"], "error"), "exit": task.get("exit"), "started": task["started"],
+            "ended": task.get("ended"), "user": task.get("user", ""), "task": task["id"],
+            "output": tasks.tail(task["id"]) if output else ""}
+
+
+def _compose_done(task: Dict[str, Any]) -> None:
+    invalidate()
+    if task["state"] == "ok" and (task.get("data") or {}).get("action") == "update":
+        import imagecheck
+        imagecheck.start_check()   # the "update available" marks should go away
+
+
+def _register_hooks() -> None:
+    import tasks
+    tasks.on_done("compose", _compose_done)
+
+
+_register_hooks()
 
 
 def stack_action(name: str, action: str, user: str = "") -> Dict[str, Any]:
@@ -658,34 +658,37 @@ def set_limits(stack_name: str, service: str, cpus: Optional[float], mem_mb: Opt
 
 
 def compose_job(name: str, files: List[str], cwd: str, action: str, user: str = "") -> Dict[str, Any]:
-    """Run a STACK_ACTIONS entry (or "install" from the app store) for a compose project in the background."""
+    """Run a STACK_ACTIONS entry (or "install" from the app store) for a compose project as a task."""
+    import tasks
     label, steps = STACK_ACTIONS.get(action) or ("Installieren", [["pull"], ["up", "-d"]])
-    with _lock:
-        if any(j["stack"] == name and j["status"] == "running" for j in _jobs.values()):
-            raise ContainerError("Für diesen Stack läuft schon eine Aktion.")
-        job_id = f"{int(time.time() * 1000):x}"
-        job = {"id": job_id, "stack": name, "action": action, "label": label, "status": "running", "output": "",
-               "started": time.time(), "ended": None, "user": user}
-        _jobs[job_id] = job
-        for old in sorted(_jobs, key=lambda k: _jobs[k]["started"])[:-20]:
-            if _jobs[old]["status"] != "running":
-                _jobs.pop(old)
     base = ["-p", name]
     for f in files:
         base += ["-f", f]
-    threading.Thread(target=_run_job, args=(job, base, steps, cwd), daemon=True).start()
-    return job
+    try:
+        task = tasks.start("compose", f"{label}: {name}", [{"argv": ["docker", "compose", *base, *step],
+                                                            "show": f"docker compose {' '.join(step)}"} for step in steps],
+                           user=user, key=f"stack:{name}", cwd=cwd, timeout=1800 * len(steps),
+                           data={"stack": name, "action": action, "label": label})
+    except tasks.TaskError:
+        raise ContainerError("Für diesen Stack läuft schon eine Aktion.")
+    invalidate()
+    return _job(task, output=False)
 
 
 def get_job(job_id: str) -> Dict[str, Any]:
-    job = _jobs.get(job_id)
-    if not job:
+    import tasks
+    try:
+        task = tasks.get(job_id)
+    except tasks.TaskError:
         raise ContainerError("Aktion nicht gefunden.")
-    return job
+    return _job(task)
 
 
 def running_jobs() -> List[Dict[str, Any]]:
-    return [j for j in _jobs.values() if j["status"] == "running" or (j["ended"] and time.time() - j["ended"] < 600)]
+    import tasks
+    now = time.time()
+    return [_job(t) for t in tasks.overview(limit=40, kind="compose")["tasks"]
+            if t["state"] == "running" or (t.get("ended") and now - t["ended"] < 600)]
 
 
 # ---------------------------------------------------------------------------

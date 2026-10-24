@@ -86,6 +86,9 @@ import stacktemplates
 import domains
 import notify
 import retention
+import alerting
+import dbmonitor
+import tasks
 import vulns
 import eol
 import selftest
@@ -114,6 +117,8 @@ async def lifespan(app: FastAPI):
     health_task = asyncio.create_task(healthchecks.background_checker())
     autoupdate_task = asyncio.create_task(autoupdate.background_runner())
     notify_task = asyncio.create_task(notify.background_runner())
+    alerting_task = asyncio.create_task(alerting.background_runner())
+    tasks_task = asyncio.create_task(tasks.background_runner())
     latency_task = None if AGENT else asyncio.create_task(latency.background_runner())
     if not AGENT:
         await mcp_server.reload()
@@ -121,6 +126,8 @@ async def lifespan(app: FastAPI):
     await mcp_server.shutdown()
     autoupdate_task.cancel()
     notify_task.cancel()
+    alerting_task.cancel()
+    tasks_task.cancel()
     if latency_task:
         latency_task.cancel()
     # Shutdown
@@ -236,7 +243,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # ---------------------------------------------------------------------------
 PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/status", "/api/about", "/favicon.ico",
                 "/status", "/api/public/status", "/api/auth/passkey/login/options", "/api/auth/passkey/login",
-                "/api/auth/forgot", "/api/auth/reset", "/passwort"}   # the public status page answers 404 while switched off
+                "/api/auth/forgot", "/api/auth/reset", "/passwort", "/alarm", "/api/alarm"}   # the public status page answers 404 while switched off
 
 
 def _same_origin(request: Request) -> bool:
@@ -2046,9 +2053,9 @@ async def api_actions_get_run(run_id: str, offset: int = 0):
 
 
 @app.post("/api/actions/runs/{run_id}/stop")
-async def api_actions_stop(run_id: str):
+async def api_actions_stop(run_id: str, request: Request):
     try:
-        return actions.stop_run(run_id)
+        return actions.stop_run(run_id, request.state.user or "")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -2118,6 +2125,12 @@ async def api_tools_fan_curve_reset():
 class TerminalTicketRequest(BaseModel):
     password: str = ""
     container: str = ""      # shell inside this Docker container instead of on the Pi
+    session: str = ""        # take over this running (persistent) session instead of a new shell
+
+
+class TerminalResumeRequest(BaseModel):
+    session: str
+    token: str
 
 
 async def internal_call(user: str, method: str, path: str, params: Optional[dict] = None, json_body: Any = None,
@@ -2300,6 +2313,150 @@ async def api_settings_retention_cleanup():
 
 
 # ---------------------------------------------------------------------------
+# Alarms: acknowledgement and escalation (per Pi)
+# ---------------------------------------------------------------------------
+def _alert_call(fn, *args):
+    try:
+        return fn(*args)
+    except alerting.AlertError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except notify.NotifyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class AlertAck(BaseModel):
+    note: str = ""
+
+
+class AlertTokenAck(BaseModel):
+    token: str
+    note: str = ""
+
+
+@app.get("/api/alerts")
+async def api_alerts():
+    return await asyncio.to_thread(alerting.overview)
+
+
+@app.post("/api/alerts/{alert_id}/ack")
+async def api_alert_ack(alert_id: str, req: AlertAck, request: Request):
+    request.state.audit_detail = alert_id
+    await asyncio.to_thread(_alert_call, alerting.acknowledge, alert_id, request.state.user or "", req.note)
+    return await asyncio.to_thread(alerting.overview)
+
+
+@app.post("/api/alerts/{alert_id}/resolve")
+async def api_alert_resolve(alert_id: str, request: Request):
+    request.state.audit_detail = alert_id
+    await asyncio.to_thread(_alert_call, alerting.resolve, alert_id, request.state.user or "")
+    return await asyncio.to_thread(alerting.overview)
+
+
+@app.get("/api/settings/alerting")
+async def api_alerting_settings():
+    return await asyncio.to_thread(alerting.public)
+
+
+@app.post("/api/settings/alerting")
+async def api_alerting_save(payload: dict):
+    return await asyncio.to_thread(_alert_call, alerting.save, payload)
+
+
+@app.post("/api/settings/alerting/test")
+async def api_alerting_test():
+    return await asyncio.to_thread(_alert_call, alerting.send_test)
+
+
+@app.get("/alarm")
+async def alarm_page():
+    return _serve_page("alarm.html")
+
+
+@app.get("/api/alarm")
+async def api_alarm_info(token: str = ""):
+    return await asyncio.to_thread(alerting.token_info, token)
+
+
+@app.post("/api/alarm")
+async def api_alarm_ack(req: AlertTokenAck, request: Request):
+    """Acknowledge with the link from the alarm mail (no login: the link is the permission)."""
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
+    a = await asyncio.to_thread(_alert_call, alerting.acknowledge_token, req.token, req.note)
+    request.state.audit_user = a.get("acked_by", "")
+    request.state.audit_detail = a["id"]
+    return {"ok": True, "acked_by": a.get("acked_by", ""), "acked_at": a.get("acked_at", 0)}
+
+
+# ---------------------------------------------------------------------------
+# Tasks: long-running work with its own log (per Pi)
+# ---------------------------------------------------------------------------
+def _task_call(fn, *args):
+    try:
+        return fn(*args)
+    except tasks.TaskError as e:
+        raise HTTPException(status_code=404 if "nicht gefunden" in str(e) else 400, detail=str(e))
+
+
+@app.get("/api/tasks")
+async def api_tasks(limit: int = 100, kind: str = ""):
+    return await asyncio.to_thread(tasks.overview, max(1, min(limit, 300)), kind)
+
+
+@app.get("/api/tasks/{task_id}")
+async def api_task(task_id: str):
+    return await asyncio.to_thread(_task_call, tasks.get, task_id)
+
+
+@app.get("/api/tasks/{task_id}/log")
+async def api_task_log(task_id: str, offset: int = 0):
+    return await asyncio.to_thread(_task_call, tasks.log, task_id, max(0, offset))
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def api_task_cancel(task_id: str, request: Request):
+    request.state.audit_detail = task_id
+    return await asyncio.to_thread(_task_call, tasks.cancel, task_id, request.state.user or "")
+
+
+# ---------------------------------------------------------------------------
+# Database monitor (per Pi)
+# ---------------------------------------------------------------------------
+def _db_call(fn, *args):
+    try:
+        return fn(*args)
+    except dbmonitor.DbError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/containers/databases")
+async def api_databases():
+    return await asyncio.to_thread(dbmonitor.overview)
+
+
+@app.post("/api/containers/databases/refresh")
+async def api_databases_refresh():
+    return await asyncio.to_thread(dbmonitor.refresh)
+
+
+@app.get("/api/containers/databases/job/{job_id}")
+async def api_databases_job(job_id: str):
+    return await asyncio.to_thread(_db_call, dbmonitor.get_job, job_id)
+
+
+@app.post("/api/containers/databases/{name}/dump")
+async def api_databases_dump(name: str, request: Request):
+    request.state.audit_detail = name
+    return await asyncio.to_thread(_db_call, dbmonitor.start_dump, name, request.state.user or "")
+
+
+@app.post("/api/containers/databases/{name}/settings")
+async def api_databases_settings(name: str, payload: dict, request: Request):
+    request.state.audit_detail = name
+    return await asyncio.to_thread(_db_call, dbmonitor.save_settings, name, payload)
+
+
+# ---------------------------------------------------------------------------
 # Backup check (per Pi)
 # ---------------------------------------------------------------------------
 def _backup_call(fn, *args):
@@ -2433,10 +2590,7 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     For a remote Pi the password is checked here and the agent issues the ticket."""
     if AGENT:
         # the main dashboard already checked the password; the token proves it's the main dashboard
-        if terminal.session_count() >= terminal.MAX_SESSIONS:
-            raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
-        container = await asyncio.to_thread(_terminal_target, req.container)
-        return {"ticket": terminal.issue_ticket(request.state.user, container), "expires_in": terminal.TICKET_TTL}
+        return await asyncio.to_thread(_terminal_issue, request.state.user, req.container, req.session)
     ip = websec.client_ip(request)
     wait = auth.lockout_remaining(ip)
     if wait:
@@ -2449,18 +2603,58 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     remote = _remote_for(request)
     if remote:
         try:
-            res = await _proxy().post(f"{remote['url']}/api/terminal/ticket", json={"container": req.container},
+            res = await _proxy().post(f"{remote['url']}/api/terminal/ticket", json={"container": req.container, "session": req.session},
                                       headers={"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""})
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"{remote['name']} nicht erreichbar ({type(e).__name__}).")
         if res.status_code != 200:
             raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "Fehler") if res.headers.get("content-type", "").startswith("application/json") else "Fehler")
         return res.json()
+    request.state.audit_detail = f"Sitzung {req.session}" if req.session else f"Container {req.container}" if req.container else ""
+    return await asyncio.to_thread(_terminal_issue, request.state.user, req.container, req.session)
+
+
+def _terminal_issue(user: str, container: str, sid: str) -> dict:
+    """Ticket for a new shell, or for taking over an own running session."""
+    if sid:
+        s = terminal.session(sid)
+        if not s or s["user"] != user:
+            raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
+        return {"ticket": terminal.issue_ticket(user, s["container"], sid), "expires_in": terminal.TICKET_TTL}
     if terminal.session_count() >= terminal.MAX_SESSIONS:
-        raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig.")
-    container = await asyncio.to_thread(_terminal_target, req.container)
-    request.state.audit_detail = f"Container {container}" if container else ""
-    return {"ticket": terminal.issue_ticket(request.state.user, container), "expires_in": terminal.TICKET_TTL}
+        raise HTTPException(status_code=429, detail=f"Maximal {terminal.MAX_SESSIONS} Terminals gleichzeitig – "
+                                                    "eine laufende Sitzung beenden oder übernehmen.")
+    return {"ticket": terminal.issue_ticket(user, _terminal_target(container)), "expires_in": terminal.TICKET_TTL}
+
+
+@app.post("/api/terminal/resume")
+async def api_terminal_resume(req: TerminalResumeRequest, request: Request):
+    """Reconnect after a dropped connection: the session's resume token instead of the password
+    (it only exists in the tab that had the session open; the login cookie is still needed)."""
+    if not await asyncio.to_thread(terminal.check_resume, req.session, request.state.user or "", req.token):
+        raise HTTPException(status_code=403, detail="Sitzung nicht mehr verfügbar.")
+    s = await asyncio.to_thread(terminal.session, req.session)
+    return {"ticket": terminal.issue_ticket(request.state.user, s["container"], req.session), "expires_in": terminal.TICKET_TTL}
+
+
+@app.get("/api/terminal/sessions")
+async def api_terminal_sessions(request: Request):
+    user = request.state.user or ""
+    every = auth.can(user, "users.manage") if not AGENT else False
+    items = await asyncio.to_thread(terminal.sessions, None if every else user)
+    return {"persistent": terminal.persistent(), "sessions": items, "max": terminal.MAX_SESSIONS,
+            "detached_hours": terminal.DETACHED_TTL // 3600, "user": user}
+
+
+@app.post("/api/terminal/sessions/{sid}/close")
+async def api_terminal_close(sid: str, request: Request):
+    user = request.state.user or ""
+    s = await asyncio.to_thread(terminal.session, sid)
+    if not s or (s["user"] != user and (AGENT or not auth.can(user, "users.manage"))):
+        raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
+    await asyncio.to_thread(terminal.close_session, sid)
+    request.state.audit_detail = f"{sid} ({s['user']})"
+    return await api_terminal_sessions(request)
 
 
 def _terminal_target(container: str) -> str:
@@ -2524,8 +2718,8 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
             await websocket.close(code=4401)
             return
         user = agent.remote_user(websocket.headers)
-        target = terminal.redeem_ticket(ticket, user)
-        if target is None:
+        redeemed = terminal.redeem_ticket(ticket, user)
+        if redeemed is None:
             await websocket.close(code=4401)
             return
     else:
@@ -2542,22 +2736,23 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
             await asyncio.to_thread(audit.record, user, websec.client_ip(websocket), "WS", "/ws/terminal", 200, f"@{remote['name']}")
             await _ws_relay(websocket, remote, f"/ws/terminal?ticket={ticket}&rows={int(rows)}&cols={int(cols)}", user)
             return
-        target = terminal.redeem_ticket(ticket, user)
-        if target is None:
+        redeemed = terminal.redeem_ticket(ticket, user)
+        if redeemed is None:
             await websocket.close(code=4401)
             return
+    target, sid = redeemed
     client = websec.client_ip(websocket)
     if websec.blocked_from_outside("terminal", client):
         await websocket.close(code=4403)
         return
     started = time.time()
     where = f"Container {target} · " if target else ""
-    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}geöffnet")
+    await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}{'verbunden mit ' + sid if sid else 'geöffnet'}")
     try:
-        await terminal.run_session(websocket, user, client, rows, cols, target)
+        await terminal.run_session(websocket, user, client, rows, cols, target, sid)
     finally:
         minutes = max(1, round((time.time() - started) / 60))
-        await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}beendet nach {minutes} Min.")
+        await asyncio.to_thread(audit.record, user, client, "WS", "/ws/terminal", 200, f"{where}getrennt nach {minutes} Min.")
 
 
 # ---------------------------------------------------------------------------
@@ -4115,7 +4310,7 @@ async def api_apt_status():
 async def api_apt_start(req: AptRunRequest, request: Request):
     request.state.audit_detail = req.mode
     """Start apt update or update+full-upgrade via its systemd unit."""
-    result = await asyncio.to_thread(homelab.start_apt_run, req.mode)
+    result = await asyncio.to_thread(homelab.start_apt_run, req.mode, request.state.user or "")
     if not result["ok"]:
         raise HTTPException(status_code=409, detail=result["message"])
     return result

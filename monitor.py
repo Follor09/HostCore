@@ -399,6 +399,11 @@ class Monitor:
                 except Exception as e:
                     logger.warning(f"IP watch failed: {e}")
             try:
+                import dbmonitor
+                dbmonitor.check_if_due()
+            except Exception as e:
+                logger.warning(f"Database check failed: {e}")
+            try:
                 import dnswatch
                 threading.Thread(target=dnswatch.check_if_due, daemon=True).start()
             except Exception as e:
@@ -450,6 +455,11 @@ class Monitor:
                         getattr(__import__(mod), fn)()
                     except Exception as e:
                         logger.warning(f"{mod}.{fn} failed: {e}")
+                try:
+                    import terminal
+                    terminal.cleanup()
+                except Exception as e:
+                    logger.warning(f"Terminal clean-up failed: {e}")
                 try:
                     import files
                     files.trash_purge()

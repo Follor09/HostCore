@@ -43,6 +43,7 @@
 
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
+      <a href="#alarme">Alarme</a>
       <a href="#ereignisse" class="active">Ereignisse</a>
       <a href="#netzwerk">Netzwerk</a>
       <a href="#datenverbrauch">Datenverbrauch</a>
@@ -77,6 +78,25 @@
     </nav>
 
     <div class="settings-sections">
+      <!-- Alarme -->
+      <section class="glass-card settings-section" id="alarme">
+        <div class="section-head">
+          <h2>Alarme</h2>
+          <div class="head-tools">
+            <span class="health-tag" id="al-state">–</span>
+            <a class="text-btn" data-perm="settings.manage" href="/settings#alarmierung">Alarmierung einstellen →</a>
+          </div>
+        </div>
+        <p class="section-desc">Kritische Ereignisse als Alarm, der quittiert werden muss. Solange niemand quittiert, wird nach der Eskalationskette die nächste Stufe benachrichtigt. Kommt die Entwarnung (z. B. „wieder aktiv“), schließt sich der Alarm von selbst.</p>
+        <div class="log-filters">
+          <div class="segmented" id="al-filter" role="radiogroup" aria-label="Filter">
+            <button type="button" data-f="active" class="active">Offen &amp; quittiert</button>
+            <button type="button" data-f="all">Alle</button>
+          </div>
+        </div>
+        <div class="alarm-list" id="al-list"></div>
+      </section>
+
       <!-- Ereignisse -->
       <section class="glass-card settings-section" id="ereignisse">
         <div class="section-head">
@@ -107,6 +127,8 @@
             <option value="journal">Betriebstagebuch</option>
             <option value="webhook">Webhooks</option>
             <option value="backup">Backups</option>
+            <option value="database">Datenbanken</option>
+            <option value="task">Aufgaben</option>
           </select>
         </form>
         <p class="field-hint" id="events-summary"></p>
@@ -1012,6 +1034,7 @@
   <script src="/static/system.js"></script>
   <script src="/static/netbox.js"></script>
   <script src="/static/backups.js"></script>
+  <script src="/static/alerts.js"></script>
   <script src="/static/software.js"></script>
   <script src="/static/hardening.js"></script>
   <script src="/static/system-extra.js"></script>
@@ -1022,5 +1045,6 @@
   <script src="/static/mobilenav.js"></script>
   <script src="/static/whatsnew.js"></script>
   <script src="/static/footer.js"></script>
+  <script src="/static/tasks.js"></script>
 </body>
 </html>

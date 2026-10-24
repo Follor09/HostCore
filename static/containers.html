@@ -47,6 +47,7 @@
       <a href="#apps">App-Store</a>
       <a href="#kubernetes">Kubernetes</a>
       <a href="#docker">Docker</a>
+      <a href="#datenbanken">Datenbanken</a>
       <a href="#live-logs">Live-Logs</a>
       <a href="#stacks">Compose-Stacks</a>
       <a href="#images">Image-Updates</a>
@@ -134,6 +135,19 @@
         </div>
         <div class="table-scroll"><table class="data-table ctr-table" id="dk-table"></table></div>
         <p class="field-hint" id="dk-hint"></p>
+      </section>
+
+      <!-- Datenbanken -->
+      <section class="glass-card settings-section" id="datenbanken">
+        <div class="section-head">
+          <h2>Datenbanken</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="db-checked"></span>
+            <button class="btn-secondary" id="db-refresh" type="button">Jetzt prüfen</button>
+          </div>
+        </div>
+        <p class="section-desc">PostgreSQL-, MySQL- und MariaDB-Container werden von selbst erkannt und alle fünf Minuten geprüft: Verbindungen, Größe und Wachstum, lange laufende Abfragen, größte Tabellen. Abgefragt wird im Container mit dessen eigenen Zugangsdaten – es wird kein Passwort gespeichert. Probleme erscheinen in den Ereignissen, der Statusübersicht und lösen Alarme aus. Dumps landen gepackt im Ordner db-dumps des Dashboards.</p>
+        <div class="db-list" id="db-list"></div>
       </section>
 
       <!-- Live-Logs -->
@@ -332,6 +346,7 @@
   <script src="/static/containers-extra.js"></script>
   <script src="/static/appstore.js"></script>
   <script src="/static/containerlogs.js"></script>
+  <script src="/static/dbmonitor.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>
@@ -339,5 +354,6 @@
   <script src="/static/mobilenav.js"></script>
   <script src="/static/whatsnew.js"></script>
   <script src="/static/footer.js"></script>
+  <script src="/static/tasks.js"></script>
 </body>
 </html>
