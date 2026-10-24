@@ -93,9 +93,9 @@ as_owner chmod +x "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/set-password.sh" "$D
 # Agent mode: agent.json in the dashboard folder (kept across updates)
 AGENT_TOKEN=""
 case " $* " in
-    *" --agent "*) AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/agent.py" enable)" ;;
+    *" --agent "*) AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" enable)" ;;
 esac
-[ -z "$AGENT_TOKEN" ] && [ -f "$DIR/agent.json" ] && AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/agent.py" token || true)"
+[ -z "$AGENT_TOKEN" ] && [ -f "$DIR/agent.json" ] && AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" token || true)"
 
 echo "⚙️  Installing systemd units..."
 for unit in raspberry-dashboard.service pi-dashboard-update.service pi-dashboard-update.timer pi-dashboard-apt@.service pi-dashboard-geoblock.service; do
@@ -145,7 +145,7 @@ SUDOERS=/etc/sudoers.d/pi-dashboard-restart
         [ -e "$policy" ] && echo "$OWNER ALL=(root) NOPASSWD: $(command -v tee) $policy"
     done
     # Unit list from the root copy; names are checked so nothing else can end up in the rule
-    for unit in $(as_owner env PYTHONDONTWRITEBYTECODE=1 "$DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$SRC'); import services_manager as s; print(' '.join(s.controllable_units()))"); do
+    for unit in $(as_owner env PYTHONDONTWRITEBYTECODE=1 "$DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$SRC/backend'); import services_manager as s; print(' '.join(s.controllable_units()))"); do
         [[ "$unit" =~ ^[A-Za-z0-9@._-]+$ ]] || continue
         for action in start stop restart; do
             echo "$OWNER ALL=(root) NOPASSWD: $SYSTEMCTL $action --no-block $unit"

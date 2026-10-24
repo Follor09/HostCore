@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIKI_FILE = os.path.join(BASE_DIR, "wiki.json")
 MAX_PAGES = 1000
 MAX_CONTENT = 100_000

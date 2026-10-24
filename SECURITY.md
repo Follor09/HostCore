@@ -11,7 +11,7 @@ PiCore läuft im **Heimnetz oder hinter einem VPN** (z. B. NetBird, WireGuard, T
 ## Sicherheitsmodell in Kürze
 
 - **Anmeldung:** Passwörter als scrypt-Hash in `auth.json` (nur für den Dashboard-Benutzer lesbar, nie im Repo), signierte Sitzungs-Cookies, Sperre nach Fehlversuchen, CSRF-Schutz für alle ändernden Anfragen.
-- **Rechte:** Gruppen mit Einzelrechten; der Server prüft jede Anfrage gegen eine zentrale Tabelle (`access.py`). Neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren.
+- **Rechte:** Gruppen mit Einzelrechten; der Server prüft jede Anfrage gegen eine zentrale Tabelle (`backend/access.py`). Neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren.
 - **Root:** Die App läuft als normaler Benutzer. Was als root laufen muss (Updates, apt, Firewall), kommt aus einer root-eigenen Kopie des Repos unter `/var/lib/pi-dashboard/src`; sudo erlaubt nur genau diese Skripte und Units.
 - **Web-Terminal / Container-Konsole:** nur mit dem Recht „Web-Terminal“, Passwort wird erneut abgefragt (Einmal-Ticket), höchstens 3 Sitzungen, Abbruch nach 30 Minuten Leerlauf, jede Sitzung im Aktivitätsprotokoll.
 - **Netzwerk-Prüfungen** (Web-Dienste, Ping, DNS …) sind auf Heimnetz und VPN beschränkt; das Dashboard prüft keine Adressen im Internet.

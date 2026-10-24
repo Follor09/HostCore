@@ -19,7 +19,7 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger("pi_dashboard.updater")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Configuration (can be overridden via environment variables)
 # If AUTO_UPDATE_ON_COMMIT is True, it automatically pulls and restarts when a new commit is found

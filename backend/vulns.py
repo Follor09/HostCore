@@ -26,7 +26,7 @@ import settings_store
 
 logger = logging.getLogger("pi_dashboard.vulns")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.join(BASE_DIR, "vulns.json")
 IGNORE_KEY = "vuln_ignored"
 EVENTS_KEY = "vuln_events"

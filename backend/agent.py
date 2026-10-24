@@ -14,7 +14,7 @@ import secrets
 import socket
 from typing import Any, Dict, Optional
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(BASE_DIR, "agent.json")
 _config: Optional[Dict[str, Any]] = None
 

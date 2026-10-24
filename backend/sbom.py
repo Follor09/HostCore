@@ -27,7 +27,7 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger("pi_dashboard.sbom")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMAGES_FILE = os.path.join(BASE_DIR, "sbom_images.json")
 SYSTEM_TTL = 3600
 MAX_RESULTS = 500

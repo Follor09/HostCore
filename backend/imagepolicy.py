@@ -23,7 +23,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.abspath(__file__)
 KEY = "image_policy"
 MODES = {"off": "Aus", "warn": "Warnen", "block": "Blockieren"}
@@ -223,7 +223,7 @@ def _check_cli(project: str, args: List[str]) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "check":
-        sys.path.insert(0, BASE_DIR)
+        sys.path.insert(0, os.path.dirname(SCRIPT))
         sys.exit(_check_cli(sys.argv[2], sys.argv[3:]))
     print(__doc__)
     sys.exit(2)

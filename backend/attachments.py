@@ -12,7 +12,7 @@ import time
 import unicodedata
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.join(BASE_DIR, "attachments")
 KINDS = ("inventory", "contracts", "servicedocs", "wiki")
 TYPES = {

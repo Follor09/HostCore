@@ -24,6 +24,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
 from urllib.parse import quote
+import sys
+
+# The modules live in backend/; the data files (settings.json, auth.json, history.db …) stay here
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend"))
 
 import system_info
 import services_manager

@@ -99,7 +99,7 @@ if [ "$SRC_OLD" != "$SRC_NEW" ]; then
     CHANGED="$(src_git diff --name-only "$SRC_OLD" "$SRC_NEW")"
     src_git reset --hard --quiet "$SRC_NEW"
     # Units, sudo rules (built from services_manager.py) or install.sh itself changed
-    if grep -qE '\.(service|timer)$|^install\.sh$|^services_manager\.py$' <<<"$CHANGED"; then
+    if grep -qE '\.(service|timer)$|^install\.sh$|^(backend/)?services_manager\.py$' <<<"$CHANGED"; then
         echo "⚙️  Setup changed, re-running install.sh..."
         PI_DASHBOARD_DIR="$DIR" "$SRC/install.sh"
         RESTART=0  # install.sh restarts the dashboard

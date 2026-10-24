@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 import settings_store
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KEY = "retention"
 
 # key: (label, description, unit, default, min, max)

@@ -21,10 +21,10 @@ show() {
 }
 
 case "${1:-status}" in
-    enable)  TOKEN="$("$PY" agent.py enable)"; restart; show "$TOKEN" ;;
-    rotate)  TOKEN="$("$PY" agent.py rotate)"; restart; show "$TOKEN"; echo "⚠️  Den neuen Token auch im Haupt-Dashboard eintragen." ;;
-    token)   "$PY" agent.py token && echo || { echo "Agent-Modus ist aus (./agent.sh enable)."; exit 1; } ;;
-    disable) "$PY" agent.py disable; restart; echo "Agent-Modus aus – das Dashboard hat wieder eine eigene Oberfläche (Login: ./set-password.sh)." ;;
-    status)  if "$PY" agent.py token >/dev/null 2>&1; then echo "Agent-Modus: an ($(address))"; else echo "Agent-Modus: aus"; fi ;;
+    enable)  TOKEN="$("$PY" backend/agent.py enable)"; restart; show "$TOKEN" ;;
+    rotate)  TOKEN="$("$PY" backend/agent.py rotate)"; restart; show "$TOKEN"; echo "⚠️  Den neuen Token auch im Haupt-Dashboard eintragen." ;;
+    token)   "$PY" backend/agent.py token && echo || { echo "Agent-Modus ist aus (./agent.sh enable)."; exit 1; } ;;
+    disable) "$PY" backend/agent.py disable; restart; echo "Agent-Modus aus – das Dashboard hat wieder eine eigene Oberfläche (Login: ./set-password.sh)." ;;
+    status)  if "$PY" backend/agent.py token >/dev/null 2>&1; then echo "Agent-Modus: an ($(address))"; else echo "Agent-Modus: aus"; fi ;;
     *) sed -n '2,8p' "$0"; exit 2 ;;
 esac

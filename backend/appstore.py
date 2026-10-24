@@ -34,7 +34,7 @@ APPS_DIR = os.path.expanduser("~/picore-apps")
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 RESERVED_PORTS = {8000}          # the dashboard itself
 KEEP_LOW_PORTS = {21, 22, 25, 53, 67, 69, 123, 137, 138, 139, 161, 389, 445, 514, 636, 853, 873, 993}
-DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
+DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 LSIO_URL = "https://api.linuxserver.io/api/v1/images?include_config=true&include_deprecated=false"

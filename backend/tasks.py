@@ -29,9 +29,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger("pi_dashboard.tasks")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TASK_DIR = os.path.join(BASE_DIR, "tasks")
-RUNNER = os.path.join(BASE_DIR, "taskrun.py")
+RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "taskrun.py")
 MAX_KEEP = 300
 KEEP_DAYS = 60
 ID_RE = re.compile(r"^[0-9a-f]{16}$")

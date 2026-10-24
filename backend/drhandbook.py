@@ -26,7 +26,7 @@ KEY = "drhandbook"
 PRIORITIES = {1: "Kritisch", 2: "Wichtig", 3: "Normal"}
 DUMP_MAX_AGE = 7 * 86400
 EXPORT_MAX_AGE = 90 * 86400
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGET_RE = re.compile(r"^(service|health|stack|custom):[\w.@-]{1,80}$")
 CONTRACT_CATEGORIES = ("Internet & Telefon", "Server & Hosting", "Domain", "Lizenz")
 

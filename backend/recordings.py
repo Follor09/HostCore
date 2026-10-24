@@ -21,9 +21,9 @@ from typing import Any, Dict, List, Optional
 import settings_store
 
 KEY = "terminal_recording"
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REC_DIR = os.path.join(BASE_DIR, "recordings")
-RECORDER = os.path.join(BASE_DIR, "castrec.py")
+RECORDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "castrec.py")
 ID_RE = re.compile(r"^picore-[0-9a-f]{12}$")
 MAX_SEND = 60 * 1024 * 1024
 

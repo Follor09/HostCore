@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 
 import services_manager
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOME = os.path.expanduser("~")
 
 MAX_ENTRIES = 2000

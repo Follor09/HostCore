@@ -349,7 +349,7 @@ async def _await_approval(user: str, identity: str, tool: str, args: Dict[str, A
 # ---------------------------------------------------------------------------
 # Call log (Einstellungen -> MCP-Aktivität)
 # ---------------------------------------------------------------------------
-CALLS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_calls.json")
+CALLS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mcp_calls.json")
 _calls_lock = threading.Lock()
 
 

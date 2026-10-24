@@ -146,7 +146,7 @@ Weitere Benutzer verwaltet ein Administrator im Dashboard unter **Einstellungen 
 
 - **Eigene Gruppen** anlegen (Rechte von einer bestehenden übernehmen) und in einer Matrix ankreuzen – 22 Einzelrechte von „Logs lesen“ bis „Web-Terminal“. Änderungen gelten sofort, ohne neue Anmeldung. Eingebaute Gruppen lassen sich anpassen und auf Standard zurücksetzen.
 - Pro Benutzer: Gruppe wechseln, Passwort setzen, auf allen Geräten abmelden, deaktivieren (sofort abgemeldet), löschen. Es bleibt immer mindestens ein aktiver Administrator; die eigenen Admin-Rechte kann man sich nicht selbst nehmen.
-- Der Server prüft **jede** Anfrage gegen eine zentrale Rechte-Tabelle (`access.py`); neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren. Die Oberfläche blendet nicht erlaubte Knöpfe und Bereiche aus.
+- Der Server prüft **jede** Anfrage gegen eine zentrale Rechte-Tabelle (`backend/access.py`); neue ändernde Endpunkte sind ohne Eintrag nur für Administratoren. Die Oberfläche blendet nicht erlaubte Knöpfe und Bereiche aus.
 - Passwörter als scrypt-Hash in `auth.json` (nur für deinen Benutzer lesbar, wird nie committed). Eine alte `auth.json` mit einem Benutzer wird automatisch übernommen – dieser wird Administrator.
 - Benutzernamen ohne Groß-/Kleinschreibung („Anna“ = „anna“), Passwörter exakt.
 - Sitzung per signiertem Cookie (12 h, mit „Angemeldet bleiben“ 30 Tage) – Auto-Updates melden niemanden ab. Neues Passwort oder „Abmelden“ beendet nur die Sitzungen dieses Benutzers.

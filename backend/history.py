@@ -21,7 +21,7 @@ import system_info
 
 logger = logging.getLogger("pi_dashboard.history")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "history.db")
 
 SAMPLE_INTERVAL = 60                 # seconds between samples

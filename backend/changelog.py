@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import settings_store
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _cache: Dict[str, Any] = {"ts": 0, "head": "", "data": None}
 
 

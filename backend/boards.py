@@ -23,7 +23,7 @@ import httpx
 
 import settings_store
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ICON_DIR = os.path.join(BASE_DIR, "icon_cache")
 ICON_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
 TREE_MAX_AGE = 7 * 86400

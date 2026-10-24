@@ -50,7 +50,7 @@ IDLE_TIMEOUT = 30 * 60
 DETACHED_TTL = 24 * 3600
 TMUX = shutil.which("tmux")
 SOCKET = "picore"
-CONF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "terminal-tmux.conf")
+CONF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "terminal-tmux.conf")
 SESSION_RE = re.compile(r"^picore-[0-9a-f]{12}$")
 
 _tickets: Dict[str, tuple] = {}   # ticket -> (username, expires, container, session, read_only)

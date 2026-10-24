@@ -31,7 +31,7 @@ import settings_store
 
 logger = logging.getLogger("pi_dashboard.selftest")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULT_KEY = "selftest"
 CHECK_INTERVAL = 24 * 3600
 ROOT_SRC = "/var/lib/pi-dashboard/src"

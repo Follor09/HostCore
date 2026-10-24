@@ -15,4 +15,4 @@ OWNER="$(stat -c %U "$DIR" 2>/dev/null || stat -f %Su "$DIR")"
 PYTHON="$DIR/venv/bin/python"
 [ -x "$PYTHON" ] || PYTHON=python3
 
-exec "$PYTHON" "$DIR/auth.py" "${@:-set-password}"
+exec "$PYTHON" "$DIR/backend/auth.py" "${@:-set-password}"
