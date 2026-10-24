@@ -69,6 +69,8 @@ Plus: Homarr-style boards, command palette (Ctrl+K), alerting with escalation, e
 | Change requests with four-eyes approval | Patch deadlines per severity |
 | ![Access review](docs/screenshots/access-review.png) | ![Baseline check](docs/screenshots/compliance.png) |
 | Access review | Baseline check |
+| ![Virtual machines](docs/screenshots/vms.png) | ![VM details](docs/screenshots/vm-detail.png) |
+| Virtual machines (KVM) | VM details with console, disks and snapshots |
 
 ## Security model in short
 
