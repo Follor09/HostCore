@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
+  <title>Virtuelle Maschinen | HostCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber settings-page">
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-violet"></div>
+
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">Virtuelle Maschinen</h1>
+    </div>
+    <div class="header-right">
+      <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      </button>
+      <div class="user-chip" id="user-chip" hidden>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <span id="user-name"></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="settings-layout">
+    <nav class="settings-nav" aria-label="Bereiche">
+      <a href="#uebersicht" class="active">Übersicht</a>
+      <a href="#maschinen">Maschinen</a>
+      <a href="#images">Images &amp; ISOs</a>
+      <a href="#netzwerke">Netzwerke</a>
+      <a href="#speicher">Speicher-Pools</a>
+      <a href="#einrichtung">Einrichtung</a>
+    </nav>
+
+    <div class="settings-sections">
+      <section class="glass-card settings-section" id="uebersicht">
+        <div class="section-head">
+          <h2>Übersicht</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="vm-updated"></span>
+            <button class="mini-icon-btn" id="vm-reload" title="Neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+          </div>
+        </div>
+        <p class="section-desc">KVM-Gäste über libvirt – auf jedem Debian- oder Ubuntu-Server. Zugewiesen zählt nur, was laufende VMs belegen; mehr vCPUs als der Host hat sind möglich (Überbuchung), beim Arbeitsspeicher wird es dann eng.</p>
+        <div class="vm-setup-banner" id="vm-banner" hidden></div>
+        <div class="bench-values vm-stats" id="vm-stats"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="maschinen">
+        <div class="section-head">
+          <h2>Maschinen</h2>
+          <div class="head-tools">
+            <input type="search" id="vm-q" class="vm-search" placeholder="Filtern …" autocomplete="off" spellcheck="false" aria-label="VMs filtern">
+            <button class="btn-primary" id="vm-create" type="button" data-perm="vms.manage">VM erstellen</button>
+          </div>
+        </div>
+        <p class="section-desc">Ein Klick auf eine Zeile öffnet die Details mit Laufwerken, Netzwerk, Snapshots und Einstellungen. Die Konsole öffnet sich in einem eigenen Tab (grafisch per VNC oder seriell).</p>
+        <div class="vm-jobs" id="vm-jobs"></div>
+        <div class="table-scroll"><table class="data-table vm-table" id="vm-table"></table></div>
+        <p class="field-hint" id="vm-hint"></p>
+      </section>
+
+      <section class="glass-card settings-section" id="images">
+        <div class="section-head">
+          <h2>Images &amp; ISOs</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="img-arch" data-no-i18n></span>
+          </div>
+        </div>
+        <p class="section-desc">Offizielle Cloud-Images für den schnellsten Weg zur VM: einmal herunterladen (Prüfsumme wird kontrolliert), danach entsteht jede neue VM in Sekunden mit Benutzer und SSH-Schlüssel per cloud-init. Für andere Systeme eine ISO per https laden und die VM davon installieren.</p>
+        <div class="table-scroll"><table class="data-table" id="img-table"></table></div>
+        <form class="vm-inline-form" id="iso-form" autocomplete="off" data-perm="vms.manage">
+          <h3>ISO oder Image von einer Adresse laden</h3>
+          <div class="form-grid">
+            <label class="login-field vm-span-2">
+              <span>Adresse (https)</span>
+              <input type="url" id="iso-url" placeholder="https://…/debian-13.2.0-amd64-netinst.iso" required spellcheck="false">
+            </label>
+            <label class="login-field">
+              <span>Art</span>
+              <select id="iso-kind">
+                <option value="iso">ISO (Installationsmedium)</option>
+                <option value="cloud">Cloud-Image (qcow2)</option>
+              </select>
+            </label>
+            <label class="login-field">
+              <span>Speicher-Pool</span>
+              <select id="iso-pool" class="vm-pool-select"></select>
+            </label>
+            <label class="login-field vm-span-2">
+              <span>Prüfsumme <em>(SHA-256 oder SHA-512, dringend empfohlen)</em></span>
+              <input type="text" id="iso-sha" placeholder="z. B. aus SHA256SUMS der Download-Seite" spellcheck="false" autocomplete="off">
+            </label>
+          </div>
+          <div class="form-actions">
+            <span class="form-msg" id="iso-msg" role="status"></span>
+            <button type="submit" class="btn-secondary">Herunterladen</button>
+          </div>
+        </form>
+        <h3 class="vm-subhead">ISOs in den Pools</h3>
+        <div class="table-scroll"><table class="data-table" id="iso-table"></table></div>
+      </section>
+
+      <section class="glass-card settings-section" id="netzwerke">
+        <div class="section-head">
+          <h2>Virtuelle Netzwerke</h2>
+          <button class="mini-icon-btn" id="net-reload" title="Neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+        </div>
+        <p class="section-desc">NAT: die VMs kommen über den Host ins Netz, sind von außen aber nicht direkt erreichbar. Isoliert: nur VMs untereinander und mit dem Host. Damit VMs eigene Adressen im Heimnetz bekommen, beim Erstellen eine Bridge des Hosts (z. B. br0) oder die direkte Anbindung an die Netzwerkkarte (macvtap; der Host selbst erreicht die VM dann nicht) wählen.</p>
+        <div class="table-scroll"><table class="data-table" id="net-table"></table></div>
+        <form class="vm-inline-form" id="net-form" autocomplete="off" data-perm="vms.manage">
+          <h3>Neues Netzwerk</h3>
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Name</span>
+              <input type="text" id="net-name" placeholder="labor" required spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,62}">
+            </label>
+            <label class="login-field">
+              <span>Netz</span>
+              <input type="text" id="net-cidr" placeholder="192.168.150.0/24" required spellcheck="false">
+            </label>
+            <label class="login-field">
+              <span>Modus</span>
+              <select id="net-mode">
+                <option value="nat">NAT (mit Internet)</option>
+                <option value="isolated">Isoliert (ohne Internet)</option>
+                <option value="route">Geroutet</option>
+              </select>
+            </label>
+            <label class="toggle-label vm-check-inline"><input type="checkbox" id="net-dhcp" checked> DHCP-Server</label>
+          </div>
+          <div class="form-actions">
+            <span class="form-msg" id="net-msg" role="status"></span>
+            <button type="submit" class="btn-secondary">Anlegen</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="glass-card settings-section" id="speicher">
+        <div class="section-head">
+          <h2>Speicher-Pools</h2>
+          <button class="mini-icon-btn" id="pool-reload" title="Neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+        </div>
+        <p class="section-desc">Ordner, in denen libvirt die Laufwerke der VMs, Images und ISOs ablegt. Ein Klick auf einen Pool zeigt seine Volumes; benutzte lassen sich nicht löschen.</p>
+        <div class="table-scroll"><table class="data-table" id="pool-table"></table></div>
+        <form class="vm-inline-form" id="pool-form" autocomplete="off" data-perm="vms.manage">
+          <h3>Neuer Ordner-Pool</h3>
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Name</span>
+              <input type="text" id="pool-name" placeholder="nvme" required spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,62}">
+            </label>
+            <label class="login-field vm-span-2">
+              <span>Ordner</span>
+              <input type="text" id="pool-path" placeholder="/srv/vms" required spellcheck="false">
+            </label>
+          </div>
+          <div class="form-actions">
+            <span class="form-msg" id="pool-msg" role="status"></span>
+            <button type="submit" class="btn-secondary">Anlegen</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="glass-card settings-section" id="einrichtung">
+        <div class="section-head">
+          <h2>Einrichtung</h2>
+        </div>
+        <p class="section-desc">Was der Host für VMs braucht. Die Einrichtung installiert QEMU, libvirt und virt-install, nimmt den Dashboard-Benutzer in die Gruppe libvirt auf und legt das NAT-Netzwerk und den Speicher-Pool „default“ an. Achtung: die Gruppe libvirt hat praktisch Root-Rechte (wie die Gruppe docker) – deshalb fragt das Verwalten von VMs erneut nach dem Passwort.</p>
+        <div class="vm-checks" id="vm-checks"></div>
+        <div class="form-actions" data-perm="users.manage">
+          <span class="form-msg" id="setup-msg" role="status"></span>
+          <button type="button" class="btn-secondary" id="setup-packages">Pakete installieren</button>
+          <button type="button" class="btn-primary" id="setup-access">Zugriff einrichten</button>
+        </div>
+        <pre class="stack-job-out vm-setup-log" id="setup-log" data-no-i18n hidden></pre>
+      </section>
+    </div>
+  </main>
+
+  <!-- Details einer VM -->
+  <div class="modal-backdrop" id="vm-modal" aria-hidden="true">
+    <div class="modal-card sheet-card vm-sheet" role="dialog" aria-modal="true" aria-labelledby="vm-modal-title">
+      <div class="sheet-head">
+        <div class="preview-head-text">
+          <h3 id="vm-modal-title" data-no-i18n></h3>
+          <p class="card-subtitle" id="vm-modal-sub" data-no-i18n></p>
+        </div>
+        <div class="sheet-head-actions">
+          <button class="mini-icon-btn" id="vm-modal-close" title="Schließen (Esc)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div class="vm-power" id="vm-power"></div>
+      <div class="segmented vm-tabs" id="vm-tabs" role="tablist" aria-label="Bereich">
+        <button class="active" data-tab="overview" type="button">Übersicht</button>
+        <button data-tab="disks" type="button">Laufwerke</button>
+        <button data-tab="nics" type="button">Netzwerk</button>
+        <button data-tab="snapshots" type="button">Snapshots</button>
+      </div>
+      <div class="vm-tab-body" id="vm-tab-body"></div>
+    </div>
+  </div>
+
+  <!-- VM erstellen -->
+  <div class="modal-backdrop" id="create-modal" aria-hidden="true">
+    <div class="modal-card sheet-card vm-sheet" role="dialog" aria-modal="true" aria-labelledby="create-title">
+      <div class="sheet-head">
+        <div class="preview-head-text">
+          <h3 id="create-title">VM erstellen</h3>
+          <p class="card-subtitle">Läuft als Aufgabe weiter, auch wenn du das Fenster schließt.</p>
+        </div>
+        <button class="mini-icon-btn" id="create-close" title="Schließen (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form class="app-form vm-create-form" id="create-form" autocomplete="off">
+        <div class="form-grid">
+          <label class="login-field">
+            <span>Name</span>
+            <input type="text" id="c-name" required spellcheck="false" placeholder="web01" pattern="[A-Za-z0-9][A-Za-z0-9_.\-]{0,62}">
+          </label>
+          <label class="login-field">
+            <span>Installationsquelle</span>
+            <select id="c-source">
+              <option value="cloud">Cloud-Image (empfohlen)</option>
+              <option value="iso">ISO-Installationsmedium</option>
+              <option value="disk">Vorhandenes Laufwerk importieren</option>
+              <option value="pxe">Netzwerkstart (PXE)</option>
+            </select>
+          </label>
+          <label class="login-field vm-src vm-src-cloud">
+            <span>Betriebssystem</span>
+            <select id="c-image"></select>
+          </label>
+          <label class="login-field vm-src vm-src-iso" hidden>
+            <span>ISO</span>
+            <select id="c-iso"></select>
+          </label>
+          <label class="login-field vm-src vm-src-disk" hidden>
+            <span>Laufwerk</span>
+            <select id="c-volume"></select>
+          </label>
+          <label class="login-field vm-src vm-src-iso vm-src-disk vm-src-pxe" hidden>
+            <span>Betriebssystem <em>(libosinfo-Kennung, optional)</em></span>
+            <input type="text" id="c-osinfo" list="c-osinfo-list" placeholder="debian13, ubuntu24.04, win11 …" spellcheck="false">
+            <datalist id="c-osinfo-list">
+              <option value="debian13"></option><option value="debian12"></option><option value="ubuntu26.04"></option><option value="ubuntu24.04"></option>
+              <option value="fedora42"></option><option value="almalinux9"></option><option value="rocky9"></option><option value="alpinelinux3.21"></option>
+              <option value="opnsense"></option><option value="freebsd14.2"></option><option value="win11"></option><option value="win2k22"></option>
+            </datalist>
+          </label>
+          <label class="login-field">
+            <span>vCPUs</span>
+            <input type="number" id="c-vcpus" min="1" value="2" required>
+          </label>
+          <label class="login-field">
+            <span>Arbeitsspeicher (MB)</span>
+            <input type="number" id="c-memory" min="256" step="256" value="2048" required>
+          </label>
+          <label class="login-field vm-src vm-src-cloud vm-src-iso vm-src-pxe">
+            <span>Laufwerk (GB)</span>
+            <input type="number" id="c-disk" min="1" value="20" required>
+          </label>
+          <label class="login-field">
+            <span>Speicher-Pool</span>
+            <select id="c-pool" class="vm-pool-select"></select>
+          </label>
+          <label class="login-field">
+            <span>Netzwerk</span>
+            <select id="c-network"></select>
+          </label>
+          <label class="login-field" id="c-firmware-wrap">
+            <span>Firmware</span>
+            <select id="c-firmware">
+              <option value="bios">BIOS</option>
+              <option value="uefi">UEFI</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="vm-fieldset vm-src vm-src-cloud">
+          <legend>Zugang (cloud-init)</legend>
+          <div class="form-grid">
+            <label class="login-field">
+              <span>Benutzer</span>
+              <input type="text" id="c-user" spellcheck="false" value="admin" pattern="[a-z_][a-z0-9_\-]{0,31}">
+            </label>
+            <label class="login-field">
+              <span>Hostname <em>(sonst der Name)</em></span>
+              <input type="text" id="c-hostname" spellcheck="false">
+            </label>
+            <label class="login-field vm-span-2">
+              <span>Passwort <em>(für Konsole und sudo; mind. 8 Zeichen)</em></span>
+              <input type="password" id="c-password" autocomplete="new-password">
+            </label>
+            <label class="login-field vm-span-2">
+              <span>Öffentliche SSH-Schlüssel <em>(einer pro Zeile)</em></span>
+              <textarea id="c-keys" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAA… name@rechner"></textarea>
+            </label>
+          </div>
+          <div class="vm-checks-row">
+            <label class="toggle-label"><input type="checkbox" id="c-agent" checked> QEMU-Gast-Agent installieren (IP-Adressen, sauberes Herunterfahren)</label>
+            <label class="toggle-label"><input type="checkbox" id="c-upgrade"> Beim ersten Start alle Updates installieren</label>
+            <label class="toggle-label"><input type="checkbox" id="c-sshpw"> SSH-Anmeldung mit Passwort erlauben</label>
+          </div>
+        </fieldset>
+
+        <div class="form-grid">
+          <label class="login-field vm-span-2">
+            <span>Beschreibung <em>(optional, erscheint in der Doku der VM)</em></span>
+            <input type="text" id="c-description" maxlength="400" spellcheck="true">
+          </label>
+        </div>
+        <label class="toggle-label"><input type="checkbox" id="c-autostart"> Mit dem Host starten</label>
+        <p class="field-hint" id="c-hint"></p>
+      </form>
+      <div class="app-sheet-actions">
+        <span class="form-msg" id="create-msg" role="status"></span>
+        <button type="submit" form="create-form" class="btn-primary" id="create-submit">Erstellen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
+  <script src="/static/hosts.js"></script>
+  <script src="/static/vms.js"></script>
+  <script src="/static/sidebar.js"></script>
+  <script src="/static/links.js"></script>
+  <script src="/static/palette.js"></script>
+  <script src="/static/mobilenav.js"></script>
+  <script src="/static/footer.js"></script>
+  <script src="/static/tasks.js"></script>
+</body>
+</html>

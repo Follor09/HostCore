@@ -1,9 +1,9 @@
 /**
- * PiCore Dashboard - task log (like Proxmox): a panel docked to the bottom of every page.
+ * HostCore Dashboard - task log (like Proxmox): a panel docked to the bottom of every page.
  * Collapsed it is a slim strip with the running tasks; opened (click the strip) it shows the
  * recent tasks on the left and the selected task's log on the right - live while it runs,
  * with "Abbrechen". The height can be dragged; open/closed and height are remembered.
- * Tasks run on the Pi on their own - closing the page changes nothing.
+ * Tasks run on the server on their own - closing the page changes nothing.
  * Other scripts open a task with window.PiTasks.open(id); #aufgaben opens the panel,
  * #aufgabe=<id> one task.
  */
@@ -192,7 +192,7 @@
       $('detail-head').innerHTML = '';
       $('log').textContent = '';
       $('detail-head').appendChild(el('p', 'task-dock-empty', data.durable
-        ? t('Laufen auf dem Pi weiter, auch wenn die Seite geschlossen wird oder das Dashboard neu startet.')
+        ? t('Laufen auf dem Server weiter, auch wenn die Seite geschlossen wird oder das Dashboard neu startet.')
         : t('Laufen weiter, wenn die Seite geschlossen wird – ein Neustart des Dashboards bricht sie ab (Linger für den Benutzer fehlt).')));
     }
   }

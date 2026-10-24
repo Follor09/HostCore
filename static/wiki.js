@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - knowledge base (/wissen): page tree with folders, Markdown view and editor,
+ * HostCore Dashboard - knowledge base (/wissen): page tree with folders, Markdown view and editor,
  * version history and attachments. The open page is in the URL (#<id>).
  */
 (function () {
@@ -93,7 +93,7 @@
     body.appendChild(current.content.trim() ? md(current.content) : el('p', 'field-hint', t('Diese Seite ist noch leer.')));
     $('wiki-panel').hidden = true;
     $('wiki-panel').innerHTML = '';
-    document.title = `${current.title} | ${t('Wissen')} | PiCore Server`;
+    document.title = `${current.title} | ${t('Wissen')} | HostCore Server`;
   }
 
   async function open(id) {

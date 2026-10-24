@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - setting up the two-factor login (used on /2fa and in Einstellungen → Konto):
+ * HostCore Dashboard - setting up the two-factor login (used on /2fa and in Einstellungen → Konto):
  * QR code / secret for the authenticator app, first code, then the recovery codes (shown once).
  */
 (function () {
@@ -44,7 +44,7 @@
       try { await navigator.clipboard.writeText(codes.join('\n')); copy.textContent = t('Kopiert'); } catch (e) { /* select manually */ }
     });
     const dl = el('a', 'btn-secondary', t('Als Datei'));
-    dl.href = URL.createObjectURL(new Blob([`PiCore – ${t('Wiederherstellungscodes')} (${location.host})\n\n${codes.join('\n')}\n`], { type: 'text/plain' }));
+    dl.href = URL.createObjectURL(new Blob([`HostCore – ${t('Wiederherstellungscodes')} (${location.host})\n\n${codes.join('\n')}\n`], { type: 'text/plain' }));
     dl.download = `picore-recovery-${location.hostname}.txt`;
     row.append(copy, dl);
     box.appendChild(row);

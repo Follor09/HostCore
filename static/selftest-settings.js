@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Selbstdiagnose": checks of the dashboard's own installation
+ * HostCore Dashboard - settings section "Selbstdiagnose": checks of the dashboard's own installation
  * with the fix for each problem (a command to copy, or a repair button where no root is needed).
  */
 (function () {

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system page section "Härtung": security basics of the Pi with rating and fix.
+ * HostCore Dashboard - system page section "Härtung": security basics of the server with rating and fix.
  */
 (function () {
   'use strict';

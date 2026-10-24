@@ -42,12 +42,12 @@ SSH_CACHE_TTL = 30
 def _helper(*args: str, timeout: float = 30) -> str:
     """Run pi-helper.sh as root. Raises PermissionError / RuntimeError with a readable message."""
     if not os.path.exists(HELPER):
-        raise PermissionError("Helfer fehlt – install.sh auf dem Pi erneut ausführen.")
+        raise PermissionError("Helfer fehlt – install.sh auf dem Server erneut ausführen.")
     res = subprocess.run(["sudo", "-n", HELPER, *args], capture_output=True, text=True, timeout=timeout)
     if res.returncode != 0:
         err = res.stderr.strip()
         if "password" in err.lower() or "not allowed" in err.lower():
-            raise PermissionError("Keine Berechtigung – install.sh auf dem Pi erneut ausführen.")
+            raise PermissionError("Keine Berechtigung – install.sh auf dem Server erneut ausführen.")
         raise RuntimeError(err.splitlines()[-1][:200] if err else "Fehlgeschlagen.")
     return res.stdout
 
@@ -335,7 +335,7 @@ def parse_ufw(out: str) -> Dict[str, Any]:
 
 
 def _suggestions(rules: List[Dict[str, Any]]) -> List[Dict[str, str]]:
-    """Presets for what runs on this Pi and has no rule yet (ufw would block it)."""
+    """Presets for what runs on this server and has no rule yet (ufw would block it)."""
     text = " ".join(f"{r['to']} {r['from']} {r['comment']}" for r in rules)
     out = []
     if (shutil.which("k3s") or os.path.exists("/etc/rancher/k3s")) and "10.42.0.0/16" not in text:
@@ -760,12 +760,12 @@ GEOBLOCK_MAX = 600000
 
 def _helper_input(args: List[str], data: str, timeout: float = 120) -> str:
     if not os.path.exists(HELPER):
-        raise PermissionError("Helfer fehlt – install.sh auf dem Pi erneut ausführen.")
+        raise PermissionError("Helfer fehlt – install.sh auf dem Server erneut ausführen.")
     res = subprocess.run(["sudo", "-n", HELPER, *args], input=data, capture_output=True, text=True, timeout=timeout)
     if res.returncode != 0:
         err = res.stderr.strip()
         if "password" in err.lower() or "not allowed" in err.lower():
-            raise PermissionError("Keine Berechtigung – install.sh auf dem Pi erneut ausführen.")
+            raise PermissionError("Keine Berechtigung – install.sh auf dem Server erneut ausführen.")
         raise RuntimeError(err.splitlines()[-1][:200] if err else "Fehlgeschlagen.")
     return res.stdout
 

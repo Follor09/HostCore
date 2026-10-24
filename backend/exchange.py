@@ -1,5 +1,5 @@
 """
-Exchange links ("Briefkasten"): a public link for one folder on the Pi, without login.
+Exchange links ("Briefkasten"): a public link for one folder on the server, without login.
 
 - mode "upload":   others can upload files into the folder (nothing is listed)
 - mode "download": others can see and download the files directly in the folder
@@ -163,7 +163,7 @@ def upload_target(token: str, name: str, size: Optional[int]) -> Dict[str, Any]:
     if files.is_denied(os.path.realpath(target)):
         raise ExchangeError("Dieser Pfad ist gesperrt.")
     if size is not None and size > files.shutil_free(x["folder"]) - files.FREE_RESERVE:
-        raise ExchangeError("Auf dem Pi ist nicht genug Platz.")
+        raise ExchangeError("Auf dem Server ist nicht genug Platz.")
     return {"target": target, "left": left}
 
 

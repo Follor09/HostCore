@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - status bar (top) and events card.
+ * HostCore Dashboard - status bar (top) and events card.
  */
 (function () {
   'use strict';

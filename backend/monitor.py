@@ -1,7 +1,7 @@
 """
 Long-running observations, sampled together with the metrics history (once a minute):
 
-- Throttling log: when the Pi hit under-voltage, frequency capping, thermal throttling
+- Throttling log: when the server hit under-voltage, frequency capping, thermal throttling
   or the soft temperature limit - including short events between two samples (from the
   "has occurred" bits vcgencmd keeps until reboot).
 - Service uptime: periods per service (active / inactive / error), for uptime % and a

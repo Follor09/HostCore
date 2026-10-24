@@ -1,6 +1,6 @@
 /**
- * PiCore Dashboard - what the hardware can do.
- * Elements with data-cap="<feature>" are left out when this Pi (or the selected remote Pi)
+ * HostCore Dashboard - what the hardware can do.
+ * Elements with data-cap="<feature>" are left out when this server (or the selected remote server)
  * doesn't have it, e.g. a Pi 4 has no PMIC power readings and no fan curve.
  * Features: fan, fancurve, pmic, throttle, pi5. "a|b" means any of them.
  * Other scripts ask window.PiCaps.has('<feature>') or wait for PiCaps.ready.

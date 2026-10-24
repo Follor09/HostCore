@@ -7,12 +7,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
   <script src="/static/theme.js"></script>
-  <title>Container | PiCore Server</title>
+  <title>Container | HostCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -80,7 +80,7 @@
             <button data-perm="apps.install" class="mini-icon-btn" id="app-refresh" title="Katalog neu laden"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
           </div>
         </div>
-        <p class="section-desc">Empfohlene Apps und der Katalog von <a href="https://www.linuxserver.io" target="_blank" rel="noopener">LinuxServer.io</a> – nur Images, die es für diesen Pi gibt. Jede App bekommt einen eigenen Ordner mit docker-compose.yml und läuft danach als normaler Compose-Stack (Aktualisieren, Stoppen und Entfernen unten bei den Stacks).</p>
+        <p class="section-desc">Empfohlene Apps und der Katalog von <a href="https://www.linuxserver.io" target="_blank" rel="noopener">LinuxServer.io</a> – nur Images, die es für diesen Server gibt. Jede App bekommt einen eigenen Ordner mit docker-compose.yml und läuft danach als normaler Compose-Stack (Aktualisieren, Stoppen und Entfernen unten bei den Stacks).</p>
         <form class="log-filters app-toolbar" id="app-toolbar" autocomplete="off">
           <input type="search" id="app-q" placeholder="App suchen – Name, Beschreibung, Kategorie …" spellcheck="false" aria-label="App suchen">
           <select id="app-source" aria-label="Quelle">
@@ -255,7 +255,7 @@
             <button class="btn-primary" id="go-add" type="button" data-perm="apps.install">Stack aus Git</button>
           </div>
         </div>
-        <p class="section-desc">Compose-Stacks direkt aus einem Git-Repository: das Repository ist maßgeblich. Neue Commits, die den Ordner des Stacks betreffen, erscheinen hier mit Diff und lassen sich ausrollen – auf Wunsch automatisch. Ausrollen läuft als Aufgabe wie das sichere Stack-Update (Datenbanken sichern, <code>up -d --remove-orphans</code>, Gesundheitsprüfung). Abweichungen auf dem Pi – geänderte Dateien, fehlende oder gestoppte Dienste, andere Images – werden gemeldet. Zugangsdaten gehören in die lokalen Variablen, die nur auf dem Pi liegen.</p>
+        <p class="section-desc">Compose-Stacks direkt aus einem Git-Repository: das Repository ist maßgeblich. Neue Commits, die den Ordner des Stacks betreffen, erscheinen hier mit Diff und lassen sich ausrollen – auf Wunsch automatisch. Ausrollen läuft als Aufgabe wie das sichere Stack-Update (Datenbanken sichern, <code>up -d --remove-orphans</code>, Gesundheitsprüfung). Abweichungen auf dem Server – geänderte Dateien, fehlende oder gestoppte Dienste, andere Images – werden gemeldet. Zugangsdaten gehören in die lokalen Variablen, die nur auf dem Server liegen.</p>
         <div class="docs-form" id="go-form-wrap" hidden></div>
         <div class="go-list" id="go-list"></div>
       </section>
@@ -268,7 +268,7 @@
             <button class="btn-primary" id="tpl-add" type="button" data-perm="apps.install">Neue Vorlage</button>
           </div>
         </div>
-        <p class="section-desc">Eigene Compose-Dateien als Vorlage – auf einem oder mehreren Pis als neuer Stack anlegen (in <code>~/picore-apps/&lt;name&gt;</code>, danach <code>pull</code> und <code>up -d</code>). Zugangsdaten gehören nicht in die Vorlage: sie kommen beim Anlegen in eine <code>.env</code>, die nur auf dem Ziel-Pi gespeichert wird.</p>
+        <p class="section-desc">Eigene Compose-Dateien als Vorlage – auf einem oder mehreren Servern als neuer Stack anlegen (in <code>~/picore-apps/&lt;name&gt;</code>, danach <code>pull</code> und <code>up -d</code>). Zugangsdaten gehören nicht in die Vorlage: sie kommen beim Anlegen in eine <code>.env</code>, die nur auf dem Ziel-Server gespeichert wird.</p>
         <div class="docs-form" id="tpl-form-wrap" hidden></div>
         <div class="tpl-list" id="tpl-list"></div>
       </section>

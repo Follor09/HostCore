@@ -1,5 +1,5 @@
 """
-Remote Pis for the main dashboard: agents (see agent.py) that the dashboard forwards
+Remote servers for the main dashboard: agents (see agent.py) that the dashboard forwards
 API calls, live data and the terminal to. Stored in settings.json - tokens never leave
 the server again after they were entered.
 """
@@ -62,12 +62,12 @@ async def probe(url: str, token: str) -> Dict[str, Any]:
     if res.status_code in (401, 403):
         raise RemoteError("Token falsch.")
     if res.status_code == 404:
-        raise RemoteError("Dort läuft kein PiCore-Agent (oder eine zu alte Version).")
+        raise RemoteError("Dort läuft kein HostCore-Agent (oder eine zu alte Version).")
     if res.status_code != 200:
         raise RemoteError(f"Antwort {res.status_code}.")
     info = res.json()
     if not info.get("agent"):
-        raise RemoteError("Dort läuft ein normales Dashboard, kein Agent: auf dem Pi ./install.sh --agent ausführen.")
+        raise RemoteError("Dort läuft ein normales Dashboard, kein Agent: auf dem Server ./install.sh --agent ausführen.")
     return info
 
 
@@ -77,13 +77,13 @@ async def add(name: str, url: str, token: str) -> Dict[str, Any]:
         raise RemoteError("Name angeben.")
     token = (token or "").strip()
     if len(token) < 32:
-        raise RemoteError("Token fehlt oder ist zu kurz (auf dem Remote-Pi: ./agent.sh token).")
+        raise RemoteError("Token fehlt oder ist zu kurz (auf dem Remote-Server: ./agent.sh token).")
     url = normalize_url(url)
     items = _all()
     if any(r["url"] == url for r in items):
-        raise RemoteError("Diesen Pi gibt es schon.")
+        raise RemoteError("Diesen Server gibt es schon.")
     if len(items) >= 20:
-        raise RemoteError("Maximal 20 Remote-Pis.")
+        raise RemoteError("Maximal 20 Remote-Server.")
     info = await probe(url, token)
     rid = secrets.token_hex(4)
     items.append({"id": rid, "name": name, "url": url, "token": token, "added": int(time.time())})

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system tools section "Patch-Fristen": deadlines per severity for fixable
+ * HostCore Dashboard - system tools section "Patch-Fristen": deadlines per severity for fixable
  * vulnerabilities, traffic light per finding, exceptions with reason and end date, statistics
  * (open, overdue, fixed in time, mean days to fix).
  */

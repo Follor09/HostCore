@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - container page section "GitOps": compose stacks from Git repositories.
+ * HostCore Dashboard - container page section "GitOps": compose stacks from Git repositories.
  * Create (clone), check for new commits, look at the diff, deploy (as a task), settings,
  * deploy webhook, drift and deployment history.
  */
@@ -94,7 +94,7 @@
         box.appendChild(el('p', 'field-hint', t('Keine neuen Änderungen im Ordner des Stacks.')));
       }
       if (d.local) {
-        box.appendChild(el('h4', 'go-sub warn', t('Auf dem Pi geändert (wird beim Ausrollen überschrieben)')));
+        box.appendChild(el('h4', 'go-sub warn', t('Auf dem Server geändert (wird beim Ausrollen überschrieben)')));
         box.appendChild(diffView(d.local));
       }
     } catch (err) { box.innerHTML = ''; box.appendChild(el('p', 'form-msg error', err.message)); }
@@ -268,7 +268,7 @@
     const token = field(form, 'Token (leer = unverändert)', input('', s.has_token ? t('gespeichert') : t('nur für private Repositorys'), 'password'));
     const auto = toggle(form, 'Neue Commits automatisch ausrollen', s.auto);
     const rmToken = s.has_token ? toggle(form, 'Gespeicherten Token entfernen', false) : null;
-    const env = field(form, 'Lokale Variablen (.env, bleibt auf dem Pi)', envArea(), true);
+    const env = field(form, 'Lokale Variablen (.env, bleibt auf dem Server)', envArea(), true);
     try { env.value = (await api(`/api/gitops/${s.name}/env`)).env; } catch (e) { /* no permission */ }
     const actions = el('div', 'form-actions');
     const save = el('button', 'btn-primary', t('Speichern'));
@@ -291,7 +291,7 @@
     box.dataset.kind = 'hook';
     box.innerHTML = '';
     const url = `${location.origin}${s.hook_path}`;
-    box.appendChild(el('p', 'field-hint', t('Diese Adresse beim Repository als Webhook (Push-Ereignis, POST) eintragen – dann prüft der Pi sofort statt erst nach dem Intervall. Ausgerollt wird nur, wenn „automatisch“ eingeschaltet ist. Der Pi muss dafür von außen erreichbar sein (z.B. Cloudflare Tunnel).')));
+    box.appendChild(el('p', 'field-hint', t('Diese Adresse beim Repository als Webhook (Push-Ereignis, POST) eintragen – dann prüft der Server sofort statt erst nach dem Intervall. Ausgerollt wird nur, wenn „automatisch“ eingeschaltet ist. Der Server muss dafür von außen erreichbar sein (z.B. Cloudflare Tunnel).')));
     const row = el('div', 'go-hook');
     const code = raw('code', '', url);
     const copy = el('button', 'btn-secondary', t('Kopieren'));
@@ -336,11 +336,11 @@
     const file = field(form, 'Compose-Datei (leer = automatisch)', input('', 'compose.yaml'));
     const token = field(form, 'Token (nur für private Repositorys über https)', input('', '', 'password'));
     const interval = field(form, 'Prüfen alle', intervalSelect(5));
-    const env = field(form, 'Lokale Variablen (.env, bleibt auf dem Pi)', envArea(), true);
+    const env = field(form, 'Lokale Variablen (.env, bleibt auf dem Server)', envArea(), true);
     const auto = toggle(form, 'Neue Commits automatisch ausrollen', false);
     const adopt = toggle(form, 'Vorhandenen Stack mit diesem Namen übernehmen', false);
     const now = can('services.control') ? toggle(form, 'Danach sofort ausrollen', true) : null;
-    form.appendChild(el('p', 'field-hint full', t('Per SSH (git@…) nutzt der Pi die Schlüssel des Dashboard-Benutzers. Geklont wird nach ~/picore-apps/<Stack-Name>.')));
+    form.appendChild(el('p', 'field-hint full', t('Per SSH (git@…) nutzt der Server die Schlüssel des Dashboard-Benutzers. Geklont wird nach ~/picore-apps/<Stack-Name>.')));
     const actions = el('div', 'form-actions');
     const save = el('button', 'btn-primary', t('Klonen & anlegen'));
     save.type = 'submit';
@@ -389,7 +389,7 @@
     const st = data.stacks;
     const deploying = st.some(s => s.state === 'deploying');
     $('go-summary').textContent = st.length ? `${st.filter(s => s.state === 'synced').length} / ${st.length} ${t('synchron')}` : '';
-    if (!data.git) list.appendChild(el('p', 'form-msg error', t('git ist auf diesem Pi nicht installiert (sudo apt install git).')));
+    if (!data.git) list.appendChild(el('p', 'form-msg error', t('git ist auf diesem Server nicht installiert (sudo apt install git).')));
     if (!st.length) list.appendChild(el('p', 'field-hint', t('Noch kein Stack aus Git. „Stack aus Git“ klont ein Repository und rollt den Ordner mit der Compose-Datei aus.')));
     st.forEach(s => list.appendChild(card(s)));
     clearTimeout(timer);
@@ -397,7 +397,7 @@
   }
 
   async function load() {
-    try { data = await api('/api/gitops'); render(); } catch (e) { /* no permission or remote Pi without GitOps */ }
+    try { data = await api('/api/gitops'); render(); } catch (e) { /* no permission or remote server without GitOps */ }
   }
 
   $('go-add').addEventListener('click', createForm);

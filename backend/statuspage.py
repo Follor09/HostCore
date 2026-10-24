@@ -3,7 +3,7 @@ Public status page (/status): a plain page without login for family and friends 
 "Jellyfin läuft, NAS kurz weg". Off by default; the admin picks which services, web
 services and compose stacks appear, under which name.
 
-Only names (as entered here), up/down and uptime leave the Pi - never URLs, IPs,
+Only names (as entered here), up/down and uptime leave the server - never URLs, IPs,
 error messages or container details.
 """
 

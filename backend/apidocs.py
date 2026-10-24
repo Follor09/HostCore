@@ -1,7 +1,7 @@
 """
 API documentation (page /api-doku): every endpoint of the dashboard with method, path,
 description, parameters, required permission and whether it is forwarded to a selected remote
-Pi - built from FastAPI's own OpenAPI description plus access.py and remotes.py, so it can't
+Server - built from FastAPI's own OpenAPI description plus access.py and remotes.py, so it can't
 get out of date.
 """
 

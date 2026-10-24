@@ -227,7 +227,7 @@ def _ts(value: str) -> Optional[float]:
 
 def _check_restic(job: Dict[str, Any], old: Dict[str, Any]) -> Dict[str, Any]:
     if not shutil.which("restic"):
-        raise BackupError("restic ist auf diesem Pi nicht installiert (sudo apt install restic)")
+        raise BackupError("restic ist auf diesem Server nicht installiert (sudo apt install restic)")
     env = {**(job.get("env") or {}), "RESTIC_REPOSITORY": job["target"]}
     if job.get("password"):
         env["RESTIC_PASSWORD"] = job["password"]
@@ -250,7 +250,7 @@ def _check_restic(job: Dict[str, Any], old: Dict[str, Any]) -> Dict[str, Any]:
 
 def _check_borg(job: Dict[str, Any], old: Dict[str, Any]) -> Dict[str, Any]:
     if not shutil.which("borg"):
-        raise BackupError("Borg ist auf diesem Pi nicht installiert (sudo apt install borgbackup)")
+        raise BackupError("Borg ist auf diesem Server nicht installiert (sudo apt install borgbackup)")
     env = {**(job.get("env") or {}), "BORG_REPO": job["target"], "BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK": "yes",
            "BORG_RELOCATED_REPO_ACCESS_IS_OK": "yes", "BORG_PASSPHRASE": job.get("password", "")}
     listing = json.loads(_run(["borg", "list", "--json", "--lock-wait", "30"], env, 180))

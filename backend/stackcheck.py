@@ -64,7 +64,7 @@ def _volumes(svc: Dict[str, Any]) -> List[Tuple[str, str, bool]]:
 def check_service(name: str, svc: Dict[str, Any]) -> List[Dict[str, Any]]:
     out = []
     if svc.get("privileged"):
-        out.append(_f("privileged", "critical", name, "Läuft privilegiert – voller Zugriff auf den Pi",
+        out.append(_f("privileged", "critical", name, "Läuft privilegiert – voller Zugriff auf den Server",
                       "privileged: true entfernen und nur die nötigen Rechte mit cap_add oder devices geben."))
     for kind, src, ro in _volumes(svc):
         if kind != "bind":
@@ -82,11 +82,11 @@ def check_service(name: str, svc: Dict[str, Any]) -> List[Dict[str, Any]]:
             out.append(_f("host_path", level, name, f"Host-Ordner {path} eingebunden" + (" (nur lesend)" if ro else ""),
                           "Nur den Unterordner einbinden, den die App wirklich braucht, und wenn möglich mit :ro."))
     if svc.get("network_mode") == "host":
-        out.append(_f("host_network", "warning", name, "Teilt das Netzwerk des Pi (network_mode: host)",
+        out.append(_f("host_network", "warning", name, "Teilt das Netzwerk des Servers (network_mode: host)",
                       "Ohne network_mode: host und mit ports: nur die nötigen Ports freigeben – außer die App braucht Broadcasts (z. B. Home Assistant, Pi-hole DHCP)."))
     for key, label in (("pid", "Prozesse"), ("ipc", "IPC")):
         if svc.get(key) == "host":
-            out.append(_f(f"host_{key}", "warning", name, f"Sieht die {label} des Pi ({key}: host)", f"{key}: host entfernen, wenn es nicht nötig ist."))
+            out.append(_f(f"host_{key}", "warning", name, f"Sieht die {label} des Servers ({key}: host)", f"{key}: host entfernen, wenn es nicht nötig ist."))
     caps = {str(c).upper().replace("CAP_", "") for c in svc.get("cap_add") or []}
     bad = sorted(caps & DANGEROUS_CAPS)
     if bad:
@@ -97,7 +97,7 @@ def check_service(name: str, svc: Dict[str, Any]) -> List[Dict[str, Any]]:
         if opt in ("seccomp:unconfined", "apparmor:unconfined"):
             out.append(_f("unconfined", "warning", name, f"Schutz ausgeschaltet ({opt})", f"security_opt {opt} entfernen."))
     if svc.get("devices"):
-        out.append(_f("devices", "info", name, f"{len(svc['devices'])} Gerät(e) des Pi durchgereicht", "In Ordnung, wenn die App das Gerät braucht (z. B. Zigbee-Stick, GPU)."))
+        out.append(_f("devices", "info", name, f"{len(svc['devices'])} Gerät(e) des Servers durchgereicht", "In Ordnung, wenn die App das Gerät braucht (z. B. Zigbee-Stick, GPU)."))
     if svc.get("network_mode") != "host":
         open_ports = [p for p in svc.get("ports") or [] if isinstance(p, dict) and p.get("published") and p.get("host_ip") in (None, "", "0.0.0.0", "::")]
         if open_ports:
@@ -111,7 +111,7 @@ def check_service(name: str, svc: Dict[str, Any]) -> List[Dict[str, Any]]:
             out.append(_f("latest", "info", name, f"Image ohne feste Version ({image.rsplit('/', 1)[-1]})",
                           "Eine feste Version angeben (z. B. :1.2.3), damit ein Update nur kommt, wenn du es willst."))
     if not svc.get("restart") and not (svc.get("deploy") or {}).get("restart_policy"):
-        out.append(_f("restart", "info", name, "Keine Restart-Policy – startet nach einem Neustart des Pi nicht von selbst",
+        out.append(_f("restart", "info", name, "Keine Restart-Policy – startet nach einem Neustart des Servers nicht von selbst",
                       "restart: unless-stopped ergänzen."))
     return out
 

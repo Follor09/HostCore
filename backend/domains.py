@@ -254,7 +254,7 @@ def _check(names: Optional[List[str]]) -> Dict[str, Any]:
 
 def _lookup(targets: List[str], full: bool) -> None:
     results = {}
-    with httpx.Client(timeout=20, follow_redirects=True, headers={"User-Agent": "PiCore-Dashboard"}) as client:
+    with httpx.Client(timeout=20, follow_redirects=True, headers={"User-Agent": "HostCore-Dashboard"}) as client:
         servers = _bootstrap(client)
         for name in targets:
             try:

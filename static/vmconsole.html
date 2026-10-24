@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <script src="/static/theme.js"></script>
+  <title>VM-Konsole | HostCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber terminal-page vmconsole-page">
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/vms" title="Zurück zu den VMs">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>VMs</span>
+      </a>
+      <h1 class="settings-title" id="con-title" data-no-i18n>Konsole</h1>
+      <span class="health-tag" id="con-status">Nicht verbunden</span>
+    </div>
+    <div class="header-right">
+      <div class="segmented" id="con-kind" role="tablist" aria-label="Art der Konsole">
+        <button data-kind="vnc" type="button">Grafisch</button>
+        <button data-kind="serial" type="button">Seriell</button>
+      </div>
+      <button class="btn-secondary" id="con-cad" type="button" hidden title="Strg+Alt+Entf an die VM senden">Strg+Alt+Entf</button>
+      <button class="btn-secondary" id="con-paste" type="button" hidden title="Text aus der Zwischenablage als Tastatureingaben senden">Text senden</button>
+      <button class="btn-secondary" id="con-full" type="button" title="Vollbild">Vollbild</button>
+      <button class="btn-secondary" id="con-reconnect" type="button" hidden>Neu verbinden</button>
+    </div>
+  </header>
+
+  <main class="terminal-wrap vmconsole-wrap">
+    <div class="vmconsole-screen" id="con-vnc" hidden></div>
+    <div class="terminal-box" id="con-serial" hidden></div>
+    <p class="field-hint vmconsole-hint" id="con-hint"></p>
+  </main>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/hosts.js"></script>
+  <script src="/static/vendor/xterm/xterm.js"></script>
+  <script src="/static/vendor/xterm/addon-fit.js"></script>
+  <script data-cfasync="false" type="module" src="/static/vmconsole.js"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - light / dark theme.
+ * HostCore Dashboard - light / dark theme.
  * Loaded in <head> (not deferred) so the right theme is set before the first paint.
  * Choice is stored per browser: "auto" follows the device, or "light" / "dark".
  */

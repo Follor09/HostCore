@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "MCP-Server": Pocket ID connection and user mapping.
+ * HostCore Dashboard - settings section "MCP-Server": Pocket ID connection and user mapping.
  */
 (function () {
   'use strict';

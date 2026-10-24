@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings for maintenance windows: plan a window (all services or
+ * HostCore Dashboard - settings for maintenance windows: plan a window (all services or
  * chosen ones), start one right away, end or cancel it, see past windows.
  */
 (function () {

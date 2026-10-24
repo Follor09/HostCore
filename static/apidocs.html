@@ -7,12 +7,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
   <script src="/static/theme.js"></script>
-  <title>API | PiCore Server</title>
+  <title>API | HostCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -44,13 +44,13 @@
   <main class="fleet-layout apidoc-layout">
     <section class="glass-card settings-section" id="api-intro">
       <h2>API-Dokumentation</h2>
-      <p class="section-desc">Alle Schnittstellen des Dashboards – für eigene Skripte, Home-Automation oder zum Nachsehen, was eine Seite abfragt. Erzeugt aus dem Dashboard selbst, also immer aktuell. Jede Anfrage braucht eine Anmeldung und die angegebene Berechtigung; „wird weitergeleitet“ heißt: ist oben ein Remote-Pi gewählt, antwortet dieser.</p>
+      <p class="section-desc">Alle Schnittstellen des Dashboards – für eigene Skripte, Home-Automation oder zum Nachsehen, was eine Seite abfragt. Erzeugt aus dem Dashboard selbst, also immer aktuell. Jede Anfrage braucht eine Anmeldung und die angegebene Berechtigung; „wird weitergeleitet“ heißt: ist oben ein Remote-Server gewählt, antwortet dieser.</p>
       <details class="remote-howto">
         <summary>Aus einem Skript aufrufen</summary>
         <ol>
-          <li>Anmelden und das Sitzungs-Cookie speichern:<br><code>curl -c picore.txt -H 'Content-Type: application/json' -d '{"username":"…","password":"…"}' http://&lt;Pi&gt;:8000/api/auth/login</code></li>
-          <li>Lesen: <code>curl -b picore.txt http://&lt;Pi&gt;:8000/api/status-summary</code></li>
-          <li>Ändern (POST) braucht zusätzlich den Origin des Dashboards:<br><code>curl -b picore.txt -H 'Origin: http://&lt;Pi&gt;:8000' -H 'Content-Type: application/json' -d '{…}' http://&lt;Pi&gt;:8000/api/…</code></li>
+          <li>Anmelden und das Sitzungs-Cookie speichern:<br><code>curl -c picore.txt -H 'Content-Type: application/json' -d '{"username":"…","password":"…"}' http://&lt;Server&gt;:8000/api/auth/login</code></li>
+          <li>Lesen: <code>curl -b picore.txt http://&lt;Server&gt;:8000/api/status-summary</code></li>
+          <li>Ändern (POST) braucht zusätzlich den Origin des Dashboards:<br><code>curl -b picore.txt -H 'Origin: http://&lt;Server&gt;:8000' -H 'Content-Type: application/json' -d '{…}' http://&lt;Server&gt;:8000/api/…</code></li>
           <li>Für Skripte am besten einen eigenen Benutzer mit nur den nötigen Rechten anlegen (Einstellungen → Benutzer). Für Claude gibt es den MCP-Server.</li>
         </ol>
       </details>

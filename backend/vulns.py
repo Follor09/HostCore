@@ -1,5 +1,5 @@
 """
-Vulnerability scan (System -> Schwachstellen): known CVEs in what runs on this Pi.
+Vulnerability scan (System -> Schwachstellen): known CVEs in what runs on this server.
 
 - Installed packages: debsecan (Debian security tracker) - which CVEs affect the installed
   versions, whether a fixed version is available and how urgent the tracker rates them.

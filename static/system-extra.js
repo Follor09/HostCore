@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system page sections "Auffälligkeiten" (anomaly detection), "Kapazitätsplanung",
+ * HostCore Dashboard - system page sections "Auffälligkeiten" (anomaly detection), "Kapazitätsplanung",
  * "DNS-Überwachung" and the IP conflicts below "Geräte im Netzwerk".
  */
 (function () {

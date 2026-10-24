@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Raspberry Pi Dashboard Launcher
+# HostCore Dashboard Launcher
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$DIR"
@@ -14,7 +14,7 @@ else
 fi
 
 echo "=========================================="
-echo "⚡ Starting Raspberry Pi Dashboard..."
+echo "⚡ Starting HostCore Dashboard..."
 echo "📍 Directory: $DIR"
 echo "🌐 URL: http://0.0.0.0:8000"
 echo "=========================================="

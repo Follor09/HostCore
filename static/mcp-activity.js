@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "MCP-Aktivität": open approvals (approve / deny),
+ * HostCore Dashboard - settings section "MCP-Aktivität": open approvals (approve / deny),
  * which tools need one, and the log of all MCP tool calls with filters.
  */
 (function () {

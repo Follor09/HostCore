@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Terminal-Mitschnitte": switch recording on/off, keep
+ * HostCore Dashboard - settings section "Terminal-Mitschnitte": switch recording on/off, keep
  * time, list of recorded terminal sessions and a player (xterm.js) with play/pause, seeking,
  * speed and shortened pauses. Admins only.
  */
@@ -69,7 +69,7 @@
       who.appendChild(raw('span', '', r.user));
       if (r.client) who.appendChild(raw('div', 'field-hint', r.client));
       const target = row.insertCell();
-      target.appendChild(r.container ? raw('span', '', `${t('Container')} ${r.container}`) : el('span', '', t('Pi')));
+      target.appendChild(r.container ? raw('span', '', `${t('Container')} ${r.container}`) : el('span', '', t('Server')));
       if (r.running) target.appendChild(el('span', 'health-tag warning rec-live', t('läuft')));
       row.insertCell().textContent = fmtClock(r.duration);
       row.insertCell().textContent = fmtBytes(r.size);
@@ -209,7 +209,7 @@
     if (!player) buildPlayer();
     pause();
     const q = player.q;
-    q('rec-title').textContent = r.container ? `${t('Container')} ${r.container}` : t('Shell auf dem Pi');
+    q('rec-title').textContent = r.container ? `${t('Container')} ${r.container}` : t('Shell auf dem Server');
     q('rec-title').setAttribute('data-no-i18n', '');
     q('rec-sub').textContent = `${r.user} · ${fmtTs(r.started)}${r.client ? ` · ${r.client}` : ''}`;
     q('rec-screen').innerHTML = '';

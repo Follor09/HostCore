@@ -7,7 +7,7 @@ how to fix what is wrong.
 - Files: owner-only rights of files with passwords and tokens, files owned by someone else,
   free space, size and integrity of history.db, whether the monitor still records
 - Environment: Python packages from requirements.txt, time sync, Docker / Kubernetes access
-- Connections: remote Pis, e-mail delivery, MCP server, GeoIP database age
+- Connections: remote servers, e-mail delivery, MCP server, GeoIP database age
 
 Runs on request and once a day; problems show up in the status summary. Two repairs need no
 root and are offered as buttons: tighten file rights and compact the history database.
@@ -84,7 +84,7 @@ def _service_checks() -> List[Dict[str, Any]]:
                   "" if state == "active" else f"{BASE_DIR}/install.sh"))
     _, timer, _ = _run(["systemctl", "is-active", "pi-dashboard-update.timer"])
     if timer != "active":
-        out.append(_r("timer", g, "Auto-Update-Timer", "warning", "Der Timer ist aus – Commits kommen nicht mehr automatisch auf den Pi.",
+        out.append(_r("timer", g, "Auto-Update-Timer", "warning", "Der Timer ist aus – Commits kommen nicht mehr automatisch auf den Server.",
                       "sudo systemctl enable --now pi-dashboard-update.timer"))
     else:
         _, props, _ = _run(["systemctl", "show", "pi-dashboard-update.service", "-p", "Result", "-p", "ExecMainStatus", "-p", "ExecMainExitTimestamp"])
@@ -357,8 +357,8 @@ def _remote_checks() -> List[Dict[str, Any]]:
                 ("warning", f"Antwort {res.status_code}")
         except httpx.HTTPError as e:
             state, detail = "warning", f"Nicht erreichbar ({type(e).__name__}) – {r['url']}"
-        out.append(_r(f"remote:{r['id']}", "Verbindungen", f"Remote-Pi {r['name']}", state, detail,
-                      "" if state == "ok" else "Einstellungen → Remote-Pis"))
+        out.append(_r(f"remote:{r['id']}", "Verbindungen", f"Remote-Server {r['name']}", state, detail,
+                      "" if state == "ok" else "Einstellungen → Remote-Server"))
     return out
 
 

@@ -7,12 +7,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
   <script src="/static/theme.js"></script>
-  <title>Einstellungen | PiCore Server</title>
+  <title>Einstellungen | HostCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -56,7 +56,8 @@
       <a href="#sso" data-perm="users.manage">Anmeldung per SSO</a>
       <a href="#rechte-review" data-perm="users.manage">Rechte-Review</a>
       <a href="#terminal-mitschnitte" data-perm="users.manage">Terminal-Mitschnitte</a>
-      <a href="#remote" data-perm="users.manage">Remote-Pis</a>
+      <a href="#remote" data-perm="users.manage">Remote-Server</a>
+      <a href="#vms" data-perm="users.manage" data-cap="vmhost">Virtuelle Maschinen</a>
       <a href="#netbox" data-perm="settings.manage">NetBox</a>
       <a href="#mcp" data-perm="users.manage">MCP-Server</a>
       <a href="#mcp-aktivitaet">MCP-Aktivität</a>
@@ -263,7 +264,7 @@
           <h2>Anmeldung per SSO</h2>
           <span class="health-tag" id="sso-state">–</span>
         </div>
-        <p class="section-desc">Anmeldung über einen OpenID-Connect-Anbieter wie Pocket ID, Authentik oder Keycloak. Beim ersten Mal wird das Konto beim Anbieter mit einem Dashboard-Benutzer verknüpft – über eine Gruppen-Zuordnung, den gleichen Benutzernamen oder die gleiche E-Mail-Adresse. Gruppen des Anbieters können die Dashboard-Gruppe bestimmen. Lokale Konten bleiben als Notzugang erhalten; <code>./set-password.sh</code> auf dem Pi funktioniert immer.</p>
+        <p class="section-desc">Anmeldung über einen OpenID-Connect-Anbieter wie Pocket ID, Authentik oder Keycloak. Beim ersten Mal wird das Konto beim Anbieter mit einem Dashboard-Benutzer verknüpft – über eine Gruppen-Zuordnung, den gleichen Benutzernamen oder die gleiche E-Mail-Adresse. Gruppen des Anbieters können die Dashboard-Gruppe bestimmen. Lokale Konten bleiben als Notzugang erhalten; <code>./set-password.sh</code> auf dem Server funktioniert immer.</p>
         <form class="remote-form mcp-form" id="sso-form" autocomplete="off">
           <label class="toggle-label mcp-wide"><input type="checkbox" id="sso-enabled"> Anmeldung per SSO einschalten</label>
           <label class="fw-field mcp-wide"><span>Anbieter-Adresse (Issuer)</span><input type="text" id="sso-issuer" placeholder="https://id.example.com" spellcheck="false"></label>
@@ -348,7 +349,7 @@
           <h2>Terminal-Mitschnitte</h2>
           <span class="field-hint" id="rec-total"></span>
         </div>
-        <p class="section-desc">Jede Web-Terminal-Sitzung wird aufgezeichnet und lässt sich hier wie ein Video abspielen – wer wann was auf dem Pi oder in welchem Container gemacht hat. Aufgezeichnet wird auch, solange kein Browser verbunden ist. Passwörter an einer sudo-Abfrage zeigt das Terminal nicht an, sie sind daher nicht enthalten. Nur Administratoren sehen die Mitschnitte; jedes Abspielen steht im Aktivitätsprotokoll.</p>
+        <p class="section-desc">Jede Web-Terminal-Sitzung wird aufgezeichnet und lässt sich hier wie ein Video abspielen – wer wann was auf dem Server oder in welchem Container gemacht hat. Aufgezeichnet wird auch, solange kein Browser verbunden ist. Passwörter an einer sudo-Abfrage zeigt das Terminal nicht an, sie sind daher nicht enthalten. Nur Administratoren sehen die Mitschnitte; jedes Abspielen steht im Aktivitätsprotokoll.</p>
         <form class="settings-form" id="rec-form">
           <label class="toggle-label"><input type="checkbox" id="rec-enabled"> Terminal-Sitzungen aufzeichnen</label>
           <div class="form-grid">
@@ -363,13 +364,28 @@
         <div class="table-scroll"><table class="data-table" id="rec-table"></table></div>
       </section>
 
+      <section class="glass-card settings-section" id="vms" data-perm="users.manage" data-cap="vmhost">
+        <h2>Virtuelle Maschinen</h2>
+        <p class="section-desc">KVM-VMs über libvirt verwalten (Seite „VMs“). Ausgeschaltet verschwinden die Seite und der Menüpunkt, und das Dashboard nimmt keine VM-Befehle mehr an – schon laufende VMs und libvirt selbst bleiben unberührt. Auf einem Raspberry Pi gibt es diese Funktion nicht.</p>
+        <div class="settings-row">
+          <div>
+            <strong>Virtuelle Maschinen verwalten</strong>
+            <p id="vms-feature-hint">Gilt für den gerade gewählten Server.</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="vms-feature">
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </section>
+
       <section class="glass-card settings-section" id="remote" data-perm="users.manage">
-        <h2>Remote-Pis</h2>
-        <p class="section-desc">Weitere Raspberry Pis mit diesem Dashboard steuern. Auf dem anderen Pi läuft dazu der PiCore-Agent – dann lässt sich oben rechts zwischen den Pis wechseln, und alles (Live-Werte, Dienste, Container, Dateien, Terminal, Firewall, Updates …) zeigt den gewählten Pi. Rechte und Anmeldung bleiben die von diesem Dashboard.</p>
+        <h2>Remote-Server</h2>
+        <p class="section-desc">Weitere Server (Debian, Ubuntu, Raspberry Pi OS) mit diesem Dashboard steuern. Auf dem anderen Server läuft dazu der HostCore-Agent – dann lässt sich oben rechts zwischen den Servern wechseln, und alles (Live-Werte, Dienste, Container, Dateien, Terminal, Firewall, Updates …) zeigt den gewählten Server. Rechte und Anmeldung bleiben die von diesem Dashboard.</p>
         <div class="iface-list" id="remote-list"></div>
-        <h3 class="subhead">Pi hinzufügen</h3>
+        <h3 class="subhead">Server hinzufügen</h3>
         <form class="remote-form" id="remote-form" autocomplete="off">
-          <label class="fw-field"><span>Name</span><input type="text" id="remote-name" maxlength="40" placeholder="z.B. Pi Garage" required></label>
+          <label class="fw-field"><span>Name</span><input type="text" id="remote-name" maxlength="40" placeholder="z.B. Server Garage" required></label>
           <label class="fw-field"><span>Adresse</span><input type="text" id="remote-url" placeholder="http://192.168.178.50:8000" spellcheck="false" required></label>
           <label class="fw-field remote-token"><span>Token</span><input type="password" id="remote-token" placeholder="vom Agent (./agent.sh token)" spellcheck="false" required autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
           <div class="remote-form-actions">
@@ -379,19 +395,19 @@
         </form>
         <p class="form-msg" id="remote-msg" role="status"></p>
         <details class="remote-howto">
-          <summary>So wird ein Pi zum Agent</summary>
+          <summary>So wird ein Server zum Agent</summary>
           <ol>
-            <li>Auf dem anderen Pi das Repository klonen (wie beim ersten Pi) und im Ordner <code>./install.sh --agent</code> ausführen.</li>
+            <li>Auf dem anderen Server das Repository klonen (wie beim ersten Server) und im Ordner <code>./install.sh --agent</code> ausführen.</li>
             <li>Am Ende stehen Adresse und Token im Terminal – beides hier eintragen. Später zeigt <code>./agent.sh token</code> den Token wieder.</li>
             <li>Der Agent hat keine eigene Oberfläche und kein Login, aktualisiert sich aber wie dieses Dashboard automatisch von GitHub.</li>
-            <li>Der Token wird im Klartext übertragen: Remote-Pis am besten nur im Heimnetz oder über das VPN (NetBird) ansprechen. Neuer Token: <code>./agent.sh rotate</code>.</li>
+            <li>Der Token wird im Klartext übertragen: Remote-Server am besten nur im Heimnetz oder über das VPN (NetBird) ansprechen. Neuer Token: <code>./agent.sh rotate</code>.</li>
           </ol>
         </details>
       </section>
 
       <section class="glass-card settings-section" id="netbox" data-perm="settings.manage">
         <h2>NetBox</h2>
-        <p class="section-desc">Verbindet das Dashboard mit deiner NetBox. Unter System-Werkzeuge → NetBox erscheinen dann Präfixe, IP-Adressen, Geräte und VMs, abgeglichen mit dem Geräte-Scan dieses Pi.</p>
+        <p class="section-desc">Verbindet das Dashboard mit deiner NetBox. Unter System-Werkzeuge → NetBox erscheinen dann Präfixe, IP-Adressen, Geräte und VMs, abgeglichen mit dem Geräte-Scan dieses Servers.</p>
         <p class="field-hint" id="nb-current"></p>
         <form class="remote-form" id="nb-form" autocomplete="off">
           <label class="fw-field"><span>Adresse</span><input type="text" id="nb-url" placeholder="https://netbox.home.arpa" spellcheck="false" required></label>
@@ -409,8 +425,8 @@
           <ol>
             <li>In NetBox oben rechts Profil → API-Tokens → Token hinzufügen. NetBox 4.5+ zeigt den Token einmalig als <code>nbt_…</code>, ältere Versionen als 40 Zeichen langen Schlüssel – beides funktioniert.</li>
             <li>Zum Ansehen reicht ein Token ohne Schreibrechte. Wer Geräte aus dem Abgleich direkt in NetBox eintragen will, braucht Schreibrechte für IP-Adressen – und im Dashboard die Berechtigung „NetBox bearbeiten“.</li>
-            <li>Der Token bleibt auf dem Pi und wird nie an den Browser zurückgegeben. Ohne neuen Token bleibt der gespeicherte erhalten, aber nur für dieselbe Adresse.</li>
-            <li>Die Abfrage läuft vom Pi aus: NetBox muss vom Pi erreichbar sein (Heimnetz oder VPN).</li>
+            <li>Der Token bleibt auf dem Server und wird nie an den Browser zurückgegeben. Ohne neuen Token bleibt der gespeicherte erhalten, aber nur für dieselbe Adresse.</li>
+            <li>Die Abfrage läuft vom Server aus: NetBox muss vom Server erreichbar sein (Heimnetz oder VPN).</li>
           </ol>
         </details>
       </section>
@@ -444,7 +460,7 @@
           <summary>So wird es eingerichtet</summary>
           <ol>
             <li>In Pocket ID einen OIDC-Client anlegen. Als Callback-URL die oben angezeigte Adresse eintragen (endet auf <code>/auth/callback</code>). Client-ID und Secret hier eintragen.</li>
-            <li>Eine eigene Domain per Cloudflare Tunnel (oder Reverse Proxy) auf <code>http://&lt;Pi-IP&gt;:8000</code> zeigen lassen. Unter dieser Domain liefert das Dashboard nur den MCP und die Anmeldung aus – die Oberfläche selbst bleibt im Heimnetz.</li>
+            <li>Eine eigene Domain per Cloudflare Tunnel (oder Reverse Proxy) auf <code>http://&lt;Server-IP&gt;:8000</code> zeigen lassen. Unter dieser Domain liefert das Dashboard nur den MCP und die Anmeldung aus – die Oberfläche selbst bleibt im Heimnetz.</li>
             <li>In Claude unter Einstellungen → Connectors einen eigenen Connector mit der MCP-Adresse anlegen; bei der ersten Verwendung meldest du dich bei Pocket ID an.</li>
             <li>Claude Code: <code>claude mcp add --transport http picore https://…/mcp</code></li>
           </ol>
@@ -506,10 +522,10 @@
         <details class="remote-howto">
           <summary>Beispiele</summary>
           <ol>
-            <li>Skript: <code>curl -d "Backup fertig" http://&lt;Pi&gt;:8000/hook/&lt;Token&gt;</code> oder JSON mit <code>{"title": "…", "message": "…", "level": "error"}</code></li>
+            <li>Skript: <code>curl -d "Backup fertig" http://&lt;Server&gt;:8000/hook/&lt;Token&gt;</code> oder JSON mit <code>{"title": "…", "message": "…", "level": "error"}</code></li>
             <li>Uptime Kuma: Benachrichtigung „Webhook“, Body „Preset – application/json“, URL des Webhooks.</li>
-            <li>Watchtower: <code>WATCHTOWER_NOTIFICATION_URL=generic+http://&lt;Pi&gt;:8000/hook/&lt;Token&gt;</code></li>
-            <li>GitHub: Repository → Settings → Webhooks, Content type „application/json“ (nur erreichbar, wenn der Pi von außen erreichbar ist).</li>
+            <li>Watchtower: <code>WATCHTOWER_NOTIFICATION_URL=generic+http://&lt;Server&gt;:8000/hook/&lt;Token&gt;</code></li>
+            <li>GitHub: Repository → Settings → Webhooks, Content type „application/json“ (nur erreichbar, wenn der Server von außen erreichbar ist).</li>
           </ol>
         </details>
       </section>
@@ -535,7 +551,7 @@
           <label class="fw-field"><span>Benutzername</span><input type="text" id="em-user" spellcheck="false" autocomplete="picore-smtp-user" data-lpignore="true" data-1p-ignore></label>
           <label class="fw-field"><span>Passwort</span><input type="password" id="em-pass" autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
           <label class="fw-field"><span>Absender</span><input type="text" inputmode="email" id="em-sender" placeholder="picore@example.com" spellcheck="false" autocomplete="picore-smtp-from" data-lpignore="true"></label>
-          <label class="fw-field"><span>Absendername</span><input type="text" id="em-sender-name" value="PiCore" maxlength="60" autocomplete="picore-smtp-name"></label>
+          <label class="fw-field"><span>Absendername</span><input type="text" id="em-sender-name" value="HostCore" maxlength="60" autocomplete="picore-smtp-name"></label>
           <label class="fw-field email-wide"><span>Empfänger (mehrere mit Komma)</span><input type="text" inputmode="email" id="em-to" spellcheck="false" autocomplete="picore-smtp-to" data-lpignore="true"></label>
           <label class="fw-field email-wide"><span>Dashboard-Adresse für Links in den Mails</span><input type="text" id="em-url" placeholder="http://192.168.178.10:8000" spellcheck="false" autocomplete="picore-dashboard-url"></label>
           <h3 class="subhead email-wide">Was verschickt wird</h3>
@@ -645,7 +661,7 @@
       <!-- Web-Dienste -->
       <section class="glass-card settings-section" id="web-dienste" data-perm="settings.manage">
         <h2>Web-Dienste</h2>
-        <p class="section-desc">Eigene Dienste und Geräte im Heimnetz oder VPN, deren Erreichbarkeit der Pi regelmäßig prüft – Webseiten, Text auf einer Seite, JSON-Werte, TCP-Ports, Ping und DNS-Server. Antwortzeiten und Vorfälle zeigt ein Klick auf den Dienst in der Web-Dienste-Karte des Dashboards.</p>
+        <p class="section-desc">Eigene Dienste und Geräte im Heimnetz oder VPN, deren Erreichbarkeit der Server regelmäßig prüft – Webseiten, Text auf einer Seite, JSON-Werte, TCP-Ports, Ping und DNS-Server. Antwortzeiten und Vorfälle zeigt ein Klick auf den Dienst in der Web-Dienste-Karte des Dashboards.</p>
         <div class="wol-settings-list" id="health-settings-list"></div>
         <h3 class="subhead" id="health-form-title">Prüfung hinzufügen</h3>
         <form class="inline-grid health-form" id="health-form" autocomplete="off">
@@ -724,7 +740,7 @@
       <!-- Öffentliche Statusseite -->
       <section class="glass-card settings-section" id="statusseite" data-perm="settings.manage">
         <h2>Öffentliche Statusseite</h2>
-        <p class="section-desc">Eine schlichte Seite ohne Anmeldung für Familie und Freunde: „Jellyfin läuft, NAS kurz weg“. Du wählst, was erscheint und unter welchem Namen – Adressen, IPs und Fehlermeldungen bleiben auf dem Pi.</p>
+        <p class="section-desc">Eine schlichte Seite ohne Anmeldung für Familie und Freunde: „Jellyfin läuft, NAS kurz weg“. Du wählst, was erscheint und unter welchem Namen – Adressen, IPs und Fehlermeldungen bleiben auf dem Server.</p>
         <form class="settings-form" id="sp-form" autocomplete="off">
           <label class="toggle-label"><input type="checkbox" id="sp-enabled"> Statusseite einschalten</label>
           <div class="form-grid">
@@ -855,7 +871,7 @@
         <p class="section-desc">Ein Link für einen ganzen Ordner – zum Hochladen (z.B. Logs oder Fotos von anderen einsammeln), zum Herunterladen (alle Dateien des Ordners) oder für beides. Ohne Anmeldung, mit Ablaufdatum und Größenlimit; vorhandene Dateien werden nie überschrieben, Unterordner und versteckte Dateien nie gezeigt.</p>
         <div class="wol-settings-list" id="exchange-list"></div>
         <form class="remote-form exchange-form" id="exchange-form" autocomplete="off">
-          <label class="fw-field exchange-folder"><span>Ordner auf dem Pi</span><input type="text" id="ex-folder" placeholder="/home/pi/austausch" spellcheck="false" required></label>
+          <label class="fw-field exchange-folder"><span>Ordner auf dem Server</span><input type="text" id="ex-folder" placeholder="/home/pi/austausch" spellcheck="false" required></label>
           <label class="fw-field"><span>Erlaubt</span>
             <select id="ex-mode">
               <option value="upload">Nur hochladen</option>
@@ -883,7 +899,7 @@
       <!-- Auto-Update -->
       <section class="glass-card settings-section" id="auto-update" data-perm="settings.manage">
         <h2>Auto-Update</h2>
-        <p class="section-desc">Der Pi prüft jede Minute GitHub und installiert neue Versionen automatisch – je nach Kanal jeden neuen Commit oder nur veröffentlichte Releases (Tags vX.Y.Z). Auf dem stabilen Kanal geht es nie auf ein älteres Release zurück.</p>
+        <p class="section-desc">Der Server prüft jede Minute GitHub und installiert neue Versionen automatisch – je nach Kanal jeden neuen Commit oder nur veröffentlichte Releases (Tags vX.Y.Z). Auf dem stabilen Kanal geht es nie auf ein älteres Release zurück.</p>
         <dl class="kv-grid" id="updater-info"></dl>
         <div class="form-grid updater-channel" data-perm="updates.install">
           <label class="login-field"><span>Update-Kanal</span><select id="updater-channel"></select></label>
@@ -910,7 +926,7 @@
           <h2>Datenaufbewahrung</h2>
           <span class="field-hint" id="ret-total"></span>
         </div>
-        <p class="section-desc">Wie lange aufgezeichnete Daten bleiben und wie viele Versionen behalten werden. Älteres wird stündlich gelöscht; „Jetzt aufräumen“ macht das sofort und gibt den Platz der Datenbank frei. Diese Werte gelten für den gerade gewählten Pi.</p>
+        <p class="section-desc">Wie lange aufgezeichnete Daten bleiben und wie viele Versionen behalten werden. Älteres wird stündlich gelöscht; „Jetzt aufräumen“ macht das sofort und gibt den Platz der Datenbank frei. Diese Werte gelten für den gerade gewählten Server.</p>
         <form class="retention-form" id="ret-form" autocomplete="off">
           <div class="retention-grid" id="ret-items"></div>
           <div class="remote-form-actions">
@@ -931,7 +947,7 @@
             <button type="button" class="btn-primary" id="st-run">Jetzt prüfen</button>
           </div>
         </div>
-        <p class="section-desc">Prüft die Installation des Dashboards selbst: Dienst und Auto-Update, sudo-Regeln, Rechte der Dateien mit Zugangsdaten, Datenbank, Python-Pakete, Uhrzeit, Docker- und Kubernetes-Zugriff, Remote-Pis und E-Mail. Zu jedem Problem steht, wie es sich beheben lässt. Läuft zusätzlich einmal täglich; Probleme erscheinen in der Statusübersicht. Gilt für den gerade gewählten Pi.</p>
+        <p class="section-desc">Prüft die Installation des Dashboards selbst: Dienst und Auto-Update, sudo-Regeln, Rechte der Dateien mit Zugangsdaten, Datenbank, Python-Pakete, Uhrzeit, Docker- und Kubernetes-Zugriff, Remote-Server und E-Mail. Zu jedem Problem steht, wie es sich beheben lässt. Läuft zusätzlich einmal täglich; Probleme erscheinen in der Statusübersicht. Gilt für den gerade gewählten Server.</p>
         <div class="st-groups" id="st-groups"></div>
       </section>
 

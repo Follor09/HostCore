@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - API documentation (/api-doku): every endpoint grouped, with parameters,
+ * HostCore Dashboard - API documentation (/api-doku): every endpoint grouped, with parameters,
  * permission and "Ausprobieren" for reading requests (GET, with the own session).
  */
 (function () {
@@ -69,7 +69,7 @@
     det.appendChild(sum);
     const meta = el('div', 'apidoc-meta');
     meta.appendChild(el('span', 'health-tag', t(ep.permission_label || 'Angemeldet')));
-    meta.appendChild(el('span', 'field-hint', t(ep.local_only ? 'immer dieser Pi' : 'wird an den gewählten Remote-Pi weitergeleitet')));
+    meta.appendChild(el('span', 'field-hint', t(ep.local_only ? 'immer dieser Server' : 'wird an den gewählten Remote-Server weitergeleitet')));
     det.appendChild(meta);
     if (ep.params.length) {
       const tb = el('table', 'data-table apidoc-table');

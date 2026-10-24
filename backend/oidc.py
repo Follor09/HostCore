@@ -270,9 +270,9 @@ async def _check_id_token(token: str, doc: Dict[str, Any], client_id: str, nonce
     if client_id not in auds or (len(auds) > 1 and claims.get("azp") not in (None, client_id)):
         raise OidcError("ID-Token ist nicht für dieses Dashboard ausgestellt.")
     if not isinstance(claims.get("exp"), (int, float)) or claims["exp"] < now - 60:
-        raise OidcError("ID-Token abgelaufen – Uhrzeit von Pi und Anbieter prüfen.")
+        raise OidcError("ID-Token abgelaufen – Uhrzeit von Server und Anbieter prüfen.")
     if isinstance(claims.get("iat"), (int, float)) and claims["iat"] > now + 120:
-        raise OidcError("ID-Token aus der Zukunft – Uhrzeit von Pi und Anbieter prüfen.")
+        raise OidcError("ID-Token aus der Zukunft – Uhrzeit von Server und Anbieter prüfen.")
     if not secrets.compare_digest(str(claims.get("nonce", "")), nonce):
         raise OidcError("Anmeldung passt nicht zu dieser Anfrage (nonce).")
     if not claims.get("sub"):

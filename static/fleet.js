@@ -1,11 +1,11 @@
 /**
- * PiCore Dashboard - fleet page (/flotte): this Pi and all remote Pis in one table,
+ * HostCore Dashboard - fleet page (/flotte): this server and all remote servers in one table,
  * apt update / upgrade for several of them at once.
  *
- * The update count of a Pi opens its pending packages (installed -> new version, security
- * updates marked) to upgrade single ones; with Pis selected, "Ausstehende Updates der Auswahl"
- * lists every pending package with the Pis that need it. "Protokoll" shows the output of the
- * running / last apt job of a Pi.
+ * The update count of a server opens its pending packages (installed -> new version, security
+ * updates marked) to upgrade single ones; with servers selected, "Ausstehende Updates der Auswahl"
+ * lists every pending package with the servers that need it. "Protokoll" shows the output of the
+ * running / last apt job of a server.
  */
 (function () {
   'use strict';
@@ -15,11 +15,11 @@
   const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
   const COLS = 10;
   const selected = new Set();
-  const openPkgs = new Set();          // Pis whose package list is open
-  const openLogs = new Set();          // Pis whose apt output is open
-  const picks = new Map();             // Pi id -> Set of package names (per-Pi list)
+  const openPkgs = new Set();          // Server whose package list is open
+  const openLogs = new Set();          // Server whose apt output is open
+  const picks = new Map();             // Server id -> Set of package names (per-Pi list)
   const mergedPicks = new Set();       // package names (list of the selection)
-  const logs = new Map();              // Pi id -> last job output
+  const logs = new Map();              // Server id -> last job output
   let data = null;
   let timer = null;
 
@@ -84,7 +84,7 @@
 
   function updateSelection() {
     const n = selected.size;
-    $('fleet-selected').textContent = n ? t(`${n} ${n === 1 ? 'Pi' : 'Pis'} ausgewählt`) : t('Keine Pis ausgewählt');
+    $('fleet-selected').textContent = n ? t(`${n} Server ausgewählt`) : t('Keine Server ausgewählt');
     $('fleet-update').disabled = !n;
     $('fleet-upgrade').disabled = !n;
     $('fleet-dash').disabled = !n;
@@ -109,7 +109,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Package list of one Pi
+  // Package list of one server
   // ---------------------------------------------------------------------------
   function pkgTable(rows, pickSet, extraHead, extraCell) {
     const table = el('table', 'data-table fleet-pkg-table');
@@ -186,7 +186,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // apt output of one Pi
+  // apt output of one server
   // ---------------------------------------------------------------------------
   function logPanel(p) {
     const box = el('div', 'fleet-log');
@@ -240,7 +240,7 @@
     const th0 = el('th');
     if (can('updates.install')) th0.appendChild(all);
     head.appendChild(th0);
-    ['Pi', 'Status', 'Version', 'Updates', 'Temperatur', 'CPU', 'RAM', 'Speicher', 'Laufzeit'].forEach(h => head.appendChild(el('th', '', t(h))));
+    ['Server', 'Status', 'Version', 'Updates', 'Temperatur', 'CPU', 'RAM', 'Speicher', 'Laufzeit'].forEach(h => head.appendChild(el('th', '', t(h))));
     const body = table.createTBody();
     data.pis.forEach(p => {
       const row = body.insertRow();
@@ -256,7 +256,7 @@
       const name = row.insertCell();
       name.className = 'wrap';
       name.append(raw('span', 'lan-name', p.name),
-        raw('span', 'lan-sub', [p.model, p.url ? p.url.replace(/^https?:\/\//, '') : t('Dieser Pi')].filter(Boolean).join(' · ')));
+        raw('span', 'lan-sub', [p.model, p.url ? p.url.replace(/^https?:\/\//, '') : t('Dieser Server')].filter(Boolean).join(' · ')));
       const st = row.insertCell();
       st.appendChild(el('span', `health-tag ${p.online ? 'good' : 'critical'}`, p.online ? t('Online') : t('Nicht erreichbar')));
       if (busy(p)) {
@@ -282,7 +282,7 @@
         ver.appendChild(el('span', 'health-tag warning', p.commits_behind ? t(`${p.commits_behind} Commits zurück`) : t('Update verfügbar')));
       } else if (p.id && main && main.commit && p.commit && p.commit !== main.commit) {
         ver.append(' ');
-        ver.appendChild(el('span', 'health-tag', t('anders als Haupt-Pi')));
+        ver.appendChild(el('span', 'health-tag', t('anders als Haupt-Server')));
       }
       const upd = row.insertCell();
       upd.className = 'fleet-upd';
@@ -321,7 +321,7 @@
     window.scrollTo(0, scroll);
   }
 
-  // The table is wider than the screen on small displays: panels below a Pi stay in the visible part
+  // The table is wider than the screen on small displays: panels below a server stay in the visible part
   function fitPanels() {
     const wrap = $('fleet-table').parentElement;
     const inset = wrap.clientWidth < 600 ? 24 : 60;
@@ -329,7 +329,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Pending updates of the selected Pis, merged by package
+  // Pending updates of the selected servers, merged by package
   // ---------------------------------------------------------------------------
   function renderPending() {
     const sec = $('fleet-pending');
@@ -354,12 +354,12 @@
       .sort((a, b) => (b.security - a.security) || (b.pis.length - a.pis.length) || a.name.localeCompare(b.name));
     const total = [...merged.values()];
     $('fp-summary').textContent = total.length
-      ? t(`${total.length} Pakete auf ${pis.length} ${pis.length === 1 ? 'Pi' : 'Pis'} · ${total.filter(m => m.security).length} Sicherheit`)
-      : t('Auf den ausgewählten Pis ist alles aktuell.');
+      ? t(`${total.length} Pakete auf ${pis.length} Server · ${total.filter(m => m.security).length} Sicherheit`)
+      : t('Auf den ausgewählten Servern ist alles aktuell.');
     const tableBox = $('fp-table');
     tableBox.innerHTML = '';
     if (rows.length) {
-      const tb = pkgTable(rows, mergedPicks, ['Pis'], (row, r) => {
+      const tb = pkgTable(rows, mergedPicks, ['Server'], (row, r) => {
         const c = row.insertCell();
         c.className = 'fleet-pis';
         r.pis.forEach(id => c.appendChild(raw('span', 'pg-chip', piName(id))));
@@ -376,7 +376,7 @@
     const blocked = pis.filter(p => busy(p) && targets[p.id]);
     run.disabled = !mergedPicks.size || blocked.length > 0;
     $('fp-busy').textContent = blocked.length ? t(`Auf ${blocked.map(p => p.name).join(', ')} läuft gerade apt – danach geht es weiter.`) : '';
-    run.textContent = mergedPicks.size ? t(`${mergedPicks.size} ${mergedPicks.size === 1 ? 'Paket' : 'Pakete'} auf ${nPis} ${nPis === 1 ? 'Pi' : 'Pis'} aktualisieren`) : t('Ausgewählte aktualisieren');
+    run.textContent = mergedPicks.size ? t(`${mergedPicks.size} ${mergedPicks.size === 1 ? 'Paket' : 'Pakete'} auf ${nPis} Server aktualisieren`) : t('Ausgewählte aktualisieren');
     run.onclick = () => confirmClick(run, t('Wirklich aktualisieren?'), async () => {
       try { showResults((await api('/api/fleet/packages', { targets })).results); mergedPicks.clear(); }
       catch (err) { toast(err.message, 'error'); }
@@ -403,7 +403,7 @@
   }
 
   async function runApt(mode, btn) {
-    confirmClick(btn, t(`Auf ${selected.size} ${selected.size === 1 ? 'Pi' : 'Pis'} starten?`), async () => {
+    confirmClick(btn, t(`Auf ${selected.size} Server starten?`), async () => {
       try { showResults((await api('/api/fleet/apt', { ids: [...selected], mode })).results); }
       catch (err) { toast(err.message, 'error'); }
     });
@@ -421,7 +421,7 @@
     const table = $('lat-table');
     table.innerHTML = '';
     if (!lat || lat.nodes.length < 2) {
-      table.appendChild(el('caption', 'field-hint', t('Erst mit mindestens einem Remote-Pi (Einstellungen → Remote-Pis) gibt es etwas zu messen.')));
+      table.appendChild(el('caption', 'field-hint', t('Erst mit mindestens einem Remote-Server (Einstellungen → Remote-Server) gibt es etwas zu messen.')));
       return;
     }
     $('lat-measured').textContent = lat.measured ? `${t('Gemessen')} ${new Date(lat.measured * 1000).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}` : t('Noch nicht gemessen');
@@ -514,7 +514,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Capacity of every Pi
+  // Capacity of every server
   // ---------------------------------------------------------------------------
   function capCell(row, f, unit) {
     const c = row.insertCell();
@@ -532,7 +532,7 @@
     try { d = await api('/api/fleet/capacity'); } catch (err) { table.innerHTML = ''; table.appendChild(el('caption', 'field-hint', err.message)); return; }
     table.innerHTML = '';
     const head = table.createTHead().insertRow();
-    ['Pi', 'Tage erfasst', 'RAM (Tagesschnitt)', 'CPU (Tagesschnitt)', 'Speicher'].forEach(h => head.appendChild(el('th', '', t(h))));
+    ['Server', 'Tage erfasst', 'RAM (Tagesschnitt)', 'CPU (Tagesschnitt)', 'Speicher'].forEach(h => head.appendChild(el('th', '', t(h))));
     const body = table.createTBody();
     d.pis.forEach(p => {
       const row = body.insertRow();
@@ -568,7 +568,7 @@
     $('fleet-upgrade').addEventListener('click', e => runApt('upgrade', e.currentTarget));
     $('fleet-dash').addEventListener('click', e => {
       const b = e.currentTarget;
-      confirmClick(b, t(`Dashboard auf ${selected.size} ${selected.size === 1 ? 'Pi' : 'Pis'} aktualisieren?`), async () => {
+      confirmClick(b, t(`Dashboard auf ${selected.size} Server aktualisieren?`), async () => {
         try {
           const r = await api('/api/fleet/dashboard-update', { ids: [...selected] });
           showResults(r.results, 'Gestartet');

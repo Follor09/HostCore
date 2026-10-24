@@ -162,7 +162,7 @@ def build(since: int, until: int, user: str = "") -> Tuple[bytes, str]:
 
     host = platform.node()
     readme = [f"# Nachweis-Paket – {host}", "", f"- Zeitraum: {_fmt(since)} bis {_fmt(until - 1)}", f"- Erstellt: {_fmt(time.time(), True)} von {user or '–'}",
-              "- Erzeugt vom PiCore Dashboard. Enthält keine Passwörter, Tokens oder Sitzungsdaten; Fundstellen des Geheimnis-Scans sind maskiert.",
+              "- Erzeugt vom HostCore Dashboard. Enthält keine Passwörter, Tokens oder Sitzungsdaten; Fundstellen des Geheimnis-Scans sind maskiert.",
               f"- Einträge im Aktivitätsprotokoll im Zeitraum: {activity_rows}", "", "## Inhalt", ""]
     readme += [f"- `{name}`" for name, _ in files]
     readme += ["", "Die SHA-256-Prüfsummen aller Dateien stehen in `MANIFEST.sha256` (prüfbar mit `sha256sum -c MANIFEST.sha256`)."]

@@ -1,5 +1,5 @@
 [Unit]
-Description=Raspberry Pi All-in-One Dashboard
+Description=HostCore Server Dashboard
 After=network.target
 
 [Service]

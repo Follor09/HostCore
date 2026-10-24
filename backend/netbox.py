@@ -479,7 +479,7 @@ async def create_ip(ip: str, status: str, dns_name: str, description: str) -> Di
         raise NetBoxError("DNS-Name darf nur Buchstaben, Ziffern, Punkt, Binde- und Unterstrich enthalten.")
     description = (description or "").strip()[:200]
 
-    # Prefix length: smallest NetBox prefix containing the address, else the Pi's own network
+    # Prefix length: smallest NetBox prefix containing the address, else the server's own network
     length = None
     raw = _cache["data"]
     if raw:
@@ -496,7 +496,7 @@ async def create_ip(ip: str, status: str, dns_name: str, description: str) -> Di
         net = next((ipaddress.ip_network(s) for s in netscan.devices().get("subnets") or []
                     if addr in ipaddress.ip_network(s)), None)
         if net is None:
-            raise NetBoxError("Zu dieser Adresse gibt es weder einen NetBox-Präfix noch ein Netz dieses Pi.")
+            raise NetBoxError("Zu dieser Adresse gibt es weder einen NetBox-Präfix noch ein Netz dieses Servers.")
         length = net.prefixlen
 
     try:

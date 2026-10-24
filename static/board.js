@@ -1,8 +1,8 @@
 /**
- * PiCore Dashboard - boards (Homarr-style start page)
+ * HostCore Dashboard - boards (Homarr-style start page)
  *
  * A board is a free grid (gridstack) of app tiles, widgets (search, embedded web page) and the
- * dashboard's own cards, grouped into sections (categories). Several boards, stored on the Pi
+ * dashboard's own cards, grouped into sections (categories). Several boards, stored on the server
  * (see boards.py) and shared by every device; editing needs the "board.edit" permission.
  *
  * The cards are the existing elements of index.html: they wait in #card-pool and are moved into
@@ -33,7 +33,7 @@
     actions: [3, 5], health: [3, 6], reminders: [3, 6], kanban: [3, 6], pi3d: [3, 6], history: [12, 8],
     workloads: [12, 5], storage: [6, 14], processes: [6, 14]
   };
-  const KIND_LABELS = { search: 'Suchleiste', iframe: 'Webseite', text: 'Textblock', links: 'Linkliste', rss: 'RSS-Feed', calendar: 'Kalender', remote: 'Remote-Pi' };
+  const KIND_LABELS = { search: 'Suchleiste', iframe: 'Webseite', text: 'Textblock', links: 'Linkliste', rss: 'RSS-Feed', calendar: 'Kalender', remote: 'Remote-Server' };
   const ENGINE_LABELS = { duckduckgo: 'DuckDuckGo', google: 'Google', startpage: 'Startpage', bing: 'Bing', ecosia: 'Ecosia', custom: 'Eigene Adresse' };
   const ICONS = {
     edit: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
@@ -465,11 +465,11 @@
   function remoteWidget(item) {
     const open = el('button', 'text-btn', t('Anzeigen'));
     open.type = 'button';
-    open.title = t('Dashboard auf diesen Pi umschalten');
+    open.title = t('Dashboard auf diesen Server umschalten');
     open.addEventListener('click', async () => {
       try { await api('/api/remotes/select', { id: item.remote }); location.href = '/'; } catch (err) { toast(err.message, 'error'); }
     });
-    const { box, body } = widgetBox('board-remote', t('Remote-Pi'), open);
+    const { box, body } = widgetBox('board-remote', t('Remote-Server'), open);
     const titleEl = box.querySelector('.widget-label');
     const bar = (label, value, pct, unit) => {
       const row = el('div', 'board-remote-row');
@@ -728,7 +728,7 @@
   // ---------------------------------------------------------------------------
   // Editing: model sync and saving
   // ---------------------------------------------------------------------------
-  // Positions from the grids back into the model; items that are not shown (hardware this Pi lacks,
+  // Positions from the grids back into the model; items that are not shown (hardware this server lacks,
   // no permission, collapsed) keep their place
   function sync() {
     if (flow || !grids.size) return;
@@ -1038,7 +1038,7 @@
     const url = input(item.url, { max: 500, required: true, placeholder: 'https://192.168.178.10:8006' });
     const desc = input(item.description, { max: 120, placeholder: t('optional') });
     const pingUrl = input(item.ping_url, { max: 500, placeholder: t('leer = Adresse oben') });
-    const [pingLabel, ping] = check(t('Erreichbarkeit anzeigen (der Pi prüft jede Minute)'), item.ping !== false);
+    const [pingLabel, ping] = check(t('Erreichbarkeit anzeigen (der Server prüft jede Minute)'), item.ping !== false);
     const [tabLabel, newTab] = check(t('In neuem Tab öffnen'), item.new_tab !== false);
 
     // Icon picker: dashboard-icons by name, or an own image address
@@ -1110,7 +1110,7 @@
     const iconRow = el('div', 'board-icon-row');
     iconRow.append(preview, field(t('Icon'), iconQ, t('Aus der Sammlung „Dashboard Icons“ oder eine eigene Bild-Adresse')));
     const grid = el('div', 'board-form-grid');
-    grid.append(field(t('Name'), name), field(t('Adresse'), url), field(t('Beschreibung'), desc), field(t('Status-Adresse'), pingUrl, t('Falls der Pi die App unter einer anderen Adresse erreicht')));
+    grid.append(field(t('Name'), name), field(t('Adresse'), url), field(t('Beschreibung'), desc), field(t('Status-Adresse'), pingUrl, t('Falls der Server die App unter einer anderen Adresse erreicht')));
     const { row, msg } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
     form.append(grid, iconRow, results, pingLabel, tabLabel, row);
     form.addEventListener('submit', e => {
@@ -1245,13 +1245,13 @@
     const form = el('form', 'board-form');
     const sel = el('select');
     const { row, msg } = actions(item.id ? t('Speichern') : t('Hinzufügen'));
-    form.append(field(t('Remote-Pi'), sel), row);
+    form.append(field(t('Remote-Server'), sel), row);
     api('/api/remotes/current').then(r => {
       (r.hosts || []).forEach(h => { const o = el('option', '', h.name); o.value = h.id; sel.appendChild(o); });
       if (item.remote) sel.value = item.remote;
       if (!(r.hosts || []).length) {
         msg.className = 'form-msg error';
-        msg.textContent = t('Noch keine Remote-Pis – unter Einstellungen → Remote-Pis hinzufügen.');
+        msg.textContent = t('Noch keine Remote-Server – unter Einstellungen → Remote-Server hinzufügen.');
       }
     }).catch(err => { msg.className = 'form-msg error'; msg.textContent = err.message; });
     form.addEventListener('submit', e => {
@@ -1367,7 +1367,7 @@
     };
     const forms = { app: appForm, search: searchForm, iframe: frameForm, text: textForm, links: linksForm, rss: rssForm, calendar: calendarForm, remote: remoteForm };
     const titles = { app: 'App bearbeiten', search: 'Suchleiste bearbeiten', iframe: 'Webseite bearbeiten', text: 'Textblock bearbeiten',
-                     links: 'Linkliste bearbeiten', rss: 'RSS-Feed bearbeiten', calendar: 'Kalender bearbeiten', remote: 'Remote-Pi-Widget bearbeiten' };
+                     links: 'Linkliste bearbeiten', rss: 'RSS-Feed bearbeiten', calendar: 'Kalender bearbeiten', remote: 'Remote-Server-Widget bearbeiten' };
     openModal(t(titles[item.kind]), '', forms[item.kind](item, done));
   }
 
@@ -1410,8 +1410,8 @@
         simple(t('Kalender'), t('Erinnerungen, fällige Aufgaben und Wartungsfenster in einer Monatsansicht.'), calendarForm, {}, 4, 9);
         simple(t('Textblock'), t('Freier Text mit Markdown: Überschrift, Hinweis oder Kurzanleitung.'), textForm, {}, 4, 4);
         simple(t('Linkliste'), t('Viele Links kompakt in einem Widget, z.B. Router- und Hersteller-Seiten.'), linksForm, {}, 3, 5);
-        simple(t('RSS-Feed'), t('Neuigkeiten aus Feeds, z.B. Releases deiner Tools – vom Pi abgerufen.'), rssForm, { limit: 15 }, 4, 6);
-        simple(t('Remote-Pi'), t('Die wichtigsten Werte eines Remote-Pis, ohne umzuschalten.'), remoteForm, {}, 3, 5);
+        simple(t('RSS-Feed'), t('Neuigkeiten aus Feeds, z.B. Releases deiner Tools – vom Server abgerufen.'), rssForm, { limit: 15 }, 4, 6);
+        simple(t('Remote-Server'), t('Die wichtigsten Werte eines Remote-Servers, ohne umzuschalten.'), remoteForm, {}, 3, 5);
         return box;
       },
       card: () => {
@@ -1594,7 +1594,7 @@
     activeId = [fromHash, activeId, stored].find(id => id && cfg.boards.some(b => b.id === id)) || cfg.boards[0].id;
     render();
     startStatus();
-    // The first board's icons are being looked up on the Pi: show them as soon as they are there
+    // The first board's icons are being looked up on the server: show them as soon as they are there
     if (cfg.icons_pending) setTimeout(() => { if (!editing && !modalOpen()) load().catch(() => {}); }, 6000);
   }
 

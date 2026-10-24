@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - documentation section "Probleme": recurring incidents bundled into a problem
+ * HostCore Dashboard - documentation section "Probleme": recurring incidents bundled into a problem
  * with root cause, workaround (known error) and solution via a change request; suggestions and
  * workaround hints for open incidents.
  */

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Store a GitHub access token so the Pi can pull from a private repo.
+# Store a GitHub access token so the server can pull from a private repo.
 # Usage: ./set-token.sh            (asks for the token, input hidden)
 #        ./set-token.sh <token>
 # Create one at https://github.com/settings/personal-access-tokens/new
@@ -38,4 +38,4 @@ umask 077
 printf 'https://x-access-token:%s@github.com\n' "$TOKEN" > "$CRED_FILE"
 git -C "$DIR" config credential.helper "store --file=$CRED_FILE"
 
-echo "✅ Token saved. The Pi can now pull from $URL"
+echo "✅ Token saved. The server can now pull from $URL"

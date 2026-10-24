@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Rechte-Review": accounts with critical rights, second factor
+ * HostCore Dashboard - settings section "Rechte-Review": accounts with critical rights, second factor
  * and last activity, findings with direct fixes, groups, links without login, MCP identities;
  * sign-off with note and the history of reviews (Markdown export).
  */

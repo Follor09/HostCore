@@ -1,5 +1,5 @@
 """
-Every sensor the Pi exposes, in one list:
+Every sensor the server exposes, in one list:
 
 - hwmon (/sys/class/hwmon): CPU/SoC, RP1 I/O chip, NVMe, fan speed, ...
 - vcgencmd: PMIC temperature and the PMIC's voltage/current readings per power rail

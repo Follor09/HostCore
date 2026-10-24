@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - documentation section "Störungen": incidents with severity, affected services,
+ * HostCore Dashboard - documentation section "Störungen": incidents with severity, affected services,
  * status and a timeline of updates; resolved ones get a post-mortem with actions for the task board.
  */
 (function () {

@@ -1,7 +1,7 @@
 """
 Baseline check (Compliance -> Grundschutz-Check): a checklist modelled on BSI IT-Grundschutz
 modules and CIS controls - not a certification, but a structured view of how well the basics are
-covered on this Pi.
+covered on this server.
 
 - Requirements grouped by area, each with the Grundschutz module it leans on (e.g. ORP.4,
   OPS.1.1.3, CON.3, DER.4, SYS.1.6). Most are rated automatically from what the dashboard

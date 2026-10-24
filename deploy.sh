@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# First deploy from the Mac: clones the GitHub repo onto the Pi and runs install.sh.
-# After that, just `git push` - the Pi pulls every new commit automatically.
+# First deploy from the Mac: clones the GitHub repo onto the server and runs install.sh.
+# After that, just `git push` - the server pulls every new commit automatically.
 # Usage: ./deploy.sh [user@pi-ip-or-hostname] [github-repo-url]
 
 set -e
@@ -9,13 +9,13 @@ PI_TARGET="${1}"
 REPO_URL="${2:-$(git -C "$(dirname "$0")" remote get-url origin 2>/dev/null || true)}"
 
 if [ -z "$PI_TARGET" ]; then
-    read -p "SSH-Ziel deines Pi (z.B. pi@raspberrypi.local): " PI_TARGET
+    read -p "SSH-Ziel deines Servers (z.B. pi@raspberrypi.local oder admin@server): " PI_TARGET
 fi
 if [ -z "$REPO_URL" ]; then
     read -p "GitHub-Repo URL (z.B. https://github.com/USER/pi-dashboard.git): " REPO_URL
 fi
 if [ -z "$PI_TARGET" ] || [ -z "$REPO_URL" ]; then
-    echo "❌ Pi-Ziel und Repo-URL werden benötigt. Abbruch."
+    echo "❌ Server-Ziel und Repo-URL werden benötigt. Abbruch."
     exit 1
 fi
 

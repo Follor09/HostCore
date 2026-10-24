@@ -1,5 +1,5 @@
 [Unit]
-Description=PiCore Dashboard: country block lists for the firewall (ipset, before ufw)
+Description=HostCore Dashboard: country block lists for the firewall (ipset, before ufw)
 DefaultDependencies=no
 After=local-fs.target systemd-modules-load.service
 Before=ufw.service network-pre.target

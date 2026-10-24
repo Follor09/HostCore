@@ -189,7 +189,7 @@ def _verify_signature(stored: str, signed: bytes, signature: bytes) -> bool:
 # ---------------------------------------------------------------------------
 def registration_options(username: str, user_handle: str, rp_id: str, origin: str, existing: List[str]) -> Dict[str, Any]:
     return {"challenge": new_challenge("register", username, rp_id, origin),
-            "rp": {"name": "PiCore", "id": rp_id},
+            "rp": {"name": "HostCore", "id": rp_id},
             "user": {"id": user_handle, "name": username, "displayName": username},
             "pubKeyCredParams": [{"type": "public-key", "alg": a} for a in ALGS],
             "timeout": 120000, "attestation": "none",

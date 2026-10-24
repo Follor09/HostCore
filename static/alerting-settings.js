@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Alarmierung": which events become alarms, the escalation
+ * HostCore Dashboard - settings section "Alarmierung": which events become alarms, the escalation
  * chain (who is told after how many minutes without acknowledgement), repeating, test alarm.
  */
 (function () {

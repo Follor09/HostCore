@@ -322,7 +322,7 @@ def set_governor(governor: str, persist: bool = True) -> Dict[str, Any]:
         if res.returncode != 0:
             err = res.stderr.strip()
             if "password" in err.lower() or "not allowed" in err.lower():
-                return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
+                return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Server erneut ausführen."}
             return {"ok": False, "message": err[:200] or "Umschalten fehlgeschlagen."}
     if persist:
         settings_store.set("cpu_governor", governor)
@@ -636,7 +636,7 @@ def _sudo(cmd: List[str]) -> None:
     if res.returncode != 0:
         err = res.stderr.strip()
         if "password" in err.lower() or "not allowed" in err.lower():
-            raise PermissionError("Keine Berechtigung – install.sh auf dem Pi erneut ausführen.")
+            raise PermissionError("Keine Berechtigung – install.sh auf dem Server erneut ausführen.")
         raise RuntimeError(err[:200] or "Fehlgeschlagen.")
 
 

@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system page section "Backups": watched restic / Borg repositories and backup folders.
+ * HostCore Dashboard - system page section "Backups": watched restic / Borg repositories and backup folders.
  */
 (function () {
   'use strict';

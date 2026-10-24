@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - documentation page: hardware inventory, operations journal,
+ * HostCore Dashboard - documentation page: hardware inventory, operations journal,
  * runbooks (checklists with recorded runs) and service docs ("Steckbriefe").
  */
 (function () {
@@ -359,7 +359,7 @@
     const list = $('rb-list');
     list.innerHTML = '';
     const items = state.runbooks.runbooks;
-    if (!items.length) list.appendChild(el('p', 'field-hint', t('Noch keine Runbooks. Typische Kandidaten: Pi neu aufsetzen, Backup wiederherstellen, Zertifikat erneuern.')));
+    if (!items.length) list.appendChild(el('p', 'field-hint', t('Noch keine Runbooks. Typische Kandidaten: Server neu aufsetzen, Backup wiederherstellen, Zertifikat erneuern.')));
     items.forEach(rb => list.appendChild(runbookCard(rb)));
   }
 
@@ -462,7 +462,7 @@
     wrap.hidden = false;
     wrap.appendChild(el('h3', 'subhead', rb ? t('Runbook bearbeiten') : t('Neues Runbook')));
     wrap.appendChild(buildForm([
-      { key: 'title', label: 'Titel', value: rb && rb.title, required: true, max: 100, placeholder: 'z. B. Pi neu aufsetzen' },
+      { key: 'title', label: 'Titel', value: rb && rb.title, required: true, max: 100, placeholder: 'z. B. Server neu aufsetzen' },
       { key: 'description', label: 'Beschreibung', value: rb && rb.description, max: 1000 },
       { key: 'steps', label: 'Schritte – einer pro Zeile', type: 'textarea', rows: 8, full: true, required: true,
         value: rb ? rb.steps.map(s => s.text).join('\n') : '' }

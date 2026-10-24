@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - history playback
+ * HostCore Dashboard - history playback
  * Play back a stored day: drag the time slider (or press play) and the CPU,
  * temperature, RAM, network, fan, power and 3D-Pi cards show the values of that minute.
  * Events of the day (service down, throttling, logins …) are marks on the slider and pop
@@ -174,7 +174,7 @@
     });
   }
 
-  // Stretches without samples (dashboard or Pi off) are hatched on the track
+  // Stretches without samples (dashboard or Server off) are hatched on the track
   function renderGaps() {
     R.gaps.innerHTML = '';
     const span = Math.max(1, R.end - R.start);

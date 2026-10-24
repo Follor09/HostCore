@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - live 3D Raspberry Pi 5 (CSS 3D, no library)
+ * HostCore Dashboard - live 3D Raspberry Pi 5 (CSS 3D, no library)
  * The board turns slowly and can be dragged around. It shows the live values:
  * the cooler glows from blue to red with the CPU temperature, the fan spins with the
  * real fan level, the green activity LED blinks faster with CPU load and the Ethernet

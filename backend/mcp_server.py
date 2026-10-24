@@ -3,10 +3,10 @@ MCP server built into the dashboard (Streamable HTTP at /mcp), secured with OAut
 FastMCP's OIDCProxy federated to Pocket ID - the same setup as the *-no-kari servers.
 
 - Configured under Einstellungen -> MCP-Server (settings.json "mcp"); the client secret and the
-  JWT signing key never leave the Pi again.
+  JWT signing key never leave the server again.
 - Every Pocket ID identity (e-mail, username or subject) is mapped to a dashboard user. Tools call
   the dashboard's own API in-process as that user, so its permissions, the activity log and the
-  forwarding to remote Pis apply exactly as in the browser.
+  forwarding to remote servers apply exactly as in the browser.
 - The MCP app is (re)built at startup and whenever the settings change; requests for its paths are
   routed to it by McpDispatch (outermost ASGI layer). Under the public MCP host name nothing else of
   the dashboard is reachable.
@@ -236,7 +236,7 @@ class McpDispatch:
 APPROVAL_TOOLS = {
     "service_action": "Dienste starten/stoppen", "container_action": "Container starten/stoppen",
     "stack_action": "Compose-Stacks", "kube_restart": "Kubernetes neu starten", "kube_scale": "Kubernetes skalieren",
-    "apt_run": "apt-Updates", "fleet_apt": "apt auf mehreren Pis", "fleet_upgrade_packages": "Einzelne Pakete aktualisieren", "packages": "Pakete installieren/entfernen",
+    "apt_run": "apt-Updates", "fleet_apt": "apt auf mehreren Servern", "fleet_upgrade_packages": "Einzelne Pakete aktualisieren", "packages": "Pakete installieren/entfernen",
     "system_power": "Neustart & Herunterfahren", "firewall": "Firewall ändern", "run_quick_action": "Schnellaktionen",
     "wake_on_lan": "Wake-on-LAN", "maintenance_window": "Wartungsfenster", "write_file": "Dateien schreiben",
     "move_to_trash": "Dateien löschen", "delete_task": "Aufgaben löschen", "write_notes": "Notizen ändern",
@@ -497,7 +497,7 @@ async def _api(method: str, path: str, params: Optional[dict] = None, body: Any 
     if host:
         r = next((x for x in remotes._all() if host in (x["id"], x["name"])), None)
         if not r:
-            raise ToolError(f"Unbekannter Pi „{host}“ – list_hosts zeigt die Namen.")
+            raise ToolError(f"Unbekannter Server „{host}“ – list_hosts zeigt die Namen.")
         host_id = r["id"]
     try:
         return await _call(user, method, path, params=params, json_body=body, host=host_id)
@@ -523,9 +523,9 @@ def _build(c: Dict[str, Any]):
     mcp = FastMCP(
         name="picore",
         instructions=(
-            "PiCore Server Dashboard: Raspberry-Pi/homelab monitoring and control. Start with get_overview. "
+            "HostCore Server Dashboard: Raspberry-Pi/homelab monitoring and control. Start with get_overview. "
             "Every tool acts as the mapped dashboard user and has exactly that user's permissions. "
-            "Most tools take an optional `host` (a remote Pi name from list_hosts; empty = the main Pi)."),
+            "Most tools take an optional `host` (a remote server name from list_hosts; empty = the main server)."),
         auth=auth_provider,
     )
     mcp.add_middleware(_make_middleware())
@@ -556,12 +556,12 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool(annotations=RO)
     async def list_hosts() -> dict:
-        """The main Pi and all remote Pis (agents) with online state - names usable as `host`."""
+        """The main server and all remote servers (agents) with online state - names usable as `host`."""
         return await _api("GET", "/api/remotes/current")
 
     @mcp.tool(annotations=RO)
     async def fleet_overview() -> dict:
-        """All Pis in one table: online, version, apt updates, temperature, CPU, RAM, disk, uptime."""
+        """All servers in one table: online, version, apt updates, temperature, CPU, RAM, disk, uptime."""
         return await _api("GET", "/api/fleet")
 
     @mcp.tool(annotations=RO)
@@ -659,12 +659,12 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool(annotations=RO)
     async def dns_lookup(name: str, type: Literal["A", "AAAA", "MX", "TXT", "CNAME", "NS", "PTR", "SRV"] = "A", host: Host = None) -> dict:
-        """DNS lookup from the Pi."""
+        """DNS lookup from the server."""
         return await _api("POST", "/api/tools/dns", body={"name": name, "type": type}, host=host or "")
 
     @mcp.tool(annotations=RO)
     async def port_test(target: str, ports: str, host: Host = None) -> dict:
-        """TCP test from the Pi to target, ports e.g. '22,80,443' or '8000-8010' (max. 100)."""
+        """TCP test from the server to target, ports e.g. '22,80,443' or '8000-8010' (max. 100)."""
         return await _api("POST", "/api/tools/port-test", body={"host": target, "ports": ports}, host=host or "")
 
     # ------------------------------------------------------------------ control
@@ -700,7 +700,7 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool
     async def fleet_apt(hosts: List[str], mode: Literal["update", "upgrade"]) -> dict:
-        """Start apt update/upgrade on several Pis at once ('' or 'local' = the main Pi, else remote names)."""
+        """Start apt update/upgrade on several servers at once ('' or 'local' = the main server, else remote names)."""
         import remotes
         ids = []
         for h in hosts:
@@ -714,8 +714,8 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool
     async def fleet_upgrade_packages(targets: Dict[str, List[str]]) -> dict:
-        """Upgrade chosen packages (only newer versions of installed ones) per Pi: {'pi-name' or 'local': ['pkg', ...]}.
-        The pending packages per Pi are in fleet_overview (field packages)."""
+        """Upgrade chosen packages (only newer versions of installed ones) per server: {'pi-name' or 'local': ['pkg', ...]}.
+        The pending packages per server are in fleet_overview (field packages)."""
         import remotes
         ids: Dict[str, List[str]] = {}
         for h, names in targets.items():
@@ -734,7 +734,7 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool
     async def system_power(action: Literal["reboot", "shutdown"], host: Host = None) -> dict:
-        """Reboot or shut down a Pi."""
+        """Reboot or shut down a server."""
         return await _api("POST", f"/api/action/{action}", host=host or "")
 
     @mcp.tool
@@ -963,12 +963,12 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool(annotations=RO)
     async def fleet_latency(hours: int = 24) -> dict:
-        """Ping round-trip time and packet loss between all Pis (now, average, maximum, hourly series)."""
+        """Ping round-trip time and packet loss between all servers (now, average, maximum, hourly series)."""
         return await _api("GET", "/api/fleet/latency", {"hours": hours})
 
     @mcp.tool
     async def fleet_dashboard_update(hosts: List[str]) -> dict:
-        """Let Pis pull the newest dashboard version now ('' or 'local' = the main Pi). Versions per Pi: fleet_overview."""
+        """Let Server pull the newest dashboard version now ('' or 'local' = the main server). Versions per server: fleet_overview."""
         import remotes
         ids = ["" if h in ("", "local") else next((x["id"] for x in remotes._all() if h in (x["id"], x["name"])), h) for h in hosts]
         return await _api("POST", "/api/fleet/dashboard-update", body={"ids": ids})
@@ -1029,7 +1029,7 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 
     @mcp.tool
     async def deploy_stack_template(template_id: str, hosts: List[str], name: str = "", env: str = "") -> dict:
-        """Create a new stack from a template on Pis ('' or 'local' = main Pi); env = .env content (secrets)."""
+        """Create a new stack from a template on servers ('' or 'local' = main server); env = .env content (secrets)."""
         import remotes
         ids = ["" if h in ("", "local") else next((x["id"] for x in remotes._all() if h in (x["id"], x["name"])), h) for h in hosts]
         return await _api("POST", f"/api/stack-templates/{template_id}/deploy", body={"targets": ids, "name": name, "env": env})
@@ -1067,13 +1067,13 @@ def _register_tools(mcp) -> None:  # noqa: C901 - one flat list of tools
 # ---------------------------------------------------------------------------
 def _register_prompts(mcp) -> None:
     def where(host: Optional[str]) -> str:
-        return f" auf dem Pi „{host}“ (host=\"{host}\")" if host else ""
+        return f" auf dem Server „{host}“ (host=\"{host}\")" if host else ""
 
     @mcp.prompt(name="morgen_check", title="Morgen-Check")
     def morgen_check(host: Optional[str] = None) -> str:
         """Kurzer Zustandsbericht für den Start in den Tag."""
         return (f"Mach einen Morgen-Check des Homelabs{where(host)}. Nutze get_overview, get_events (days=1), apt_status, "
-                "web_services, list_backups, list_domains und list_reminders – bei mehreren Pis zusätzlich fleet_overview. "
+                "web_services, list_backups, list_domains und list_reminders – bei mehreren Servern zusätzlich fleet_overview. "
                 "Fasse knapp zusammen: 1. Was ist auffällig oder kaputt (mit Ursache, falls aus den Logs erkennbar), "
                 "2. Was ist heute fällig (Erinnerungen, Fristen, überfällige Backups, ablaufende Domains), "
                 "3. Empfohlene nächste Schritte. Ändere nichts ohne Rückfrage.")

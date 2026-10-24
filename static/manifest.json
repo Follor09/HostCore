@@ -1,7 +1,7 @@
 {
-  "name": "PiCore Server",
-  "short_name": "PiCore",
-  "description": "Raspberry Pi dashboard",
+  "name": "HostCore Server",
+  "short_name": "HostCore",
+  "description": "HostCore server & homelab dashboard",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

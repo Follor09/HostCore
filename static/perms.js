@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - what the logged-in user may do.
+ * HostCore Dashboard - what the logged-in user may do.
  * Elements with data-perm="<permission>" are hidden without that permission (the server
  * checks every request anyway - this only keeps the interface free of dead buttons).
  * Other scripts ask window.PiAuth.can('<permission>') or wait for PiAuth.ready.

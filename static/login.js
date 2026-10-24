@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - login page: username + password, then (if set up) the code of the
+ * HostCore Dashboard - login page: username + password, then (if set up) the code of the
  * authenticator app or a recovery code. Kept out of the HTML so the page works with a
  * strict Content-Security-Policy (no inline scripts).
  */
@@ -33,7 +33,7 @@
   fetch('/api/auth/status').then(r => r.json()).then(status => {
     if (!status.configured) {
       notice.hidden = false;
-      notice.textContent = t('Noch kein Passwort gesetzt. Auf dem Pi per SSH ausführen:') + ' ';
+      notice.textContent = t('Noch kein Passwort gesetzt. Auf dem Server per SSH ausführen:') + ' ';
       const c = document.createElement('code');
       c.textContent = '~/pi-dashboard/set-password.sh';
       notice.appendChild(c);

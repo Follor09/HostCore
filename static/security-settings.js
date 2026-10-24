@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings sections "Zwei-Faktor-Anmeldung", "Passkeys", "Sitzungen" and the e-mail
+ * HostCore Dashboard - settings sections "Zwei-Faktor-Anmeldung", "Passkeys", "Sitzungen" and the e-mail
  * address for "Passwort vergessen" (own account) and
  * "Sicherheit" (admins): checklist for running on the internet, proxy / 2FA policy / confirm
  * again / home-network-only areas, all sessions and security events.
@@ -231,7 +231,7 @@
     trusted.rows = 3;
     trusted.value = (d.trusted || []).join('\n');
     trusted.spellcheck = false;
-    const trustedWrap = field(form, 'Vertrauenswürdige Proxy-Adressen (eine pro Zeile)', trusted, 'Wo cloudflared bzw. der Proxy läuft: 127.0.0.1 auf dem Pi selbst, 172.16.0.0/12 in Docker, 10.42.0.0/16 in k3s.');
+    const trustedWrap = field(form, 'Vertrauenswürdige Proxy-Adressen (eine pro Zeile)', trusted, 'Wo cloudflared bzw. der Proxy läuft: 127.0.0.1 auf dem Server selbst, 172.16.0.0/12 in Docker, 10.42.0.0/16 in k3s.');
     const syncProxy = () => { trustedWrap.hidden = proxy.value === 'none'; };
     proxy.addEventListener('change', syncProxy);
     syncProxy();
@@ -247,7 +247,7 @@
     const twofa = el('select');
     Object.entries(d.twofa_policies).forEach(([k, v]) => { const o = el('option', '', t(v)); o.value = k; twofa.appendChild(o); });
     twofa.value = d.twofa;
-    field(form, 'Zwei-Faktor-Anmeldung', twofa, 'Bei Pflicht müssen betroffene Benutzer sie bei der nächsten Anmeldung einrichten, bevor sie weiterkommen. Handy verloren: Benutzer → „Zwei-Faktor zurücksetzen“ oder auf dem Pi ./set-password.sh 2fa-reset <name>.');
+    field(form, 'Zwei-Faktor-Anmeldung', twofa, 'Bei Pflicht müssen betroffene Benutzer sie bei der nächsten Anmeldung einrichten, bevor sie weiterkommen. Handy verloren: Benutzer → „Zwei-Faktor zurücksetzen“ oder auf dem Server ./set-password.sh 2fa-reset <name>.');
     const notify = toggle(form, 'Ereignis (und E-Mail) bei Anmeldung von einer neuen Adresse außerhalb des Heimnetzes', d.notify_new_login, 'notify');
     const reset = toggle(form, '„Passwort vergessen“ per E-Mail-Link erlauben (für Konten mit hinterlegter Adresse; braucht Einstellungen → E-Mail mit Dashboard-Adresse)', d.password_reset, 'password_reset');
 

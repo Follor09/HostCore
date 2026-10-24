@@ -3,7 +3,7 @@ Homelab extras for the dashboard:
 - System updates: pending apt packages (security separately), reboot-required flag
 - NVMe health: temperature (hwmon) and SMART data (smartctl via a narrow sudo rule)
 - Workloads: Docker containers and Kubernetes pods
-Everything slow is cached so the Pi isn't hammered by open browser tabs.
+Everything slow is cached so the server isn't hammered by open browser tabs.
 """
 
 import glob
@@ -159,7 +159,7 @@ def start_apt_run(mode: str, user: str = "") -> Dict[str, Any]:
     if res.returncode != 0:
         err = res.stderr.strip()
         if "password" in err.lower() or "not allowed" in err.lower():
-            return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Pi erneut ausführen."}
+            return {"ok": False, "message": "Keine Berechtigung – install.sh auf dem Server erneut ausführen."}
         return {"ok": False, "message": err[:200] or "Start fehlgeschlagen."}
     try:
         # Shows up in the task list with apt's own log (the run itself belongs to its root unit)

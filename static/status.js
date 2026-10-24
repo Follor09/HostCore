@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - public status page (/status), no login.
+ * HostCore Dashboard - public status page (/status), no login.
  * Shows the services the admin picked, with up/down and (optionally) 30 days of uptime.
  */
 (function () {

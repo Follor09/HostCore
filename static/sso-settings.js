@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Anmeldung per SSO": OpenID Connect provider, how provider
+ * HostCore Dashboard - settings section "Anmeldung per SSO": OpenID Connect provider, how provider
  * accounts become dashboard users, group mapping, local sign-in policy and linked accounts.
  */
 (function () {

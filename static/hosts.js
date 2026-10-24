@@ -1,7 +1,7 @@
 /**
- * PiCore Dashboard - host switcher: this Pi or a remote Pi running the PiCore agent.
+ * HostCore Dashboard - host switcher: this server or a remote server running the HostCore agent.
  * The choice is a cookie; the server then forwards all API calls, live data and the
- * terminal to that agent. A coloured bar shows while a remote Pi is selected.
+ * terminal to that agent. A coloured bar shows while a remote server is selected.
  */
 (function () {
   'use strict';
@@ -41,7 +41,7 @@
     const label = el('span', 'host-switch-name', state.current ? state.current.name : state.local);
     label.setAttribute('data-no-i18n', '');
     btn.appendChild(label);
-    btn.title = t('Pi wechseln');
+    btn.title = t('Server wechseln');
     const menu = el('div', 'host-menu');
     menu.hidden = true;
     menu.setAttribute('role', 'menu');
@@ -61,14 +61,14 @@
       return b;
     };
     menu.appendChild(el('div', 'host-menu-title', t('Dashboard zeigt')));
-    menu.appendChild(item(state.local, t('Dieser Pi'), true, !state.current, () => select('')));
+    menu.appendChild(item(state.local, t('Dieser Server'), true, !state.current, () => select('')));
     state.hosts.forEach(h => {
       const info = h.info || {};
       const sub = h.online === false ? t('nicht erreichbar') : [info.model, info.ip].filter(Boolean).join(' · ');
       menu.appendChild(item(h.name, sub, h.online, state.current && state.current.id === h.id, () => select(h.id)));
     });
     if (!window.PiAuth || window.PiAuth.can('users.manage')) {
-      const manage = el('a', 'host-manage', t('Remote-Pis verwalten'));
+      const manage = el('a', 'host-manage', t('Remote-Server verwalten'));
       manage.href = '/settings#remote';
       menu.appendChild(manage);
     }
@@ -92,7 +92,7 @@
     const bar = el('div', `remote-banner${cur.online === false ? ' offline' : ''}`);
     bar.setAttribute('role', 'status');
     const text = el('span', 'remote-banner-text');
-    text.append(document.createTextNode(`${t('Remote-Pi')}: `));
+    text.append(document.createTextNode(`${t('Remote-Server')}: `));
     const b = el('b', '', cur.name);
     b.setAttribute('data-no-i18n', '');
     text.appendChild(b);

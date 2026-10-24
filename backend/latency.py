@@ -1,7 +1,7 @@
 """
-Latency between the Pis (Flotte -> Latenz): every 5 minutes each Pi pings every other one
+Latency between the servers (Flotte -> Latenz): every 5 minutes each server pings every other one
 (3 pings, round-trip time and packet loss). The main dashboard runs it: its own pings
-directly, the remote Pis' pings through their agent (/api/tools/ping-peers). Results live in
+directly, the remote servers' pings through their agent (/api/tools/ping-peers). Results live in
 history.db (table latency) as long as the metrics (retention "metrics").
 """
 
@@ -72,7 +72,7 @@ def _nodes() -> List[Dict[str, str]]:
     snap = system_info.get_system_snapshot()
     net = snap.get("network_ip") or {}
     own = net.get("primary_ip", "") if isinstance(net, dict) else str(net)
-    nodes = [{"id": "", "name": platform.node() or "Dieser Pi", "host": own}]
+    nodes = [{"id": "", "name": platform.node() or "Dieser Server", "host": own}]
     for r in remotes._all():
         nodes.append({"id": r["id"], "name": r["name"], "host": urlparse(r["url"]).hostname or "", "url": r["url"], "token": r["token"]})
     return [n for n in nodes if n["host"]]

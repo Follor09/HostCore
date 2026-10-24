@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - long pages (System-Werkzeuge, Einstellungen, Container, Dokumentation) split into groups.
+ * HostCore Dashboard - long pages (System-Werkzeuge, Einstellungen, Container, Dokumentation) split into groups.
  *
  * The page starts with an overview: one tile per group with its state (warnings from the status summary
  * plus a few key figures) and links to its sections. Tabs switch between the groups; only the sections of
@@ -155,7 +155,7 @@
             const down = checks.filter(c => c.last && !c.last.ok).length;
             return checks.length ? [{ level: down ? 'warning' : 'good', text: down ? `${down} von ${checks.length} Web-Diensten nicht erreichbar` : `${n(checks.length, 'Web-Dienst', 'Web-Dienste')} erreichbar` }] : [];
           } },
-        { id: 'verbindungen', label: 'Verbindungen', desc: 'Remote-Pis, NetBox, MCP-Server, Webhooks und E-Mail', sections: ['remote', 'netbox', 'mcp', 'mcp-aktivitaet', 'webhooks', 'email'],
+        { id: 'verbindungen', label: 'Verbindungen', desc: 'Remote-Server, virtuelle Maschinen, NetBox, MCP-Server, Webhooks und E-Mail', sections: ['remote', 'vms', 'netbox', 'mcp', 'mcp-aktivitaet', 'webhooks', 'email'],
           facts: async () => {
             const out = [];
             const [mcp, mail, ap] = await Promise.allSettled([get('/api/settings/mcp'), get('/api/settings/email'), get('/api/mcp/approvals')]);
@@ -232,7 +232,7 @@
             if (!out.length) out.push({ level: 'good', text: `${n(total, 'Stack', 'Stacks')} synchron` });
             return out;
           } },
-        { id: 'vorlagen', label: 'Stack-Vorlagen', desc: 'Eigene Compose-Vorlagen auf beliebigen Pis anlegen', sections: ['stack-vorlagen'] },
+        { id: 'vorlagen', label: 'Stack-Vorlagen', desc: 'Eigene Compose-Vorlagen auf beliebigen Servern anlegen', sections: ['stack-vorlagen'] },
         { id: 'statistik', label: 'Statistik', desc: 'CPU, RAM und Netzwerk pro Container', sections: ['statistik'] },
         { id: 'apps', label: 'App-Store', desc: 'Apps als Compose-Stack einrichten', sections: ['apps'] }
       ]

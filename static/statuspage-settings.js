@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings for the public status page (/status):
+ * HostCore Dashboard - settings for the public status page (/status):
  * on/off, title, which services / web services / stacks appear and under which name.
  */
 (function () {

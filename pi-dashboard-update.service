@@ -1,5 +1,5 @@
 [Unit]
-Description=Pull new PiCore Dashboard commits from GitHub
+Description=Pull new HostCore Dashboard commits from GitHub
 Wants=network-online.target
 After=network-online.target
 

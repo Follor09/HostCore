@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - container page section "Image-Richtlinien": rules for container images
+ * HostCore Dashboard - container page section "Image-Richtlinien": rules for container images
  * (registries, fixed versions, digests, block list, age, exceptions) and the running containers
  * checked against them.
  */

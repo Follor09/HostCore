@@ -36,6 +36,7 @@ DENIED = [os.path.realpath(p) for p in (
     os.path.join(BASE_DIR, "history.db"),          # activity + login log
     os.path.join(BASE_DIR, "history.db-journal"),
     os.path.join(BASE_DIR, "mcp_calls.json"),
+    os.path.join(BASE_DIR, "vms"),                 # VM jobs: cloud-init password hash, SSH keys
     os.path.join(BASE_DIR, ".git"),
     os.path.join(HOME, ".ssh"),
     os.path.join(HOME, ".kube"),

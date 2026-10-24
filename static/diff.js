@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - comparing two versions: line diff for texts (LCS) and a field-by-field
+ * HostCore Dashboard - comparing two versions: line diff for texts (LCS) and a field-by-field
  * comparison for documentation entries. Used by the change history (Dokumentation) and the wiki.
  */
 (function () {

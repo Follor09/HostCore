@@ -33,3 +33,4 @@ tasks/
 recordings/
 gitops-env/
 .update-channel
+vms/

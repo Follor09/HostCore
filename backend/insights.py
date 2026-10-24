@@ -218,7 +218,7 @@ def events(days: int = 7, limit: int = 300) -> Dict[str, Any]:
 
     for b in settings_store.get("boots", []) or []:
         if b >= since:
-            out.append(_ev(b, "info", "system", "Pi gestartet", "", "/system#hardware"))
+            out.append(_ev(b, "info", "system", "Server gestartet", "", "/system#hardware"))
     prev_commit = None
     for s in settings_store.get("dashboard_starts", []) or []:
         if s["ts"] >= since:
@@ -564,7 +564,7 @@ def weekly_report() -> Dict[str, Any]:
 
     ev = events(7, 1000)
     rep["events"] = ev["counts"]
-    rep["reboots"] = [e["ts"] for e in ev["events"] if e["title"] == "Pi gestartet"]
+    rep["reboots"] = [e["ts"] for e in ev["events"] if e["title"] == "Server gestartet"]
     rep["new_devices"] = [e["detail"] for e in ev["events"] if e["title"] == "Neues Gerät im Netzwerk"]
     rep["updates"] = [e for e in ev["events"] if e["title"] == "Dashboard aktualisiert"]
     rep["disk"] = disk_forecast()

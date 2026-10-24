@@ -7,12 +7,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="PiCore">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
   <script src="/static/theme.js"></script>
-  <title>Flotte | PiCore Server</title>
+  <title>Flotte | HostCore Server</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -44,16 +44,16 @@
   <main class="fleet-layout">
     <section class="glass-card settings-section" id="flotte">
       <div class="section-head">
-        <h2>Alle Pis</h2>
+        <h2>Alle Server</h2>
         <div class="head-tools">
           <span class="field-hint" id="fleet-checked"></span>
           <button class="btn-secondary" id="fleet-reload" type="button">Neu laden</button>
         </div>
       </div>
-      <p class="section-desc">Dieser Pi und alle Remote-Pis auf einen Blick: Erreichbarkeit, Dashboard-Version, ausstehende Paket-Updates, Temperatur und Auslastung. Mehrere Pis auswählen und die Updates gemeinsam anstoßen – jeder Pi führt sie in seinem eigenen apt-Dienst aus. Remote-Pis kommen unter Einstellungen → Remote-Pis dazu.</p>
+      <p class="section-desc">Dieser Server und alle Remote-Server auf einen Blick: Erreichbarkeit, Dashboard-Version, ausstehende Paket-Updates, Temperatur und Auslastung. Mehrere Server auswählen und die Updates gemeinsam anstoßen – jeder Server führt sie in seinem eigenen apt-Dienst aus. Remote-Servern kommen unter Einstellungen → Remote-Server dazu.</p>
       <div class="fleet-actions" data-perm="updates.install">
-        <span class="field-hint" id="fleet-selected">Keine Pis ausgewählt</span>
-        <button class="btn-secondary" id="fleet-dash" type="button" disabled title="Die ausgewählten Pis holen sich sofort die neueste Dashboard-Version">Dashboard aktualisieren</button>
+        <span class="field-hint" id="fleet-selected">Keine Server ausgewählt</span>
+        <button class="btn-secondary" id="fleet-dash" type="button" disabled title="Die ausgewählten Server holen sich sofort die neueste Dashboard-Version">Dashboard aktualisieren</button>
         <button class="btn-secondary" id="fleet-update" type="button" disabled>Paketlisten aktualisieren</button>
         <button class="btn-primary" id="fleet-upgrade" type="button" disabled>Update &amp; Upgrade installieren</button>
       </div>
@@ -65,7 +65,7 @@
 
     <section class="glass-card settings-section" id="fleet-latency">
       <div class="section-head">
-        <h2>Latenz zwischen den Pis</h2>
+        <h2>Latenz zwischen den Servern</h2>
         <div class="head-tools">
           <span class="field-hint" id="lat-measured"></span>
           <div class="segmented" id="lat-range" role="tablist" aria-label="Zeitraum">
@@ -75,7 +75,7 @@
           <button class="btn-secondary" id="lat-measure" type="button" data-perm="network.tools">Jetzt messen</button>
         </div>
       </div>
-      <p class="section-desc">Alle 5 Minuten pingt jeder Pi jeden anderen (3 Pakete). Zeile = von, Spalte = nach; angezeigt wird die aktuelle Antwortzeit, darunter Durchschnitt und Paketverlust im Zeitraum. Ein Klick zeigt den Verlauf.</p>
+      <p class="section-desc">Alle 5 Minuten pingt jeder Server jeden anderen (3 Pakete). Zeile = von, Spalte = nach; angezeigt wird die aktuelle Antwortzeit, darunter Durchschnitt und Paketverlust im Zeitraum. Ein Klick zeigt den Verlauf.</p>
       <div class="table-scroll"><table class="data-table lat-table" id="lat-table"></table></div>
       <div class="lat-detail" id="lat-detail" hidden></div>
     </section>
@@ -85,7 +85,7 @@
         <h2>Kapazität</h2>
         <button class="btn-secondary" id="cap-reload" type="button">Neu laden</button>
       </div>
-      <p class="section-desc">Auslastung und Trend der letzten 30 Tage pro Pi und wann es eng wird: Arbeitsspeicher ab 90 % im Tagesschnitt, CPU ab 80 %, Laufwerke wenn sie voll sind. Details unter System-Werkzeuge → Zustand → Kapazitätsplanung des jeweiligen Pis.</p>
+      <p class="section-desc">Auslastung und Trend der letzten 30 Tage pro Server und wann es eng wird: Arbeitsspeicher ab 90 % im Tagesschnitt, CPU ab 80 %, Laufwerke wenn sie voll sind. Details unter System-Werkzeuge → Zustand → Kapazitätsplanung des jeweiligen Servers.</p>
       <div class="table-scroll"><table class="data-table" id="cap-table"></table></div>
     </section>
 
@@ -96,7 +96,7 @@
           <span class="field-hint" id="fp-summary"></span>
         </div>
       </div>
-      <p class="section-desc">Welche Pakete auf den ausgewählten Pis aktualisiert werden müssen – zusammengefasst, mit den betroffenen Pis. Ausgewählte Pakete werden auf jedem Pi aktualisiert, der sie braucht (nur neuere Versionen schon installierter Pakete, nichts kommt neu hinzu).</p>
+      <p class="section-desc">Welche Pakete auf den ausgewählten Servern aktualisiert werden müssen – zusammengefasst, mit den betroffenen Servern. Ausgewählte Pakete werden auf jedem Server aktualisiert, der sie braucht (nur neuere Versionen schon installierter Pakete, nichts kommt neu hinzu).</p>
       <form class="log-filters" id="fp-filters" autocomplete="off">
         <input type="search" id="fp-q" placeholder="Paket filtern …" spellcheck="false" aria-label="Paket filtern">
         <label class="toggle-label"><input type="checkbox" id="fp-security"> Nur Sicherheitsupdates</label>

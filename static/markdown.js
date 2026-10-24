@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - small, safe Markdown renderer (builds DOM nodes, never HTML strings).
+ * HostCore Dashboard - small, safe Markdown renderer (builds DOM nodes, never HTML strings).
  * Headings, paragraphs, lists (also numbered and - [ ] tasks), quotes, code blocks, tables,
  * horizontal rules; inline **bold**, *italic*, ~~strike~~, `code`, [links](https://…),
  * bare https links and [[wiki links]] (resolved by an optional callback).

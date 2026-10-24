@@ -296,7 +296,7 @@ def _send(a: Dict[str, Any], step: int, targets: List[Tuple[str, str]], again: b
                                              "(für einen Link in der Mail die Dashboard-Adresse in den E-Mail-Einstellungen eintragen)", "")]))
         text, body = notify._render("Alarm" if not step else f"Alarm – Stufe {step + 1}", intro, sections, "/system#alarme",
                                     overall=a["level"])
-        prefix = "[PiCore] " + ("Erinnerung: " if again else "Alarm: " if not step else f"Eskalation {step + 1}: ")
+        prefix = "[HostCore] " + ("Erinnerung: " if again else "Alarm: " if not step else f"Eskalation {step + 1}: ")
         try:
             notify.send(prefix + a["title"], text, body, to=[address])
             sent.append(label)
@@ -328,7 +328,7 @@ def _tell_acked(a: Dict[str, Any]) -> None:
     text, body = notify._render("Alarm quittiert", a["title"], [("Status", lines)], "/system#alarme", overall="good")
     for address in targets:
         try:
-            notify.send(f"[PiCore] Quittiert: {a['title']}", text, body, to=[address])
+            notify.send(f"[HostCore] Quittiert: {a['title']}", text, body, to=[address])
         except notify.NotifyError as e:
             logger.warning(f"Ack notice to {address}: {e}")
 
@@ -441,7 +441,7 @@ def send_test() -> Dict[str, Any]:
     text, body = notify._render("Test-Alarm", "So sieht ein Alarm aus. Dieser hier muss nicht quittiert werden.",
                                 [("Alarm", [("critical", "Beispiel: Dienst ausgefallen", "")])], "/system#alarme", overall="critical")
     for label, address in targets:
-        notify.send("[PiCore] Test-Alarm", text, body, to=[address])
+        notify.send("[HostCore] Test-Alarm", text, body, to=[address])
     return {"sent": [label for label, _ in targets], "problems": problems}
 
 

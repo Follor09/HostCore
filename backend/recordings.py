@@ -1,7 +1,7 @@
 """
 Terminal recordings (Einstellungen -> Terminal-Mitschnitte): every persistent web terminal
 session is recorded as an asciicast v2 file and can be played back later - who did what,
-when, on the Pi or in which container. Only admins (users.manage) see and play them.
+when, on the server or in which container. Only admins (users.manage) see and play them.
 
 tmux pipes the session's output into castrec.py (pipe-pane), so it is recorded while no
 browser is connected as well, and across dashboard restarts. Passwords typed at a sudo prompt

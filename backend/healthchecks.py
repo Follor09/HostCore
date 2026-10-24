@@ -230,7 +230,7 @@ async def _run_http(check: Dict[str, Any], result: Dict[str, Any], t0: float) ->
     await asyncio.to_thread(_local_only, urlparse(check["url"]).hostname)
     async with httpx.AsyncClient(verify=check.get("verify_tls", False), timeout=TIMEOUT,
                                  follow_redirects=check.get("type", "http") != "http") as client:
-        res = await client.get(check["url"], headers={"User-Agent": "PiCore-Healthcheck"})
+        res = await client.get(check["url"], headers={"User-Agent": "HostCore-Healthcheck"})
     result.update(status=res.status_code, ms=round((time.time() - t0) * 1000, 1), ok=res.status_code < 400)
     if res.status_code >= 400:
         result["error"] = f"HTTP {res.status_code}"

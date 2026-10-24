@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system tools section "Geheimnis-Scan": keys, tokens and passwords in stack
+ * HostCore Dashboard - system tools section "Geheimnis-Scan": keys, tokens and passwords in stack
  * folders, scripts and the dashboard's documentation (masked), readable variable/key files;
  * findings can be accepted, extra folders added.
  */

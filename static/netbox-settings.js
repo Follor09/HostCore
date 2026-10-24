@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "NetBox": address, API token, TLS check; test and disconnect.
+ * HostCore Dashboard - settings section "NetBox": address, API token, TLS check; test and disconnect.
  */
 (function () {
   'use strict';

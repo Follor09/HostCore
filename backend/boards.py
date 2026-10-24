@@ -5,9 +5,9 @@ dashboard's own cards, grouped into sections (categories), several boards per da
 - config in settings.json under "boards" ({"rev", "boards": [...]}), shared by every device;
   every save is fully validated and carries the revision it was based on, so two browsers
   never silently overwrite each other
-- app status: the Pi requests each app's address (or a separate ping address) and caches it
+- app status: the server requests each app's address (or a separate ping address) and caches it
 - icons: the dashboard-icons collection (homarr-labs, via jsDelivr) is searched and proxied
-  through the Pi with a disk cache, so browsers never talk to the CDN and icons keep working offline
+  through the server with a disk cache, so browsers never talk to the CDN and icons keep working offline
 """
 
 import asyncio
@@ -110,7 +110,7 @@ _icon_fill = {"last": 0.0, "task": None}
 
 async def ensure() -> Dict[str, Any]:
     """get(), and once after creating the default board: icons for the apps taken over from the own links
-    (in the background, so a Pi without internet never delays the page; retried every 10 minutes)."""
+    (in the background, so a server without internet never delays the page; retried every 10 minutes)."""
     cfg = get()
     task = _icon_fill["task"]
     if cfg.get("icons_pending") and (task is None or task.done()) and time.time() - _icon_fill["last"] > 600:
@@ -223,7 +223,7 @@ def _item(raw: Dict[str, Any], columns: int) -> Dict[str, Any]:
     elif kind == "remote":
         rid = _text(raw.get("remote"), 16)
         if not re.match(r"^[0-9a-f]{1,16}$", rid):
-            raise BoardError("Remote-Pi: Bitte einen Pi auswählen.")
+            raise BoardError("Remote-Server: Bitte einen Server auswählen.")
         item.update(kind="remote", remote=rid)
     else:
         raise BoardError("Unbekannte Art von Element.")
@@ -409,7 +409,7 @@ async def status(board_id: str) -> Dict[str, Any]:
         return {"apps": {}}
     # Home services often use their own certificates: reachability counts, not the certificate
     async with httpx.AsyncClient(timeout=httpx.Timeout(6.0), verify=False, follow_redirects=True,
-                                 headers={"User-Agent": "PiCore-Dashboard"}) as client:
+                                 headers={"User-Agent": "HostCore-Dashboard"}) as client:
         urls = {it["id"]: it.get("ping_url") or it["url"] for it in apps}
         unique = list(dict.fromkeys(urls.values()))
         results = await asyncio.gather(*(_ping_one(client, u) for u in unique))
@@ -451,7 +451,7 @@ async def _names() -> Dict[str, str]:
                 with open(path) as f:
                     data = json.load(f)
             else:
-                raise BoardError("Icon-Liste nicht erreichbar – der Pi braucht dafür einmal Internet.")
+                raise BoardError("Icon-Liste nicht erreichbar – der Server braucht dafür einmal Internet.")
     names: Dict[str, str] = {}
     for ext in ("png", "webp", "svg"):  # later wins: svg is preferred
         for file in data.get(ext, []) if isinstance(data, dict) else []:
@@ -591,7 +591,7 @@ def _item_of(board_id: str, item_id: str, kind: str) -> Dict[str, Any]:
 async def rss(board_id: str, item_id: str) -> Dict[str, Any]:
     item = _item_of(board_id, item_id, "rss")
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), follow_redirects=True,
-                                 headers={"User-Agent": "PiCore-Dashboard (RSS)"}) as client:
+                                 headers={"User-Agent": "HostCore-Dashboard (RSS)"}) as client:
         results = await asyncio.gather(*(_feed(client, u) for u in item["feeds"]))
     entries = sorted((e for r in results for e in r["entries"]), key=lambda e: e["ts"], reverse=True)
     return {"entries": entries[:item["limit"]], "errors": [r["error"] for r in results if r["error"]]}
@@ -655,7 +655,7 @@ def calendar(start: str, days: int, sources: List[str]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Remote Pi widget: a compact snapshot of an agent
+# Remote server widget: a compact snapshot of an agent
 # ---------------------------------------------------------------------------
 _remote_cache: Dict[str, Dict[str, Any]] = {}
 
@@ -664,7 +664,7 @@ async def remote(remote_id: str) -> Dict[str, Any]:
     import remotes
     r = remotes.get(remote_id)
     if not r:
-        raise BoardError("Remote-Pi nicht gefunden – unter Einstellungen → Remote-Pis hinzufügen.")
+        raise BoardError("Remote-Server nicht gefunden – unter Einstellungen → Remote-Server hinzufügen.")
     hit = _remote_cache.get(remote_id)
     if hit and time.time() - hit["ts"] < 8:
         return hit["data"]

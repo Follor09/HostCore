@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - compliance section "Grundschutz-Check": requirements per area with automatic
+ * HostCore Dashboard - compliance section "Grundschutz-Check": requirements per area with automatic
  * rating and evidence, manual assessment (state, note, evidence), fulfilment per area.
  */
 (function () {

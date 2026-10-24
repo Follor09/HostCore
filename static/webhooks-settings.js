@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - settings section "Webhooks": create / remove inbox addresses, recent messages.
+ * HostCore Dashboard - settings section "Webhooks": create / remove inbox addresses, recent messages.
  */
 (function () {
   'use strict';

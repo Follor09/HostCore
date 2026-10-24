@@ -1,8 +1,8 @@
 """
-Stack templates (Container -> Vorlagen): own Compose files saved on the main Pi, created as a
-new stack on any Pi of the fleet (~/picore-apps/<name>/docker-compose.yml, then pull + up -d).
+Stack templates (Container -> Vorlagen): own Compose files saved on the main server, created as a
+new stack on any server of the fleet (~/picore-apps/<name>/docker-compose.yml, then pull + up -d).
 A template can be taken from an existing stack. Secrets don't belong into a template: an .env
-is entered when creating the stack and only written on the target Pi.
+is entered when creating the stack and only written on the target server.
 """
 
 import asyncio
@@ -84,7 +84,7 @@ def delete(template_id: str) -> Dict[str, Any]:
 
 
 async def deploy(template_id: str, targets: List[str], stack_name: str, env: str, user: str = "") -> Dict[str, Any]:
-    """Create the stack on the given Pis ("" = this Pi), each in its own folder."""
+    """Create the stack on the given servers ("" = this server), each in its own folder."""
     import containers
     import fleet
     t = next((x for x in _items() if x["id"] == template_id), None)

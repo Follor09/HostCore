@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - container page section "Sicherheitscheck": risky settings per compose
+ * HostCore Dashboard - container page section "Sicherheitscheck": risky settings per compose
  * stack with score, finding and fix; findings can be accepted (ignored) per stack.
  */
 (function () {

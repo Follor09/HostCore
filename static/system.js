@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - System tools page
+ * HostCore Dashboard - System tools page
  * Network details and hardware info (more tools are added as sections).
  */
 (function () {
@@ -459,7 +459,7 @@
       const title = el('span', 'lan-name', d.alias || shortHost(d.hostname) || '–');
       title.setAttribute('data-no-i18n', '');
       name.appendChild(title);
-      if (d.self) name.append(' ', el('span', 'health-tag', 'Dieser Pi'));
+      if (d.self) name.append(' ', el('span', 'health-tag', 'Dieser Server'));
       const sub = el('span', 'lan-sub', [d.alias && d.hostname ? d.hostname : '', d.vendor].filter(Boolean).join(' · '));
       name.appendChild(sub);
 
@@ -1025,7 +1025,7 @@
         const btn = el('button', 'btn-danger', 'IP sperren');
         btn.title = 'Alles von dieser Adresse blockieren (Regel ganz oben)';
         confirmClick(btn, 'IP sperren', 'Sicher?', async () => {
-          if (await firewallAction('rule', { action: 'deny', direction: 'in', from: x.ip, position: 'top', proto: 'any', comment: 'Blocked via PiCore' })) toast(`${x.ip} gesperrt.`, 'success');
+          if (await firewallAction('rule', { action: 'deny', direction: 'in', from: x.ip, position: 'top', proto: 'any', comment: 'Blocked via HostCore' })) toast(`${x.ip} gesperrt.`, 'success');
         });
         cell.appendChild(btn);
       }
@@ -1055,7 +1055,7 @@
       } else svc.textContent = '–';
       if (x.listening) {
         const tag = el('span', 'health-tag warning', x.program ? `${x.program} lauscht` : 'läuft hier');
-        tag.title = 'Auf diesem Port lauscht ein Programm auf dem Pi – vielleicht soll er erreichbar sein?';
+        tag.title = 'Auf diesem Port lauscht ein Programm auf dem Server – vielleicht soll er erreichbar sein?';
         svc.append(' ', tag);
       }
       row.insertCell().textContent = fmtNum(x.count);
@@ -1634,7 +1634,7 @@
       state.className = `health-tag ${f.reboot_pending ? 'warning' : 'good'}`;
       state.textContent = f.reboot_pending ? 'Neustart nötig' : f.custom ? 'Eigene Kurve aktiv' : 'Werkseinstellung aktiv';
       $('fan-hint').textContent = f.reboot_pending
-        ? `Gespeichert, aber noch nicht aktiv (aktuell: ${f.active_thresholds.map(t => `${t} °C`).join(' / ')}). Nach dem nächsten Neustart des Pi gilt die neue Kurve.`
+        ? `Gespeichert, aber noch nicht aktiv (aktuell: ${f.active_thresholds.map(t => `${t} °C`).join(' / ')}). Nach dem nächsten Neustart des Servers gilt die neue Kurve.`
         : `Datei: ${f.config_path}`;
       $('fan-reset').disabled = !f.custom;
     }
@@ -1839,7 +1839,7 @@
       ['Maximum', i => fmtMb(i.rss_max)]
     ], i => sparkBars(i.rss_series, 'var(--accent-violet)', null, 'RAM-Verlauf'));
     $('hogs-hint').textContent = r.minutes
-      ? `${r.minutes} Messungen · CPU in % der gesamten CPU (alle Kerne) · CPU-Zeit = Minuten volle Auslastung eines ganzen Pi`
+      ? `${r.minutes} Messungen · CPU in % der gesamten CPU (alle Kerne) · CPU-Zeit = Minuten volle Auslastung eines ganzen Servers`
       : '';
   }
 
@@ -1853,7 +1853,7 @@
     const box = $('sensor-groups');
     box.innerHTML = '';
     if (!r.supported) {
-      $('sensor-hint').textContent = 'Keine Sensoren gefunden (nur auf Linux / Raspberry Pi).';
+      $('sensor-hint').textContent = 'Keine Sensoren gefunden (nur auf Linux).';
       $('sensors-live').hidden = true;
       return;
     }
@@ -1971,7 +1971,7 @@
       if (canBlock && c.direction === 'in' && c.scope === 'internet') {
         const b = el('button', 'btn-danger', 'IP sperren');
         confirmClick(b, 'IP sperren', 'Sicher?', async () => {
-          if (await firewallAction('rule', { action: 'deny', direction: 'in', from: c.remote, position: 'top', proto: 'any', comment: 'Blocked via PiCore' })) {
+          if (await firewallAction('rule', { action: 'deny', direction: 'in', from: c.remote, position: 'top', proto: 'any', comment: 'Blocked via HostCore' })) {
             toast(`${c.remote} gesperrt.`, 'success');
             load('connections');
           }

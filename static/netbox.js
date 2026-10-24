@@ -1,5 +1,5 @@
 /**
- * PiCore Dashboard - system page section "NetBox": comparison with the LAN scan,
+ * HostCore Dashboard - system page section "NetBox": comparison with the LAN scan,
  * free addresses, prefixes, IP addresses, devices & VMs; creating IP addresses in NetBox.
  */
 (function () {
@@ -184,7 +184,7 @@
       const st = row.insertCell();
       st.appendChild(el('span', `health-tag ${cls}`, label));
       if (x.kind !== 'offline') st.appendChild(el('span', 'lan-sub', x.online ? 'Online' : 'Offline'));
-      const name = cellStack(row, x.name || '–', x.self ? 'Dieser Pi' : '');
+      const name = cellStack(row, x.name || '–', x.self ? 'Dieser Server' : '');
       name.className = 'wrap';
       cellStack(row, el('span', 'lan-ip', x.ip), x.mac, true);
       const d = row.insertCell();
@@ -203,7 +203,7 @@
       emptyRow(body, 5, !data.last_scan ? 'Noch kein Geräte-Scan – erst unter „Geräte im Netzwerk“ scannen.'
         : data.issues.length ? 'Keine Treffer für diesen Filter.' : 'NetBox und Netzwerk stimmen überein.');
     }
-    $('nb-hint').textContent = `Abgeglichen werden die Netze dieses Pi: ${data.subnets.join(', ') || '–'}. Erkannt über IP und MAC-Adresse (Schnittstellen in NetBox).`;
+    $('nb-hint').textContent = `Abgeglichen werden die Netze dieses Servers: ${data.subnets.join(', ') || '–'}. Erkannt über IP und MAC-Adresse (Schnittstellen in NetBox).`;
   }
 
   function renderFree(q) {
@@ -211,7 +211,7 @@
     box.innerHTML = '';
     $('nb-hint').textContent = 'Frei heißt: nicht in NetBox, in keinem IP-Bereich (z.B. DHCP-Pool) und in den letzten 7 Tagen im Netz nicht gesehen.';
     if (!data.free.length) {
-      box.appendChild(el('p', 'field-hint', 'Kein IPv4-Netz dieses Pi gefunden.'));
+      box.appendChild(el('p', 'field-hint', 'Kein IPv4-Netz dieses Servers gefunden.'));
       return;
     }
     data.free.forEach(f => {
@@ -252,7 +252,7 @@
     const body = table.createTBody();
     list.forEach(p => {
       const row = body.insertRow();
-      cellStack(row, el('span', 'lan-ip', p.prefix), [p.description, p.vrf ? `VRF ${p.vrf}` : '', p.in_lan ? 'Netz dieses Pi' : ''].filter(Boolean).join(' · '), true);
+      cellStack(row, el('span', 'lan-ip', p.prefix), [p.description, p.vrf ? `VRF ${p.vrf}` : '', p.in_lan ? 'Netz dieses Servers' : ''].filter(Boolean).join(' · '), true);
       row.insertCell().appendChild(statusTag(p.status));
       const u = row.insertCell();
       u.className = 'nb-util';
@@ -313,7 +313,7 @@
       row.insertCell().appendChild(nbLink(o.link, 'Öffnen'));
     });
     if (!list.length) emptyRow(body, 6, data.objects.length ? 'Keine Treffer für diesen Filter.' : 'Keine Geräte oder VMs in NetBox.');
-    $('nb-hint').textContent = '„Im Netz“ nur für Geräte mit IP oder MAC in einem Netz dieses Pi.';
+    $('nb-hint').textContent = '„Im Netz“ nur für Geräte mit IP oder MAC in einem Netz dieses Servers.';
   }
 
   function render() {
