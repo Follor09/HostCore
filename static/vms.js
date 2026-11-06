@@ -681,6 +681,7 @@
       run(b, `${vmPath(d.name)}/delete`, { enabled: wd.checked }, () => { closeModal('vm-modal'); load(); loadPools(); })));
     more.appendChild(del);
     body.appendChild(more);
+    if (window.VmOps) window.VmOps.detail(body, d);
   }
 
   function tabDisks(body, d) {
@@ -997,4 +998,26 @@
   }
 
   init();
+
+  // For vmops.js: the create dialog filled from a template, and the reload after an action
+  window.VmPage = {
+    load,
+    closeDetail: () => { closeModal('vm-modal'); state.detail = null; },
+    pools: () => (state.pools && state.pools.pools) || [],
+    networks: () => (state.nets && state.nets.networks) || [],
+    catalog: () => state.catalog,
+    names: () => (state.data && state.data.vms ? state.data.vms.map(v => v.name) : []),
+    async createFrom(p) {
+      await openCreate(p.image || '');
+      const set = (id, v) => { if (v !== undefined && v !== null && v !== '') $(id).value = v; };
+      set('c-source', p.source);
+      if (p.image && [...$('c-image').options].some(o => o.value === p.image)) $('c-image').value = p.image;
+      set('c-vcpus', p.vcpus); set('c-memory', p.memory_mb); set('c-disk', p.disk_gb); set('c-pool', p.pool); set('c-network', p.network);
+      set('c-firmware', p.firmware); set('c-user', p.user); set('c-osinfo', p.osinfo); set('c-keys', p.ssh_keys); set('c-iso', p.iso);
+      $('c-autostart').checked = !!p.autostart;
+      $('c-agent').checked = p.agent !== false;
+      $('c-upgrade').checked = !!p.upgrade;
+      syncSource();
+    }
+  };
 })();

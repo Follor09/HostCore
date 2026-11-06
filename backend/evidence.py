@@ -157,6 +157,11 @@ def build(since: int, until: int, user: str = "") -> Tuple[bytes, str]:
     add("07-datensicherung.md", _backups_md)
     add("08-technische-pruefungen.md", _security_md)
     add("09-notfallhandbuch.md", drhandbook.markdown)
+    add("12-richtlinien.md", lambda: __import__("policies").markdown())
+    add("12-richtlinien-kenntnisnahme.csv", lambda: __import__("policies").csv_export())
+    add("13-dienstleister.md", lambda: __import__("suppliers").markdown())
+    add("14-interne-audits.md", lambda: __import__("auditplan").markdown())
+    add("15-nis2-meldefristen.md", lambda: __import__("nis2").markdown())
     add("10-verzeichnis-verarbeitungstaetigkeiten.md", lambda: privacy.markdown("vvt"))
     add("11-technisch-organisatorische-massnahmen.md", lambda: privacy.markdown("tom"))
 

@@ -411,7 +411,10 @@ def status_summary() -> Dict[str, Any]:
                           ("eol", "alerts", "/system#lebenszyklus"), ("selftest", "alerts", "/settings#selbstdiagnose"),
                           ("hardening", "alerts", "/system#haertung"), ("dbmonitor", "alerts", "/containers#datenbanken"),
                           ("stackcheck", "alerts", "/containers#stack-sicherheit"), ("gitops", "alerts", "/containers#gitops"),
-                          ("changes", "alerts", "/doku#aenderungsantraege"), ("accessreview", "alerts", "/settings#rechte-review"),
+                          ("changes", "alerts", "/doku#aenderungsantraege"), ("vmops", "alerts", "/vms#zeitplaene"), ("fim", "alerts", "/system#datei-integritaet"),
+                          ("sudolog", "alerts", "/system#sudo-protokoll"), ("malware", "alerts", "/system#malware-scan"), ("falco", "alerts", "/system#laufzeitschutz"),
+                          ("servicecatalog", "alerts", "/doku#service-katalog"), ("nis2", "alerts", "/nachweise#nis2"), ("policies", "alerts", "/nachweise#richtlinien"),
+                          ("suppliers", "alerts", "/nachweise#dienstleister"), ("auditplan", "alerts", "/nachweise#audits"), ("accessreview", "alerts", "/settings#rechte-review"),
                           ("imagepolicy", "alerts", "/containers#image-richtlinien"), ("secretscan", "alerts", "/system#geheimnis-scan"),
                           ("patchsla", "alerts", "/system#patch-fristen"), ("problems", "alerts", "/doku#probleme"),
                           ("privacy", "alerts", "/nachweise#datenschutz-vvt")):

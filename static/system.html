@@ -57,6 +57,10 @@
       <a data-perm="security.view" href="#ssh">SSH-Anmeldungen</a>
       <a data-perm="security.view" href="#haertung">Härtung</a>
       <a data-perm="security.view" href="#geheimnis-scan">Geheimnis-Scan</a>
+      <a href="#datei-integritaet" data-perm="security.view">Datei-Integrität</a>
+      <a href="#sudo-protokoll" data-perm="security.view">sudo-Protokoll</a>
+      <a href="#malware-scan" data-perm="security.view">Malware-Scan</a>
+      <a href="#laufzeitschutz" data-perm="security.view">Laufzeitschutz</a>
       <a href="#hardware">Hardware</a>
       <a href="#speicherprognose">Speicherprognose</a>
       <a href="#backups">Backups</a>
@@ -1044,6 +1048,57 @@
         <p class="field-hint" id="sb-hint"></p>
       </section>
 
+      <section data-perm="security.view" class="glass-card settings-section" id="datei-integritaet">
+        <div class="section-head">
+          <h2>Datei-Integrität</h2>
+          <div class="head-tools"><span class="field-hint" id="fim-checked"></span><button class="btn-secondary" id="fim-run" type="button">Jetzt prüfen</button></div>
+        </div>
+        <p class="section-desc">Meldet unerwartete Änderungen an Systemdateien und Konfiguration. Der erste Lauf legt die Referenz an, danach erscheint jede Abweichung genau einmal. Änderungen durch Paket-Updates und genehmigte Änderungsanträge werden erkannt und automatisch geschlossen, damit nur das Unerklärte übrig bleibt.</p>
+        <div class="hb-summary" id="fim-tiles"></div>
+        <div class="table-scroll"><table class="data-table" id="fim-table"></table></div>
+        <details class="db-details" data-perm="settings.manage"><summary>Überwachte Ordner und Zeitplan</summary><div id="fim-settings"></div></details>
+      </section>
+
+      <section data-perm="security.view" class="glass-card settings-section" id="sudo-protokoll">
+        <div class="section-head">
+          <h2>sudo-Protokoll</h2>
+          <div class="head-tools"><label class="toggle-label"><input type="checkbox" id="su-fleet"> Alle Server</label><button class="btn-secondary" id="su-reviewed" type="button" data-perm="settings.manage">Als geprüft markieren</button></div>
+        </div>
+        <p class="section-desc">Wer wann welchen Befehl mit Root-Rechten ausgeführt hat, pro Benutzer und Server. Das Dashboard liest dafür das Journal und bewahrt die Einträge 180 Tage auf. Abgelehnte Versuche und riskante Befehle werden markiert; die eigenen Hilfsbefehle des Dashboards bleiben ausgeblendet.</p>
+        <div class="hb-summary" id="su-tiles"></div>
+        <form class="log-filters" id="su-form">
+          <select id="su-days" aria-label="Zeitraum"><option value="1">24 Stunden</option><option value="7" selected>7 Tage</option><option value="30">30 Tage</option><option value="180">180 Tage</option></select>
+          <select id="su-user" aria-label="Benutzer"><option value="">Alle Benutzer</option></select>
+          <input type="search" id="su-q" placeholder="Befehl suchen…" autocomplete="off" spellcheck="false">
+          <label class="toggle-label"><input type="checkbox" id="su-flagged"> Nur auffällige</label>
+        </form>
+        <p class="field-hint" id="su-errors"></p>
+        <div class="table-scroll tall"><table class="data-table" id="su-table"></table></div>
+        <details class="db-details" data-perm="settings.manage"><summary>Warnregeln</summary><div id="su-rules"></div></details>
+      </section>
+
+      <section data-perm="security.view" class="glass-card settings-section" id="malware-scan">
+        <div class="section-head">
+          <h2>Malware-Scan</h2>
+          <div class="head-tools"><span class="field-hint" id="mw-checked"></span><button class="btn-secondary" id="mw-run" type="button">Jetzt scannen</button></div>
+        </div>
+        <p class="section-desc">ClamAV prüft Dateien auf dem Host und in Container-Volumes, rkhunter sucht nach Rootkits. Beide laufen als Aufgabe nach Zeitplan. HostCore meldet nur und löscht nichts: Funde bleiben stehen, bis sie begründet geschlossen werden. ClamAV braucht während des Scans etwa 1 GB Arbeitsspeicher.</p>
+        <div class="hb-summary" id="mw-tiles"></div>
+        <div class="vm-manage-row" id="mw-install"></div>
+        <div class="table-scroll"><table class="data-table" id="mw-table"></table></div>
+        <details class="db-details" data-perm="settings.manage"><summary>Scanner, Ordner und Zeitplan</summary><div id="mw-settings"></div></details>
+      </section>
+
+      <section data-perm="security.view" class="glass-card settings-section" id="laufzeitschutz">
+        <div class="section-head">
+          <h2>Laufzeitschutz</h2>
+          <div class="head-tools"><span class="field-hint" id="fa-state"></span><button class="btn-secondary" id="fa-setup" type="button" data-perm="users.manage" hidden>Falco einrichten</button></div>
+        </div>
+        <p class="section-desc">Falco beobachtet Systemaufrufe und erkennt verdächtiges Verhalten in laufenden Containern, etwa eine geöffnete Shell oder Schreibzugriffe auf Systempfade. Falco beobachtet nur und blockiert nichts. Bekanntes Verhalten lässt sich stummschalten.</p>
+        <div class="table-scroll"><table class="data-table" id="fa-table"></table></div>
+        <details class="db-details"><summary>Stummgeschaltete Regeln</summary><div class="table-scroll"><table class="data-table" id="fa-muted"></table></div></details>
+      </section>
+
       <!-- Aktivität -->
       <section data-perm="security.view" class="glass-card settings-section" id="aktivitaet">
         <div class="section-head">
@@ -1085,6 +1140,8 @@
   <script src="/static/software.js"></script>
   <script src="/static/hardening.js"></script>
   <script src="/static/secretscan.js"></script>
+  <script src="/static/opsui.js"></script>
+  <script src="/static/secwatch.js"></script>
   <script src="/static/patchsla.js"></script>
   <script src="/static/system-extra.js"></script>
   <script src="/static/pagegroups.js"></script>

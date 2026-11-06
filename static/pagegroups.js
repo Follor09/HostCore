@@ -49,7 +49,7 @@
             return [{ level: 'info', text: `${devs.filter(d => d.online).length} von ${devs.length} Geräten online` },
               ...(fresh ? [{ level: 'info', text: n(fresh, 'neues Gerät', 'neue Geräte') }] : [])];
           } },
-        { id: 'sicherheit', label: 'Sicherheit', desc: 'Firewall, Verbindungen, SSH-Anmeldungen, Härtung, Geheimnis-Scan, Aktivität', sections: ['firewall', 'firewall-traffic', 'verbindungen', 'ssh', 'haertung', 'geheimnis-scan', 'aktivitaet'], perm: 'security.view',
+        { id: 'sicherheit', label: 'Sicherheit', desc: 'Firewall, Verbindungen, SSH-Anmeldungen, Härtung, Geheimnis-Scan, Datei-Integrität, sudo-Protokoll, Malware-Scan, Laufzeitschutz, Aktivität', sections: ['firewall', 'firewall-traffic', 'verbindungen', 'ssh', 'haertung', 'geheimnis-scan', 'datei-integritaet', 'sudo-protokoll', 'malware-scan', 'laufzeitschutz', 'aktivitaet'], perm: 'security.view',
           facts: async () => {
             const out = [];
             const [fw, ssh, hd] = await Promise.allSettled([get('/api/tools/firewall'), get('/api/tools/ssh'), get('/api/hardening')]);
@@ -248,6 +248,29 @@
               ...(c.fail ? [{ level: 'warning', text: n(c.fail, 'Anforderung nicht erfüllt', 'Anforderungen nicht erfüllt') }] : []),
               ...(c.open ? [{ level: 'info', text: n(c.open, 'Anforderung offen', 'Anforderungen offen') }] : [])];
           } },
+        { id: 'nis2', label: 'NIS-2-Meldefristen', desc: 'Sicherheitsvorfälle einstufen, Fristen verfolgen und Meldungen belegen', sections: ['nis2'],
+          facts: async () => {
+            const d = await get('/api/nis2');
+            const late = d.cases.flatMap(c => c.deadlines).filter(x => x.state === 'overdue').length;
+            if (late) return [{ level: 'critical', text: n(late, 'Frist überfällig', 'Fristen überfällig') }];
+            return [d.entity ? { level: d.open ? 'warning' : 'good', text: n(d.open, 'offener Fall', 'offene Fälle') } : { level: 'warning', text: 'Einstufung fehlt' }];
+          } },
+        { id: 'richtlinien', label: 'Richtlinien', desc: 'Versionen, Freigabe und Kenntnisnahme', sections: ['richtlinien'],
+          facts: async () => {
+            const d = await get('/api/policies');
+            const mine = d.mine.length;
+            return [mine ? { level: 'warning', text: n(mine, 'Richtlinie wartet auf dich', 'Richtlinien warten auf dich') } : { level: 'good', text: n(d.policies.length, 'Richtlinie', 'Richtlinien') }];
+          } },
+        { id: 'lieferkette', label: 'Dienstleister', desc: 'Anbieter, AV-Verträge, Zertifikate und Prüftermine', sections: ['dienstleister'],
+          facts: async () => {
+            const d = await get('/api/suppliers');
+            return [d.issues ? { level: 'warning', text: n(d.issues, 'Dienstleister mit offenem Punkt', 'Dienstleister mit offenem Punkt') } : { level: 'good', text: `${d.suppliers.length} ${d.suppliers.length === 1 ? 'Dienstleister' : 'Dienstleister'}` }];
+          } },
+        { id: 'audits', label: 'Interne Audits', desc: 'Auditplan, Checklisten, Feststellungen und Maßnahmen', sections: ['audits'],
+          facts: async () => {
+            const d = await get('/api/internal-audits');
+            return [d.open_findings ? { level: 'warning', text: n(d.open_findings, 'offene Feststellung', 'offene Feststellungen') } : { level: 'good', text: n(d.planned, 'geplantes Audit', 'geplante Audits') }];
+          } },
         { id: 'datenschutz', label: 'Datenschutz', desc: 'Verzeichnis der Verarbeitungstätigkeiten und TOM', sections: ['datenschutz-vvt', 'datenschutz-tom'],
           facts: async () => {
             const d = await get('/api/compliance/privacy');
@@ -274,7 +297,7 @@
             const warr = items.filter(i => i.warranty_days != null && i.warranty_days >= 0 && i.warranty_days <= 30).length;
             return [{ level: 'info', text: n(items.length, 'Gerät', 'Geräte') }, ...(warr ? [{ level: 'info', text: `${n(warr, 'Garantie endet', 'Garantien enden')} bald` }] : [])];
           } },
-        { id: 'betrieb', label: 'Betrieb', desc: 'Störungen, Probleme, Änderungsanträge, Betriebstagebuch, Runbooks und Befehle', sections: ['stoerungen', 'probleme', 'aenderungsantraege', 'tagebuch', 'runbooks', 'befehle'],
+        { id: 'betrieb', label: 'Betrieb', desc: 'Service-Katalog, Störungen, Probleme, Änderungsanträge, Betriebstagebuch, Runbooks und Befehle', sections: ['service-katalog', 'stoerungen', 'probleme', 'aenderungsantraege', 'tagebuch', 'runbooks', 'befehle'],
           facts: async () => {
             const [jr, rb, ch] = await Promise.allSettled([get('/api/docs/journal?limit=1'), get('/api/docs/runbooks'), get('/api/changes')]);
             const out = [];

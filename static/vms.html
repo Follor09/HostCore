@@ -45,6 +45,9 @@
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#uebersicht" class="active">Übersicht</a>
       <a href="#maschinen">Maschinen</a>
+      <a href="#vorlagen">Vorlagen</a>
+      <a href="#sicherungen">Sicherungen</a>
+      <a href="#zeitplaene">Zeitpläne</a>
       <a href="#images">Images &amp; ISOs</a>
       <a href="#netzwerke">Netzwerke</a>
       <a href="#speicher">Speicher-Pools</a>
@@ -77,6 +80,42 @@
         <div class="vm-jobs" id="vm-jobs"></div>
         <div class="table-scroll"><table class="data-table vm-table" id="vm-table"></table></div>
         <p class="field-hint" id="vm-hint"></p>
+      </section>
+
+      <section class="glass-card settings-section" id="vorlagen">
+        <div class="section-head">
+          <h2>Vorlagen</h2>
+          <div class="head-tools"><button class="btn-primary" id="tp-add" type="button" data-perm="vms.manage">Vorlage anlegen</button></div>
+        </div>
+        <p class="section-desc">Geprüfte Grundkonfigurationen: Größe, Netzwerk, Betriebssystem und cloud-init ohne Passwort. Neue VMs entstehen daraus mit wenigen Klicks – auch über den Service-Katalog.</p>
+        <div class="docs-form" id="tp-form" hidden></div>
+        <div class="table-scroll"><table class="data-table" id="tp-table"></table></div>
+      </section>
+
+      <section class="glass-card settings-section" id="sicherungen">
+        <div class="section-head">
+          <h2>Sicherungen</h2>
+          <div class="head-tools"><span class="field-hint" id="bk-summary"></span></div>
+        </div>
+        <p class="section-desc">Vollständige Kopien aller Laufwerke in einem Speicher-Pool, im laufenden Betrieb und ohne Abhängigkeit vom Original. Eine Wiederherstellung legt eine neue, ausgeschaltete VM an. Für echten Schutz sollte der Pool auf einem anderen Datenträger liegen als die VMs.</p>
+        <div class="docs-form" id="bk-form" hidden></div>
+        <div class="table-scroll"><table class="data-table" id="bk-table"></table></div>
+        <form class="vm-inline-form" id="bk-config" autocomplete="off" data-perm="vms.manage">
+          <div class="vm-manage-row">
+            <label class="login-field"><span>Ziel-Pool</span><select id="bk-pool" class="vm-pool-select"></select></label>
+            <button type="submit" class="btn-secondary">Speichern</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="glass-card settings-section" id="zeitplaene">
+        <div class="section-head">
+          <h2>Zeitpläne</h2>
+          <div class="head-tools"><button class="btn-primary" id="sc-add" type="button" data-perm="vms.manage">Zeitplan anlegen</button></div>
+        </div>
+        <p class="section-desc">Snapshots, Sicherungen, Start und Herunterfahren nach Wochentag und Uhrzeit. Alte automatische Snapshots und Sicherungen werden nach der eingestellten Anzahl entfernt; von Hand erstellte bleiben. Verpasste Sicherungen und Snapshots laufen bis zu 30 Minuten später nach.</p>
+        <div class="docs-form" id="sc-form" hidden></div>
+        <div class="table-scroll"><table class="data-table" id="sc-table"></table></div>
       </section>
 
       <section class="glass-card settings-section" id="images">
@@ -347,7 +386,9 @@
   <script src="/static/perms.js"></script>
   <script src="/static/caps.js"></script>
   <script src="/static/hosts.js"></script>
+  <script src="/static/opsui.js"></script>
   <script src="/static/vms.js"></script>
+  <script src="/static/vmops.js"></script>
   <script src="/static/sidebar.js"></script>
   <script src="/static/links.js"></script>
   <script src="/static/palette.js"></script>

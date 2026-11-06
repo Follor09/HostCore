@@ -24,6 +24,11 @@
 #   pi-helper.sh fan-curve set <t0> <t1> <t2> <t3> <s0> <s1> <s2> <s3>   (m°C, PWM 0-255)
 #   pi-helper.sh fan-curve reset
 #   pi-helper.sh libvirt-setup                  VMs: dashboard user into the libvirt group, default network + pool
+#   pi-helper.sh fim-scan <path>...             file integrity: hashes of system files (backend/fimscan.py checks the paths)
+#   pi-helper.sh malware-scan clamav <path>...  ClamAV, prints findings; never deletes anything
+#   pi-helper.sh malware-scan rkhunter          rootkit check, prints warnings
+#   pi-helper.sh malware-scan rkhunter-baseline rkhunter's reference after system updates
+#   pi-helper.sh falco-setup                    Falco from its signed package source, modern eBPF, JSON output
 #   pi-helper.sh f2b-banned
 #   pi-helper.sh f2b-unban <ip>
 
@@ -398,6 +403,63 @@ case "$CMD" in
         echo "✔ Speicher-Pool default (/var/lib/libvirt/images)"
         systemd-run --on-active=3 --collect --quiet systemctl restart raspberry-dashboard.service || true
         echo "ok"
+        ;;
+    fim-scan)
+        [ $# -ge 1 ] && [ $# -le 30 ] || die "Pfade fehlen."
+        exec nice -n 10 python3 -I "$(dirname "$(readlink -f "$0")")/backend/fimscan.py" "$@"
+        ;;
+    malware-scan)
+        kind="${1:-}"
+        shift || true
+        case "$kind" in
+            clamav)
+                need clamscan
+                [ $# -ge 1 ] && [ $# -le 30 ] || die "Ordner fehlen."
+                paths=()
+                for p in "$@"; do
+                    [[ "$p" =~ ^/[A-Za-z0-9._/-]{1,200}$ ]] && [[ "$p" != *..* ]] || die "Ungültiger Ordner."
+                    case "$p" in /proc*|/sys*|/dev*|/run*) die "Ungültiger Ordner." ;; esac
+                    if [ -e "$p" ]; then paths+=("$p"); fi
+                done
+                [ "${#paths[@]}" -gt 0 ] || die "Keiner der Ordner ist vorhanden."
+                set +e
+                nice -n 15 ionice -c3 clamscan --recursive --infected --no-summary --max-filesize=100M --max-scansize=300M "${paths[@]}"
+                rc=$?
+                set -e
+                [ "$rc" -le 1 ] || die "ClamAV meldet einen Fehler ($rc) – sind die Signaturen schon geladen (clamav-freshclam)?"
+                ;;
+            rkhunter)
+                [ -x /usr/bin/rkhunter ] || die "rkhunter ist nicht installiert."
+                set +e
+                nice -n 15 /usr/bin/rkhunter --check --sk --nocolors --rwo
+                rc=$?
+                set -e
+                [ "$rc" -le 1 ] || die "rkhunter meldet einen Fehler ($rc)."
+                ;;
+            rkhunter-baseline)
+                [ -x /usr/bin/rkhunter ] || die "rkhunter ist nicht installiert."
+                /usr/bin/rkhunter --propupd --nocolors
+                ;;
+            *) die "Unbekannter Scanner." ;;
+        esac
+        ;;
+    falco-setup)
+        # Signed package source of the Falco project; modern eBPF needs no kernel module
+        need apt-get
+        need curl
+        need gpg
+        case "$(dpkg --print-architecture)" in amd64|arm64) ;; *) die "Falco gibt es nur für amd64 und arm64." ;; esac
+        echo "▶ Paketquelle einrichten"
+        curl -fsSL https://falco.org/repo/falcosecurity-packages.asc | gpg --dearmor --yes -o /usr/share/keyrings/falco-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/falco-archive-keyring.gpg] https://download.falco.org/packages/deb stable main" > /etc/apt/sources.list.d/falcosecurity.list
+        apt-get update -qq
+        echo "▶ Falco installieren"
+        FALCO_FRONTEND=noninteractive FALCO_DRIVER_CHOICE=modern_ebpf DEBIAN_FRONTEND=noninteractive apt-get install -y falco
+        install -d -m 755 /etc/falco/config.d
+        printf 'json_output: true\njson_include_output_property: true\nstdout_output:\n  enabled: true\n' > /etc/falco/config.d/hostcore.yaml
+        systemctl enable falco-modern-bpf.service >/dev/null 2>&1 || true
+        systemctl restart falco-modern-bpf.service
+        echo "✅ Falco läuft"
         ;;
     f2b-banned)
         need fail2ban-client

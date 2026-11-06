@@ -44,6 +44,10 @@
   <main class="settings-layout">
     <nav class="settings-nav" aria-label="Bereiche">
       <a href="#grundschutz" class="active">Grundschutz-Check</a>
+      <a href="#nis2">NIS-2-Meldefristen</a>
+      <a href="#richtlinien">Richtlinien</a>
+      <a href="#dienstleister">Dienstleister</a>
+      <a href="#audits">Interne Audits</a>
       <a href="#datenschutz-vvt">Verarbeitungstätigkeiten</a>
       <a href="#datenschutz-tom">TOM</a>
       <a href="#nachweis-paket" data-perm="users.manage">Nachweis-Paket</a>
@@ -63,6 +67,47 @@
         <p class="section-desc">Checkliste angelehnt an Bausteine des BSI IT-Grundschutz-Kompendiums (ORP.4, OPS.1.1.3, CON.3, DER.4, SYS.1.6 …) und die CIS Controls – keine Zertifizierung, aber ein ehrlicher Blick auf die Grundlagen. Die meisten Anforderungen bewertet das Dashboard selbst aus seinen Prüfungen; jede lässt sich zusätzlich von Hand bewerten, mit Notiz und Nachweis. Die Handbewertung gilt; widerspricht ihr die automatische Prüfung, wird das angezeigt.</p>
         <div class="hb-summary" id="bl-summary"></div>
         <div class="bl-areas" id="bl-areas"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="nis2">
+        <div class="section-head">
+          <h2>NIS-2-Meldefristen</h2>
+          <div class="head-tools"><a class="btn-secondary" href="/druck?src=nis2" target="_blank" rel="noopener">Bericht</a><button class="btn-primary" id="n2-add" type="button" data-perm="notes.edit">Fall anlegen</button></div>
+        </div>
+        <p class="section-desc">Die Meldestufen nach § 32 BSIG für einen Sicherheitsvorfall: Frühwarnung binnen 24 Stunden ab Kenntnis, Meldung binnen 72 Stunden, Abschlussmeldung einen Monat nach der Meldung – bei noch andauernden Vorfällen zunächst eine Fortschrittsmeldung. Sind personenbezogene Daten betroffen, läuft die 72-Stunden-Frist nach Art. 33 DSGVO mit. HostCore bereitet die Texte vor und belegt die Einreichung; gemeldet wird über das BSI-Portal. Eine Arbeitshilfe, keine Rechtsberatung.</p>
+        <details class="db-details"><summary>Einstufung und Ansprechstelle</summary><div id="n2-profile"></div></details>
+        <div class="docs-form" id="n2-form" hidden></div>
+        <div class="inc-list" id="n2-list"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="richtlinien">
+        <div class="section-head">
+          <h2>Richtlinien</h2>
+          <div class="head-tools"><a class="btn-secondary" href="/api/policies/export.csv" download>Kenntnisnahmen (CSV)</a><a class="btn-secondary" href="/druck?src=policies" target="_blank" rel="noopener">Bericht</a><button class="btn-primary" id="po-add" type="button" data-perm="notes.edit">Richtlinie anlegen</button></div>
+        </div>
+        <p class="section-desc">Interne Richtlinien mit Versionen, Freigabe nach dem Vier-Augen-Prinzip und Nachweis der Kenntnisnahme pro Benutzer. Eine neue Version fragt die Kenntnisnahme erneut ab.</p>
+        <div class="docs-form" id="po-form" hidden></div>
+        <div class="inc-list" id="po-list"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="dienstleister">
+        <div class="section-head">
+          <h2>Dienstleister</h2>
+          <div class="head-tools"><a class="btn-secondary" href="/druck?src=suppliers" target="_blank" rel="noopener">Bericht</a><button class="btn-primary" id="su2-add" type="button" data-perm="notes.edit">Dienstleister erfassen</button></div>
+        </div>
+        <p class="section-desc">Externe Anbieter mit Kritikalität, AV-Vertrag, Zertifikaten, Prüfterminen, Ausstiegsplan und den Diensten, die von ihnen abhängen. Fällige Prüfungen und fehlende Verträge erscheinen in der Statusübersicht.</p>
+        <div class="docs-form" id="su2-form" hidden></div>
+        <div class="inc-list" id="su2-list"></div>
+      </section>
+
+      <section class="glass-card settings-section" id="audits">
+        <div class="section-head">
+          <h2>Interne Audits</h2>
+          <div class="head-tools"><a class="btn-secondary" href="/druck?src=audits" target="_blank" rel="noopener">Bericht</a><button class="btn-primary" id="au-add" type="button" data-perm="notes.edit">Audit planen</button></div>
+        </div>
+        <p class="section-desc">Audits planen und anhand einer Checkliste durchführen, auf Wunsch mit den Anforderungen des Grundschutz-Checks. Abweichungen werden zu Feststellungen mit Maßnahme und Frist; die Wirksamkeit bestätigt jemand anderes als die verantwortliche Person.</p>
+        <div class="docs-form" id="au-form" hidden></div>
+        <div class="inc-list" id="au-list"></div>
       </section>
 
       <!-- Verzeichnis der Verarbeitungstätigkeiten -->
@@ -123,6 +168,8 @@
   <script src="/static/hosts.js"></script>
   <script src="/static/baseline.js"></script>
   <script src="/static/privacy.js"></script>
+  <script src="/static/opsui.js"></script>
+  <script src="/static/compliance-ops.js"></script>
   <script src="/static/evidence.js"></script>
   <script src="/static/pagegroups.js"></script>
   <script src="/static/sidebar.js"></script>

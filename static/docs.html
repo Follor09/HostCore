@@ -46,6 +46,7 @@
       <a href="#inventar" class="active">Inventar</a>
       <a href="#tagebuch">Betriebstagebuch</a>
       <a href="#runbooks">Runbooks</a>
+      <a href="#service-katalog">Service-Katalog</a>
       <a href="#probleme">Probleme</a>
       <a href="#aenderungsantraege">Änderungsanträge</a>
       <a href="#steckbriefe">Steckbriefe</a>
@@ -199,6 +200,18 @@
         <div class="inc-list" id="inc-list"></div>
       </section>
 
+      <section class="glass-card settings-section" id="service-katalog">
+        <div class="section-head">
+          <h2>Service-Katalog</h2>
+          <div class="head-tools"><span class="field-hint" id="sv-summary"></span><button class="btn-primary" id="sv-add" type="button" data-perm="settings.manage">Eintrag anlegen</button></div>
+        </div>
+        <p class="section-desc">Standardanfragen als Formular: Anfrage stellen, Freigabe durch eine zweite Person, Umsetzung als Aufgabe, Änderungsantrag, neue VM oder Schnellaktion. Jeder Schritt wird festgehalten.</p>
+        <div class="docs-form" id="sv-form" hidden></div>
+        <div class="hb-summary" id="sv-items"></div>
+        <h3 class="subhead">Anfragen</h3>
+        <div class="inc-list" id="sv-requests"></div>
+      </section>
+
       <!-- Probleme -->
       <section class="glass-card settings-section" id="probleme">
         <div class="section-head">
@@ -303,6 +316,8 @@
   <script src="/static/handbook-section.js"></script>
   <script src="/static/changes.js"></script>
   <script src="/static/problems.js"></script>
+  <script src="/static/opsui.js"></script>
+  <script src="/static/catalog.js"></script>
   <script src="/static/diff.js"></script>
   <script src="/static/docs-versions.js"></script>
   <script src="/static/pagegroups.js"></script>

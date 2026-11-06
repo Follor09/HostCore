@@ -18,13 +18,13 @@ GROUPS = [
     (r"^/api/containers|^/api/appstore|^/api/stack-templates|^/api/gitops", "Container"),
     (r"^/api/(updates|packages|fleet|remotes|agent)", "Updates & Flotte"),
     (r"^/api/tools/(lan|dns|traceroute|port-test|network|connections)|^/api/(wol|netbox|latency|dns-watch)", "Netzwerk"),
-    (r"^/api/tools/(firewall|fail2ban|ssh|geoip|geoblock|activity)|^/api/secret-scan", "Sicherheit"),
+    (r"^/api/tools/(firewall|fail2ban|ssh|geoip|geoblock|activity)|^/api/(secret-scan|fim|sudo-log|malware|falco)", "Sicherheit"),
     (r"^/api/tools|^/api/(events|report|disk-forecast|monitor|anomalies|capacity|backups|logs|alerts|tasks)", "Werkzeuge & Auswertung"),
     (r"^/api/files|^/api/exchange", "Dateien"),
-    (r"^/api/(docs|wiki|notes|kanban|reminders|costs|search|maintenance|incidents|changes|problems)", "Doku & Planung"),
+    (r"^/api/(docs|wiki|notes|kanban|reminders|costs|search|maintenance|incidents|changes|problems|service-catalog)", "Doku & Planung"),
     (r"^/api/(boards|links|calendar|weather|health)", "Dashboard"),
     (r"^/api/(settings|users|groups|auth|me|mcp|action|access-review)", "Einstellungen & Konto"),
-    (r"^/api/(compliance|patch-sla)", "Compliance"),
+    (r"^/api/(compliance|patch-sla|nis2|policies|suppliers|internal-audits)", "Compliance"),
 ]
 PERM_LABELS = {p[0]: p[1] for p in __import__("auth").PERMISSIONS}
 

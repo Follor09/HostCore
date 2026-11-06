@@ -11790,3 +11790,12 @@ body.has-task-dock.task-dock-open .toast-container { bottom: calc(var(--task-doc
 }
 .vm-tab-body .data-table .row-action { white-space: normal; min-width: 110px; }
 .vm-tab-body .data-table .row-action button { margin: 2px 0 2px 8px; }
+
+/* Service catalog, compliance sections: a row of small actions */
+.ops-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-left: auto; }
+.hb-tile .ops-actions { margin: 6px 0 0; }
+.go-commits li > div.full:empty { display: none; }
+#bk-config .vm-manage-row { align-items: flex-end; }
+#bk-config select { height: auto; }
+#su-form .toggle-label { flex: none; width: auto; display: inline-flex; align-items: center; gap: 6px; }
+#su-form .toggle-label input { flex: none; width: auto; }

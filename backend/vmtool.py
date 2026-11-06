@@ -3,6 +3,9 @@ Long VM jobs, run as a dashboard task (see vms.py) - downloading images and crea
 
     python3 vmtool.py fetch  <spec.json>    image / ISO by https into a storage pool
     python3 vmtool.py create <spec.json>    new VM (cloud image + cloud-init, ISO, disk, PXE)
+    python3 vmtool.py backup <spec.json>    full copy of a VM's disks into a pool, with its definition
+    python3 vmtool.py restore <spec.json>   a backup as a new VM
+    python3 vmtool.py migrate <spec.json>   live migration to another host
 
 The spec file was written by vms.py after checking every value; it is removed at the end
 (it may hold a password hash and SSH keys). Downloads are checked against the SHA-256/512
@@ -16,12 +19,15 @@ import json
 import os
 import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 
 URI = "qemu:///system"
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -291,9 +297,301 @@ def create(spec: dict) -> None:
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Backups: a full copy of every disk into a storage pool, plus a manifest with the domain XML.
+# A running VM goes through `virsh backup-begin` (consistent, no downtime); a VM that is off
+# through vol-create-from. Both flatten backing files, so a backup stands on its own.
+# ---------------------------------------------------------------------------
+BACKUP_DIR = os.path.join(BASE_DIR, "vms", "backups")
+
+
+class Cancelled(Exception):
+    pass
+
+
+def _on_term(signum, frame):
+    raise Cancelled()
+
+
+def pool_path(pool: str) -> str:
+    path = ET.fromstring(virsh("pool-dumpxml", pool)).findtext("target/path") or ""
+    if not path:
+        fail(f"Pool {pool} hat keinen Ordner – nur Ordner-Pools sind als Sicherungsziel möglich.")
+    return path
+
+
+def real_disks(xml: str) -> list:
+    """Disks of a domain (no CD-ROMs): [{target, type, path, pool, volume, format}]"""
+    out = []
+    for d in ET.fromstring(xml).findall("devices/disk"):
+        if d.get("device", "disk") not in ("disk", "lun"):
+            continue
+        src, tgt, drv = d.find("source"), d.find("target"), d.find("driver")
+        if src is None or tgt is None:
+            continue
+        pool, vol = src.get("pool") or "", src.get("volume") or ""
+        path = src.get("file") or src.get("dev") or ""
+        if pool and vol:
+            path = virsh("vol-path", "--pool", pool, vol).strip()
+        out.append({"target": tgt.get("dev"), "type": d.get("type", "file"), "path": path, "pool": pool, "volume": vol,
+                    "format": drv.get("type", "raw") if drv is not None else "raw"})
+    return out
+
+
+def vol_capacity(pool: str, vol: str) -> dict:
+    info = virsh("vol-info", "--pool", pool, vol, "--bytes")
+    field = lambda k: int((re.search(rf"{k}:\s+(\d+)", info) or [0, "0"])[1])
+    return {"capacity": field("Capacity"), "allocation": field("Allocation")}
+
+
+def copy_volume(src_pool: str, src_vol: str, pool: str, vol: str, capacity: int) -> None:
+    """vol-create-from copies across pools and flattens a backing file (qemu-img convert)."""
+    xml = (f"<volume><name>{escape(vol)}</name><capacity unit='bytes'>{capacity}</capacity>"
+           "<target><format type='qcow2'/></target></volume>")
+    with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as f:
+        f.write(xml)
+    try:
+        virsh("vol-create-from", pool, f.name, src_vol, "--inputpool", src_pool, timeout=12 * 3600)
+    finally:
+        os.unlink(f.name)
+
+
+def job_info(vm: str, completed: bool = False) -> dict:
+    out = virsh("domjobinfo", vm, *(["--completed", "--keep-completed"] if completed else []), check=False)
+    info = {}
+    for line in out.splitlines():
+        k, _, v = line.partition(":")
+        info[k.strip()] = v.strip()
+    return info
+
+
+def run_live_backup(vm: str, plan: list, skip: list) -> None:
+    disks = "".join(f"<disk name='{escape(d['target'])}' backup='yes' type='file'><target file='{escape(d['file'])}'/>"
+                    "<driver type='qcow2'/></disk>" for d in plan)
+    disks += "".join(f"<disk name='{escape(t)}' backup='no'/>" for t in skip)
+    with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as f:
+        f.write(f"<domainbackup><disks>{disks}</disks></domainbackup>")
+    try:
+        virsh("backup-begin", vm, f.name)
+    finally:
+        os.unlink(f.name)
+    shown = -10
+    while True:
+        time.sleep(2)
+        info = job_info(vm)
+        if info.get("Job type", "None") in ("None", ""):
+            break
+        done = float((info.get("Data processed") or "0").split()[0] or 0)
+        total = float((info.get("Data total") or "0").split()[0] or 0)
+        percent = int(done * 100 / total) if total else 0
+        if percent >= shown + 10:
+            say(f"   {percent} %")
+            shown = percent
+    state = job_info(vm, completed=True).get("Job type", "")
+    if state in ("Failed", "Cancelled"):
+        fail(f"Sicherung abgebrochen ({state}).")
+
+
+def write_manifest(manifest: dict) -> None:
+    os.makedirs(BACKUP_DIR, mode=0o700, exist_ok=True)
+    tmp = os.path.join(BACKUP_DIR, f".{manifest['id']}.tmp")
+    with open(tmp, "w") as f:
+        json.dump(manifest, f)
+    os.replace(tmp, os.path.join(BACKUP_DIR, f"{manifest['id']}.json"))
+
+
+def prune(vm: str, schedule: str, keep: int) -> None:
+    """Keep the newest `keep` backups of one schedule; manual backups are never removed here."""
+    items = []
+    for name in os.listdir(BACKUP_DIR):
+        if name.endswith(".json"):
+            try:
+                with open(os.path.join(BACKUP_DIR, name)) as f:
+                    m = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if m.get("vm") == vm and m.get("schedule") == schedule:
+                items.append(m)
+    items.sort(key=lambda m: -m["ts"])
+    for m in items[keep:]:
+        for d in m["disks"]:
+            virsh("vol-delete", "--pool", m["pool"], d["volume"], check=False)
+        os.unlink(os.path.join(BACKUP_DIR, f"{m['id']}.json"))
+        say(f"   Alte Sicherung vom {time.strftime('%d.%m.%Y %H:%M', time.localtime(m['ts']))} entfernt.")
+
+
+def backup(spec: dict) -> None:
+    vm, pool, bid = spec["vm"], spec["pool"], spec["id"]
+    signal.signal(signal.SIGTERM, _on_term)
+    state = virsh("domstate", vm).strip()
+    live = state in ("running", "paused")
+    inactive_xml = virsh("dumpxml", "--inactive", vm)
+    active_xml = virsh("dumpxml", vm)
+    disks = real_disks(active_xml)
+    if not disks:
+        fail("Die VM hat kein Laufwerk.")
+    if any(d["type"] not in ("file", "volume", "block") for d in disks):
+        fail("Nur Datei-, Volume- und Block-Laufwerke lassen sich sichern.")
+    root = pool_path(pool)
+    virsh("pool-refresh", pool, check=False)
+    plan = []
+    for d in disks:
+        vol = f"hc-backup-{vm}-{bid}-{d['target']}.qcow2"
+        plan.append({**d, "backup_volume": vol, "file": os.path.join(root, vol)})
+    made = []
+    try:
+        say(f"▶ Sicherung von {vm} ({'im laufenden Betrieb' if live else 'ausgeschaltet'}) nach Pool {pool}")
+        if live:
+            skip = [t.get("dev") for t in ET.fromstring(active_xml).findall("devices/disk/target")
+                    if t.get("dev") not in {d["target"] for d in disks}]
+            made = [d["backup_volume"] for d in plan]
+            run_live_backup(vm, plan, skip)
+        else:
+            for d in plan:
+                say(f"▶ Laufwerk {d['target']} kopieren")
+                src_vol = d["volume"]
+                src_pool = d["pool"]
+                if not src_pool:
+                    src_pool = virsh("vol-pool", d["path"], check=False).strip()
+                    src_vol = virsh("vol-name", d["path"], check=False).strip()
+                if not src_pool or not src_vol:
+                    fail(f"{d['path']} liegt in keinem Speicher-Pool und lässt sich bei ausgeschalteter VM nicht sichern.")
+                d["capacity"] = vol_capacity(src_pool, src_vol)["capacity"]
+                made.append(d["backup_volume"])
+                copy_volume(src_pool, src_vol, pool, d["backup_volume"], d["capacity"])
+        virsh("pool-refresh", pool, check=False)
+        rows = []
+        for d in plan:
+            size = vol_capacity(pool, d["backup_volume"])
+            if not size["allocation"]:
+                fail(f"Sicherung von {d['target']} ist leer.")
+            rows.append({"target": d["target"], "volume": d["backup_volume"], "source": d["path"], **size})
+        write_manifest({"id": bid, "vm": vm, "ts": int(time.time()), "pool": pool, "live": live, "state": state, "user": spec.get("user", ""),
+                        "schedule": spec.get("schedule", ""), "disks": rows, "xml": inactive_xml})
+    except (Cancelled, SystemExit, Exception) as e:
+        if isinstance(e, Cancelled):
+            say("Abbruch – die Sicherung wird verworfen.")
+        if live:
+            virsh("domjobabort", vm, check=False)
+            time.sleep(1)
+        virsh("pool-refresh", pool, check=False)
+        for vol in made:
+            virsh("vol-delete", "--pool", pool, vol, check=False)
+        if isinstance(e, SystemExit):
+            raise
+        fail(str(e) if not isinstance(e, Cancelled) else "Abgebrochen.")
+    if spec.get("keep") and spec.get("schedule"):
+        prune(vm, spec["schedule"], int(spec["keep"]))
+    say("")
+    say(f"✅ Sicherung abgeschlossen: {human(sum(r['allocation'] for r in rows))} in Pool {pool}.")
+
+
+def restored_xml(xml: str, name: str, disks: dict) -> str:
+    """The saved definition as a new VM: new name, UUID and MACs, disks pointing at the copies."""
+    root = ET.fromstring(xml)
+    root.find("name").text = name
+    uuid = root.find("uuid")
+    if uuid is not None:
+        root.remove(uuid)
+    for mac in root.findall("devices/interface"):
+        el = mac.find("mac")
+        if el is not None:
+            mac.remove(el)
+    os_el = root.find("os")
+    nvram = os_el.find("nvram") if os_el is not None else None
+    if nvram is not None:
+        os_el.remove(nvram)   # libvirt creates a fresh one from the template
+    devices = root.find("devices")
+    for d in list(devices.findall("disk")):
+        tgt = d.find("target")
+        dev = tgt.get("dev") if tgt is not None else ""
+        if d.get("device", "disk") in ("disk", "lun"):
+            if dev not in disks:
+                devices.remove(d)   # added after the backup was defined
+                continue
+            d.set("type", "file")
+            src = d.find("source")
+            if src is None:
+                src = ET.SubElement(d, "source")
+            src.attrib.clear()
+            src.set("file", disks[dev])
+            drv = d.find("driver")
+            if drv is not None:
+                drv.set("type", "qcow2")
+            bs = d.find("backingStore")
+            if bs is not None:
+                d.remove(bs)
+        else:
+            src = d.find("source")
+            if src is not None:
+                d.remove(src)     # the ISO may no longer exist
+    return ET.tostring(root, encoding="unicode")
+
+
+def restore(spec: dict) -> None:
+    m, name, pool = spec["manifest"], spec["name"], spec["pool"]
+    signal.signal(signal.SIGTERM, _on_term)
+    root = pool_path(pool)
+    paths, made = {}, []
+    try:
+        for d in m["disks"]:
+            vol = f"{name}-{d['target']}.qcow2"
+            say(f"▶ Laufwerk {d['target']} wiederherstellen ({human(d['allocation'])}) als {vol}")
+            made.append(vol)
+            copy_volume(m["pool"], d["volume"], pool, vol, d["capacity"])
+            paths[d["target"]] = os.path.join(root, vol)
+        virsh("pool-refresh", pool, check=False)
+        with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as f:
+            f.write(restored_xml(m["xml"], name, paths))
+        try:
+            virsh("define", f.name)
+        finally:
+            os.unlink(f.name)
+    except (Cancelled, SystemExit, Exception) as e:
+        virsh("pool-refresh", pool, check=False)
+        for vol in made:
+            virsh("vol-delete", "--pool", pool, vol, check=False)
+        if isinstance(e, SystemExit):
+            raise
+        fail(str(e) if not isinstance(e, Cancelled) else "Abgebrochen.")
+    say("")
+    say(f"✅ {name} ist wiederhergestellt (ausgeschaltet, neue MAC-Adressen).")
+
+
+def migrate(spec: dict) -> None:
+    """Live migration with virsh; the source keeps running until the target has taken over."""
+    vm, uri = spec["vm"], spec["uri"]
+    autostart = (re.search(r"^Autostart:\s+(\S+)", virsh("dominfo", vm), re.M) or [0, ""])[1] == "enable"
+    sources = [d["path"] for d in real_disks(virsh("dumpxml", vm))]
+    args = ["virsh", "-c", URI, "migrate", "--live", "--persistent", "--undefinesource", "--verbose", "--auto-converge", "--abort-on-error"]
+    if not spec.get("shared"):
+        args.append("--copy-storage-all")
+    args += ["--domain", vm, "--desturi", uri, "--migrateuri", spec["migrate_uri"]]
+    say(f"▶ {vm} wird nach {spec['target_name']} verschoben" + (" (Laufwerke werden mitkopiert)" if not spec.get("shared") else ""))
+    proc = subprocess.Popen(args, stdout=sys.stdout, stderr=subprocess.STDOUT, start_new_session=True)
+
+    def stop(signum, frame):
+        virsh("domjobabort", vm, check=False, timeout=30)   # the VM keeps running on the source
+
+    signal.signal(signal.SIGTERM, stop)
+    if proc.wait() != 0:
+        fail("Migration fehlgeschlagen – die VM läuft weiter auf diesem Server.")
+    res = subprocess.run(["virsh", "-c", uri, "domstate", vm], capture_output=True, text=True, timeout=60)
+    if "running" not in res.stdout:
+        fail(f"Das Ziel meldet die VM nicht als laufend: {(res.stdout + res.stderr).strip()[:200]}")
+    if autostart:
+        subprocess.run(["virsh", "-c", uri, "autostart", vm], capture_output=True, timeout=60)
+    say("")
+    say(f"✅ {vm} läuft jetzt auf {spec['target_name']}.")
+    if not spec.get("shared"):
+        say("   Die alten Laufwerke liegen noch hier – nach einer Kontrolle unter Speicher-Pools löschen:")
+        for path in sources:
+            say(f"   {path}")
+
+
 def main() -> None:
-    if len(sys.argv) != 3 or sys.argv[1] not in ("fetch", "create"):
-        fail("Aufruf: vmtool.py fetch|create <spec.json>")
+    if len(sys.argv) != 3 or sys.argv[1] not in COMMANDS:
+        fail("Aufruf: vmtool.py fetch|create|backup|restore|migrate <spec.json>")
     path = sys.argv[2]
     try:
         with open(path) as f:
@@ -308,11 +606,15 @@ def main() -> None:
         fail("virsh fehlt (Paket libvirt-clients).")
     if sys.argv[1] == "fetch":
         fetch(spec)
-    else:
+    elif sys.argv[1] == "create":
         if not shutil.which("virt-install"):
             fail("virt-install fehlt (Paket virtinst).")
         create(spec)
+    else:
+        COMMANDS[sys.argv[1]](spec)
 
+
+COMMANDS = {"fetch": fetch, "create": create, "backup": backup, "restore": restore, "migrate": migrate}
 
 if __name__ == "__main__":
     main()

@@ -42,6 +42,7 @@ git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 **Run it**
 - Live hardware monitoring (CPU, temperature, NVMe health; on the Pi also throttling and Pi 5 power), 24 h / 7 day history, anomaly detection, capacity forecasts
 - **Virtual machines** (KVM/libvirt, inspired by Cockpit): create from Debian/Ubuntu cloud images with cloud-init (user, SSH key, guest agent) or from an ISO, start/stop, vCPUs and memory, disks, ISO, network cards, snapshots, clone, virtual networks and storage pools, graphical (noVNC) and serial console in the browser; optional per server (Settings → *Virtuelle Maschinen*), not offered on a Raspberry Pi
+- **VM operations:** templates, full backups while a VM runs, restore as a new VM, schedules for snapshots, backups, start and shutdown, and live migration between servers with a check first
 - Docker & k3s: containers, compose stacks, live logs, database monitor with dumps, image update checks, app store, stack templates
 - **GitOps:** compose stacks from a Git repository – diff of new commits, deploy as a task (databases dumped first, health check last), automatic mode, drift detection, deploy webhook
 - Persistent web terminal (tmux) with sharing and recordings, file browser, task log like Proxmox, fleet of servers via agents – a Raspberry Pi, a Debian or Ubuntu machine or VM each run the agent (`./install.sh --agent --from <main-dashboard-ip>`)
@@ -56,6 +57,9 @@ git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 - **Change requests** with four-eyes approval, maintenance windows and journal entries
 - **Emergency handbook** with restore commands per service, generated from stacks, backups, dumps and GitOps – print or Markdown for offline storage
 - **Compliance page:** baseline check modelled on BSI IT-Grundschutz / CIS (mostly rated automatically), GDPR records of processing and TOM, **access review** with sign-off, **evidence package** (ZIP with SHA-256 manifest) for auditors and customers
+- **Security watchers:** file integrity that explains package updates and approved changes, sudo log per user and server, ClamAV and rkhunter on a schedule, Falco for running containers
+- **NIS-2 deadlines** (§ 32 BSIG, Art. 33 GDPR), **policies** with acknowledgement, **supplier register** and **internal audits** with corrective actions
+- **Service catalog:** standard requests as forms with approval, fulfilled as a task, change request, VM or quick action
 
 Plus: Homarr-style boards, command palette (Ctrl+K), alerting with escalation, e-mail reports, public status page, NetBox integration, built-in MCP server for Claude.
 

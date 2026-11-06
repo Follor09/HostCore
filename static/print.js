@@ -10,7 +10,11 @@
     vvt: ['/api/compliance/privacy/markdown?part=vvt', '/nachweise#datenschutz-vvt'],
     tom: ['/api/compliance/privacy/markdown?part=tom', '/nachweise#datenschutz-tom'],
     patch: ['/api/patch-sla/markdown', '/system#patch-fristen'],
-    problems: ['/api/problems/markdown', '/doku#probleme']
+    problems: ['/api/problems/markdown', '/doku#probleme'],
+    nis2: ['/api/nis2/markdown', '/nachweise#nis2'],
+    policies: ['/api/policies/markdown', '/nachweise#richtlinien'],
+    suppliers: ['/api/suppliers/markdown', '/nachweise#dienstleister'],
+    audits: ['/api/internal-audits/markdown', '/nachweise#audits']
   };
   const doc = document.getElementById('pr-doc');
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);

@@ -387,6 +387,30 @@ KVM-Gäste über libvirt – angelehnt an Cockpit, auf jedem Debian-/Ubuntu-Serv
 
 Ansehen braucht „System-Werkzeuge ansehen“, Starten/Herunterfahren/Neu starten/Anhalten das Recht **„VMs steuern“** (auch Bearbeiter), alles andere **„VMs verwalten“** – mit erneuter Passwort-Abfrage und, wenn eingeschaltet, nur aus Heimnetz/VPN. Die Einrichtung ist Administratoren vorbehalten. Auf Remote-Servern funktioniert alles genauso (über den Agent).
 
+**Vorlagen, Sicherungen, Zeitpläne, Migration:**
+- **Vorlagen:** Größe, Netzwerk, Betriebssystem und cloud-init ohne Passwort; neue VMs entstehen daraus, auch über den Service-Katalog.
+- **Sicherungen:** vollständige Kopien aller Laufwerke in einem Speicher-Pool, im laufenden Betrieb (`virsh backup-begin`) oder ausgeschaltet. Die Wiederherstellung legt eine neue, ausgeschaltete VM mit neuen MAC-Adressen an. Für echten Schutz gehört der Ziel-Pool auf einen anderen Datenträger.
+- **Zeitpläne:** Snapshot, Sicherung, Start und Herunterfahren nach Wochentag und Uhrzeit, mit Aufbewahrung; Fehlschläge erscheinen in der Statusübersicht.
+- **Live-Migration** zwischen HostCore-Servern (Details der VM → *Auf anderen Server verschieben*): Erst prüft HostCore Architektur, Arbeitsspeicher, Netzwerk, Speicher-Pools, ISOs und die SSH-Verbindung, dann läuft die Migration als Aufgabe. Der Pool muss auf dem Ziel denselben Ordner haben. Jede Quelle bekommt einen eigenen SSH-Schlüssel, der auf dem Ziel nur `virt-ssh-helper` starten darf. Die Daten gehen **unverschlüsselt** über die Ports 49152–49215: nur im eigenen Netz oder VPN nutzen und die Ports auf dem Ziel für die Quelle freigeben. Die alten Laufwerke bleiben auf der Quelle liegen, bis du sie nach einer Kontrolle löschst.
+
+### 🔍 Sicherheitswächter (`/system`, Gruppe Sicherheit)
+
+- **Datei-Integrität:** vergleicht Systemordner per SHA-256 mit der Referenz (als Aufgabe mit Root-Rechten, auf Wunsch täglich). Änderungen durch Paket-Updates und genehmigte Änderungsanträge werden erkannt und automatisch geschlossen; der Rest bleibt offen, bis er begründet geschlossen wird. Sensible Dateien wie sudoers, SSH oder cron sind kritisch.
+- **sudo-Protokoll:** Wer wann was als root ausgeführt hat, aus dem Journal, 180 Tage aufbewahrt, pro Server oder über alle Server. Eingebaute und eigene Warnregeln markieren riskante Befehle.
+- **Malware-Scan:** ClamAV und rkhunter nach Zeitplan, auch in Container-Volumes. HostCore meldet nur und löscht nichts. ClamAV braucht beim Scan etwa 1 GB Arbeitsspeicher und ist deshalb zunächst aus.
+- **Laufzeitschutz:** Falco aus der signierten Paketquelle des Projekts (modernes eBPF, kein Kernelmodul) erkennt verdächtiges Verhalten in Containern. Falco beobachtet nur; bekannte Regeln lassen sich stummschalten.
+
+### 🧾 Service-Katalog (`/doku`, Gruppe Betrieb)
+
+Standardanfragen als Formular mit Freigabe nach dem Vier-Augen-Prinzip. Umgesetzt wird als Aufgabe auf dem Board, Änderungsantrag, VM aus einer Vorlage oder Schnellaktion. Automatische Einträge brauchen immer eine Freigabe, und wer freigibt, muss das Recht für die Umsetzung selbst haben.
+
+### ✅ Compliance (`/nachweise`)
+
+- **NIS-2-Meldefristen:** Vorfall einstufen, Fristen nach § 32 BSIG (24 Stunden, 72 Stunden, Abschlussmeldung) und Art. 33 DSGVO verfolgen, Texte vorbereiten, Einreichung belegen. Gemeldet wird über das BSI-Portal. Eine Arbeitshilfe, keine Rechtsberatung.
+- **Richtlinien:** Versionen mit Fingerabdruck, Freigabe durch eine zweite Person, Prüfintervall und Kenntnisnahme pro Benutzer und Version, Export als CSV.
+- **Dienstleister:** Kritikalität, AV-Vertrag, Zertifikate, Prüftermine mit Verlauf, Ausstiegsplan und abhängige Dienste.
+- **Interne Audits:** Checklisten, auch aus dem Grundschutz-Check; Abweichungen werden zu Feststellungen mit Maßnahme und Frist, die Wirksamkeit bestätigt jemand anderes als die verantwortliche Person.
+
 ### 🛰️ Remote-Server (Agent)
 
 Ein Dashboard kann weitere Server (Debian, Ubuntu, Raspberry Pi OS) steuern. Auf dem anderen Server läuft dafür der **HostCore-Agent** – dasselbe Dashboard ohne eigene Oberfläche und ohne Login, das nur mit einem Token auf das Haupt-Dashboard hört:

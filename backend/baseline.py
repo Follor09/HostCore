@@ -214,6 +214,59 @@ def a_postmortems():
     return ("ok" if not missing else "partial"), f"{len(heavy) - len(missing)} von {len(heavy)} schweren Störungen nachbetrachtet"
 
 
+def a_policies():
+    o = _mod("policies").overview()
+    live = [p for p in o["policies"] if p["state"] == "freigegeben"]
+    if not live:
+        return "fail", "Keine freigegebene Richtlinie"
+    late = sum(1 for p in live if p["review_overdue"])
+    missing = sum(1 for p in live if p["missing"])
+    return ("partial" if late or missing else "ok"), f"{len(live)} Richtlinien in Kraft, {late} Prüfungen überfällig, {missing} ohne vollständige Kenntnisnahme"
+
+
+def a_suppliers():
+    o = _mod("suppliers").overview()
+    if not o["suppliers"]:
+        return None
+    return ("ok" if not o["issues"] else "partial"), f"{len(o['suppliers'])} Dienstleister erfasst, {o['issues']} mit offenem Punkt"
+
+
+def a_audits():
+    o = _mod("auditplan").overview()
+    year = time.strftime("%Y")
+    done = [a for a in o["audits"] if a["status"] == "abgeschlossen" and a["planned"].startswith(year)]
+    if not o["audits"]:
+        return "fail", "Noch kein internes Audit geplant"
+    state = "ok" if done and not o["open_findings"] else "partial"
+    return state, f"{len(done)} Audits in {year} abgeschlossen, {o['open_findings']} Feststellungen offen"
+
+
+def a_nis2():
+    o = _mod("nis2").overview()
+    if not o["entity"]:
+        return "fail", "Einstufung nach NIS-2 noch nicht festgelegt"
+    if o["entity"] == "nicht_betroffen":
+        return "ok", "Laut Einstufung nicht von NIS-2 betroffen"
+    late = sum(1 for c in o["cases"] for d in c["deadlines"] if d["late"] or d["state"] == "overdue")
+    return ("ok" if not late and o["contact"] else "partial"), f"{len(o['cases'])} Fälle, {late} Fristen versäumt" + ("" if o["contact"] else ", keine Ansprechstelle hinterlegt")
+
+
+def a_fim():
+    o = _mod("fim").overview()
+    if not o["config"]["last_scan"]:
+        return "fail", "Datei-Integrität wurde noch nicht geprüft"
+    state = "ok" if o["config"]["enabled"] and not o["critical"] else "partial"
+    return state, f"{o['watched']} Dateien überwacht, {o['open']} unerklärte Änderungen" + ("" if o["config"]["enabled"] else ", kein Zeitplan")
+
+
+def a_malware():
+    o = _mod("malware").overview()
+    if not o["config"]["last_scan"]:
+        return "fail", "Noch kein Malware-Scan"
+    state = "fail" if o["open"] else "ok" if o["config"]["enabled"] else "partial"
+    return state, f"{o['open']} offene Funde" + ("" if o["config"]["enabled"] else ", kein Zeitplan")
+
+
 def a_problems():
     o = _mod("problems").overview()
     if o["suggestions"]:
@@ -276,6 +329,12 @@ CONTROLS: List[Tuple[str, str, str, str, str, Optional[Callable]]] = [
     ("LOG-2", "Protokollierung & Vorfälle", "DER.1", "Alarmierung bei Störungen", "Kritische Ereignisse erreichen zuverlässig eine zuständige Person.", a_alerting),
     ("LOG-3", "Protokollierung & Vorfälle", "DER.2.1", "Nachbereitung von Vorfällen", "Schwere Störungen werden nachbetrachtet, Maßnahmen verfolgt.", a_postmortems),
     ("LOG-4", "Protokollierung & Vorfälle", "DER.2.1", "Ursachen wiederkehrender Störungen", "Wiederkehrende Störungen werden als Problem analysiert.", a_problems),
+    ("LOG-5", "Protokollierung & Vorfälle", "DER.2.1", "Meldewege für Sicherheitsvorfälle", "Betroffenheit nach NIS-2 ist geklärt, Meldefristen werden eingehalten.", a_nis2),
+    ("LOG-6", "Protokollierung & Vorfälle", "DER.1", "Änderungen an Systemdateien erkannt", "Unerwartete Änderungen an Systemdateien und Konfiguration fallen auf.", a_fim),
+    ("LOG-7", "Protokollierung & Vorfälle", "OPS.1.1.4", "Schutz vor Schadprogrammen", "Server und Daten werden regelmäßig auf Schadsoftware geprüft.", a_malware),
+    ("GOV-1", "Organisation & Lieferkette", "ISMS.1", "Sicherheitsrichtlinien in Kraft", "Richtlinien sind freigegeben, aktuell und den Beteiligten bekannt.", a_policies),
+    ("GOV-2", "Organisation & Lieferkette", "OPS.2.3", "Dienstleister im Griff", "Externe Anbieter sind erfasst, bewertet und vertraglich gebunden.", a_suppliers),
+    ("GOV-3", "Organisation & Lieferkette", "DER.3.1", "Interne Audits", "Audits finden regelmäßig statt, Feststellungen werden abgearbeitet.", a_audits),
     ("ORG-1", "Organisation & Datenschutz", "ORP.1", "Zuständigkeiten festgelegt", "Für jeden Dienst ist eine zuständige Person benannt.", a_owners),
     ("ORG-2", "Organisation & Datenschutz", "CON.2", "Verzeichnis der Verarbeitungstätigkeiten", "Verarbeitungen personenbezogener Daten sind dokumentiert und aktuell.", a_vvt),
     ("ORG-3", "Organisation & Datenschutz", "CON.2", "Technisch-organisatorische Maßnahmen", "Die TOM sind beschrieben.", a_tom),

@@ -113,6 +113,17 @@ import imagepolicy
 import secretscan
 import patchsla
 import problems
+import vmops
+import fim
+import sudolog
+import malware
+import falco
+import servicecatalog
+import nis2
+import policies
+import suppliers
+import auditplan
+import scheduler
 import privacy
 import baseline
 import evidence
@@ -138,6 +149,7 @@ async def lifespan(app: FastAPI):
     notify_task = asyncio.create_task(notify.background_runner())
     alerting_task = asyncio.create_task(alerting.background_runner())
     tasks_task = asyncio.create_task(tasks.background_runner())
+    scheduler_task = asyncio.create_task(scheduler.background_runner())
     latency_task = None if AGENT else asyncio.create_task(latency.background_runner())
     if not AGENT:
         await mcp_server.reload()
@@ -147,6 +159,7 @@ async def lifespan(app: FastAPI):
     notify_task.cancel()
     alerting_task.cancel()
     tasks_task.cancel()
+    scheduler_task.cancel()
     if latency_task:
         latency_task.cancel()
     # Shutdown
@@ -3194,6 +3207,116 @@ async def api_vms_pool_action(name: str, act: str, request: Request):
     return await _vm(vms.pool_action, name, act)
 
 
+# Templates, backups, schedules and live migration (vmops.py)
+@app.get("/api/vms/ops")
+async def api_vms_ops():
+    def load():
+        return {"templates": vmops.templates(), **vmops.backups(), **vmops.schedules()}
+    return await _vm(load)
+
+
+@app.post("/api/vms/templates")
+async def api_vms_template_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:80]
+    return await _vm(vmops.template_save, None, payload, request.state.user or "")
+
+
+@app.post("/api/vms/templates/{tid}")
+async def api_vms_template_update(tid: str, payload: dict, request: Request):
+    return await _vm(vmops.template_save, tid, payload, request.state.user or "")
+
+
+@app.post("/api/vms/templates/{tid}/delete")
+async def api_vms_template_delete(tid: str):
+    return await _vm(vmops.template_delete, tid)
+
+
+@app.post("/api/vms/backups/config")
+async def api_vms_backup_config(payload: dict):
+    return await _vm(vmops.backup_config_save, str(payload.get("pool", "")))
+
+
+@app.post("/api/vms/backups/{bid}/restore")
+async def api_vms_backup_restore(bid: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:64]
+    return await _vm(vmops.backup_restore, bid, str(payload.get("name", "")), str(payload.get("pool", "")), request.state.user or "")
+
+
+@app.post("/api/vms/backups/{bid}/delete")
+async def api_vms_backup_delete(bid: str):
+    return await _vm(vmops.backup_delete, bid)
+
+
+@app.post("/api/vms/schedules")
+async def api_vms_schedule_create(payload: dict, request: Request):
+    return await _vm(vmops.schedule_save, None, payload, request.state.user or "")
+
+
+@app.post("/api/vms/schedules/{sid}")
+async def api_vms_schedule_update(sid: str, payload: dict, request: Request):
+    return await _vm(vmops.schedule_save, sid, payload, request.state.user or "")
+
+
+@app.post("/api/vms/schedules/{sid}/delete")
+async def api_vms_schedule_delete(sid: str):
+    return await _vm(vmops.schedule_delete, sid)
+
+
+@app.post("/api/vms/migration/key")
+async def api_vms_migration_key():
+    return await _vm(vmops.source_key)
+
+
+@app.post("/api/vms/migration/target")
+async def api_vms_migration_target(payload: dict):
+    return await _vm(vmops.prepare_target, str(payload.get("key", "")), str(payload.get("source", "")))
+
+
+@app.post("/api/vms/vm/{name}/backup")
+async def api_vms_backup(name: str, request: Request):
+    request.state.audit_detail = name
+    return await _vm(vmops.backup_start, name, request.state.user or "")
+
+
+@app.post("/api/vms/vm/{name}/migrate-check")
+async def api_vms_migrate_check(name: str, payload: dict):
+    return await _vm(vmops.check, name, payload.get("info") or {}, str(payload.get("address", "")), bool(payload.get("shared")))
+
+
+@app.post("/api/vms/vm/{name}/migrate")
+async def api_vms_migrate(name: str, payload: dict, request: Request):
+    return await _vm(vmops.migrate, name, payload.get("info") or {}, str(payload.get("address", "")), bool(payload.get("shared")),
+                     str(payload.get("target_name", ""))[:80], request.state.user or "")
+
+
+async def _migration(request: Request, fn, *args):
+    try:
+        return await fn(_remote_for(request), *args)
+    except vms.VmError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except tasks.TaskError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.get("/api/vm-migration/targets")
+async def api_vm_migration_targets(request: Request):
+    return await _migration(request, vmops.targets)
+
+
+@app.post("/api/vm-migration/check")
+async def api_vm_migration_check(payload: dict, request: Request):
+    return await _migration(request, vmops.run_check, vms.check_name(str(payload.get("vm", ""))), str(payload.get("target", "")), str(payload.get("address", "")),
+                            bool(payload.get("shared")), request.state.user or "")
+
+
+@app.post("/api/vm-migration/start")
+async def api_vm_migration_start(payload: dict, request: Request):
+    name = vms.check_name(str(payload.get("vm", "")))
+    request.state.audit_detail = f"{name} → {payload.get('target', '') or 'Hauptserver'}"
+    return await _migration(request, vmops.run_migrate, name, str(payload.get("target", "")), str(payload.get("address", "")),
+                            bool(payload.get("shared")), request.state.user or "")
+
+
 @app.get("/api/vms/vm/{name}")
 async def api_vm_detail(name: str):
     return await _vm(vms.detail, name)
@@ -5131,6 +5254,332 @@ def _call400(errors: tuple, fn, *args):
         return fn(*args)
     except errors as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Security watchers: file integrity, sudo log, malware scan, Falco
+# ---------------------------------------------------------------------------
+def _ids(payload: dict) -> list:
+    return [i for i in payload.get("ids") or [] if isinstance(i, int)]
+
+
+@app.get("/api/fim")
+async def api_fim():
+    return await asyncio.to_thread(fim.overview)
+
+
+@app.post("/api/fim/settings")
+async def api_fim_settings(payload: dict):
+    return await asyncio.to_thread(_call400, (fim.FimError, ValueError, TypeError), fim.save_config, payload)
+
+
+@app.post("/api/fim/scan")
+async def api_fim_scan(request: Request):
+    return await asyncio.to_thread(_call400, (fim.FimError,), fim.start_scan, request.state.user or "")
+
+
+@app.post("/api/fim/close")
+async def api_fim_close(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("note", ""))[:200]
+    return await asyncio.to_thread(_call400, (fim.FimError,), fim.close, _ids(payload), str(payload.get("note", "")), request.state.user or "")
+
+
+@app.get("/api/sudo-log")
+async def api_sudo_log():
+    return await asyncio.to_thread(sudolog.overview)
+
+
+@app.get("/api/sudo-log/entries")
+async def api_sudo_log_entries(days: int = 7, user: str = "", q: str = "", flagged: int = 0, own: int = 0):
+    return await asyncio.to_thread(sudolog.entries, days, user, q, bool(flagged), bool(own))
+
+
+@app.get("/api/sudo-log/fleet")
+async def api_sudo_log_fleet(days: int = 7, user: str = "", q: str = "", flagged: int = 0):
+    return await sudolog.fleet_entries(days, user, q, bool(flagged))
+
+
+@app.post("/api/sudo-log/rules")
+async def api_sudo_log_rules(payload: dict):
+    return await asyncio.to_thread(_call400, (sudolog.SudoLogError,), sudolog.save_rules, payload.get("rules") or [])
+
+
+@app.post("/api/sudo-log/reviewed")
+async def api_sudo_log_reviewed(request: Request):
+    return await asyncio.to_thread(sudolog.mark_reviewed, request.state.user or "")
+
+
+@app.get("/api/malware")
+async def api_malware():
+    return await asyncio.to_thread(malware.overview)
+
+
+@app.post("/api/malware/settings")
+async def api_malware_settings(payload: dict):
+    return await asyncio.to_thread(_call400, (malware.MalwareError, ValueError, TypeError), malware.save_config, payload)
+
+
+@app.post("/api/malware/scan")
+async def api_malware_scan(request: Request):
+    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.start_scan, request.state.user or "")
+
+
+@app.post("/api/malware/baseline")
+async def api_malware_baseline(request: Request):
+    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.rkhunter_baseline, request.state.user or "")
+
+
+@app.post("/api/malware/install/{scanner}")
+async def api_malware_install(scanner: str):
+    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.install, scanner)
+
+
+@app.post("/api/malware/close")
+async def api_malware_close(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("note", ""))[:200]
+    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.close, _ids(payload), str(payload.get("note", "")), request.state.user or "")
+
+
+@app.get("/api/falco")
+async def api_falco():
+    return await asyncio.to_thread(falco.overview)
+
+
+@app.post("/api/falco/setup")
+async def api_falco_setup(request: Request):
+    return await asyncio.to_thread(_call400, (falco.FalcoError,), falco.setup, request.state.user or "")
+
+
+@app.post("/api/falco/close")
+async def api_falco_close(payload: dict, request: Request):
+    return await asyncio.to_thread(falco.close, _ids(payload), request.state.user or "")
+
+
+@app.post("/api/falco/mute")
+async def api_falco_mute(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("rule", ""))[:200]
+    return await asyncio.to_thread(_call400, (falco.FalcoError,), falco.mute, str(payload.get("rule", "")), str(payload.get("container", "")), bool(payload.get("undo")))
+
+
+# ---------------------------------------------------------------------------
+# Service catalog
+# ---------------------------------------------------------------------------
+CATALOG_ERRORS = (servicecatalog.CatalogError,)
+
+
+@app.get("/api/service-catalog")
+async def api_catalog(request: Request):
+    return await asyncio.to_thread(servicecatalog.overview, request.state.user or "")
+
+
+@app.post("/api/service-catalog/items")
+async def api_catalog_item_create(payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.save_item, None, payload, request.state.user or "")
+
+
+@app.post("/api/service-catalog/items/{iid}")
+async def api_catalog_item_update(iid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.save_item, iid, payload, request.state.user or "")
+
+
+@app.post("/api/service-catalog/items/{iid}/delete")
+async def api_catalog_item_delete(iid: str, request: Request):
+    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.delete_item, iid, request.state.user or "")
+
+
+@app.post("/api/service-catalog/items/{iid}/request")
+async def api_catalog_submit(iid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.submit, iid, payload.get("values") or {}, str(payload.get("note", "")), request.state.user or "")
+
+
+@app.post("/api/service-catalog/requests/{rid}/{act}")
+async def api_catalog_decide(rid: str, act: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{rid} · {act}"
+    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.decide, rid, act, str(payload.get("note", "")), request.state.user or "")
+
+
+# ---------------------------------------------------------------------------
+# NIS-2 deadlines, policies, suppliers, internal audits
+# ---------------------------------------------------------------------------
+@app.get("/api/nis2")
+async def api_nis2():
+    return await asyncio.to_thread(nis2.overview)
+
+
+@app.get("/api/nis2/markdown")
+async def api_nis2_markdown():
+    return _md_response(await asyncio.to_thread(nis2.markdown), "nis2-meldefristen.md")
+
+
+@app.get("/api/nis2/{cid}/draft/{stage}")
+async def api_nis2_draft(cid: str, stage: str):
+    return _md_response(await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.draft, cid, stage), f"nis2-{stage}.md")
+
+
+@app.post("/api/nis2/profile")
+async def api_nis2_profile(payload: dict):
+    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.save_profile, payload)
+
+
+@app.post("/api/nis2")
+async def api_nis2_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:160]
+    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/nis2/{cid}")
+async def api_nis2_update(cid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.save, cid, payload, request.state.user or "")
+
+
+@app.post("/api/nis2/{cid}/report")
+async def api_nis2_report(cid: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("stage", ""))
+    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.report, cid, str(payload.get("stage", "")), payload.get("submitted"),
+                                   str(payload.get("reference", "")), str(payload.get("note", "")), request.state.user or "")
+
+
+@app.post("/api/nis2/{cid}/close")
+async def api_nis2_close(cid: str, request: Request):
+    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.close, cid, request.state.user or "")
+
+
+@app.post("/api/nis2/{cid}/delete")
+async def api_nis2_delete(cid: str):
+    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.delete, cid)
+
+
+@app.get("/api/policies")
+async def api_policies(request: Request):
+    return await asyncio.to_thread(policies.overview, request.state.user or "")
+
+
+@app.get("/api/policies/markdown")
+async def api_policies_markdown():
+    return _md_response(await asyncio.to_thread(policies.markdown), "richtlinien.md")
+
+
+@app.get("/api/policies/export.csv")
+async def api_policies_csv():
+    text = await asyncio.to_thread(policies.csv_export)
+    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="richtlinien-kenntnisnahme.csv"'})
+
+
+@app.get("/api/policies/{pid}")
+async def api_policy(pid: str, request: Request):
+    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.detail, pid, request.state.user or "")
+
+
+@app.get("/api/policies/{pid}/version/{version}")
+async def api_policy_version(pid: str, version: int):
+    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.version_text, pid, version)
+
+
+@app.post("/api/policies")
+async def api_policy_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:120]
+    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/policies/{pid}")
+async def api_policy_update(pid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.save, pid, payload, request.state.user or "")
+
+
+@app.post("/api/policies/{pid}/{act}")
+async def api_policy_action(pid: str, act: str, payload: dict, request: Request):
+    user = request.state.user or ""
+    fns = {"submit": (policies.submit, pid, user), "release": (policies.release, pid, user), "review": (policies.confirm_review, pid, user),
+           "retire": (policies.retire, pid, bool(payload.get("on", True)), user), "acknowledge": (policies.acknowledge, pid, user), "delete": (policies.delete, pid, user)}
+    if act not in fns:
+        raise HTTPException(status_code=404, detail="Unbekannte Aktion.")
+    return await asyncio.to_thread(_call400, (policies.PolicyError,), *fns[act])
+
+
+@app.get("/api/suppliers")
+async def api_suppliers():
+    return await asyncio.to_thread(suppliers.overview)
+
+
+@app.get("/api/suppliers/markdown")
+async def api_suppliers_markdown():
+    return _md_response(await asyncio.to_thread(suppliers.markdown), "dienstleister.md")
+
+
+@app.post("/api/suppliers")
+async def api_supplier_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/suppliers/{sid}")
+async def api_supplier_update(sid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.save, sid, payload, request.state.user or "")
+
+
+@app.post("/api/suppliers/{sid}/review")
+async def api_supplier_review(sid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.review, sid, str(payload.get("date", "")), str(payload.get("result", "")),
+                                   str(payload.get("note", "")), request.state.user or "")
+
+
+@app.post("/api/suppliers/{sid}/delete")
+async def api_supplier_delete(sid: str):
+    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.delete, sid)
+
+
+AUDIT_ERRORS = (auditplan.AuditPlanError,)
+
+
+@app.get("/api/internal-audits")
+async def api_audits():
+    return await asyncio.to_thread(auditplan.overview)
+
+
+@app.get("/api/internal-audits/markdown")
+async def api_audits_markdown(id: str = ""):
+    return _md_response(await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.markdown, id), "interne-audits.md")
+
+
+@app.post("/api/internal-audits")
+async def api_audit_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("title", ""))[:140]
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.save, None, payload, request.state.user or "")
+
+
+@app.post("/api/internal-audits/{aid}")
+async def api_audit_update(aid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.save, aid, payload, request.state.user or "")
+
+
+@app.post("/api/internal-audits/{aid}/checks")
+async def api_audit_checks(aid: str, payload: dict):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.add_checks, aid, payload.get("texts") or [], bool(payload.get("baseline")))
+
+
+@app.post("/api/internal-audits/{aid}/checks/{cid}")
+async def api_audit_rate(aid: str, cid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.rate, aid, cid, str(payload.get("result", "")), str(payload.get("note", "")), request.state.user or "")
+
+
+@app.post("/api/internal-audits/{aid}/findings/{fid}")
+async def api_audit_finding(aid: str, fid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.update_finding, aid, fid, payload, request.state.user or "")
+
+
+@app.post("/api/internal-audits/{aid}/findings/{fid}/close")
+async def api_audit_finding_close(aid: str, fid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.close_finding, aid, fid, str(payload.get("note", "")), request.state.user or "")
+
+
+@app.post("/api/internal-audits/{aid}/finish")
+async def api_audit_finish(aid: str, payload: dict, request: Request):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.finish, aid, str(payload.get("summary", "")), request.state.user or "")
+
+
+@app.post("/api/internal-audits/{aid}/delete")
+async def api_audit_delete(aid: str):
+    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.delete, aid)
 
 
 @app.get("/api/patch-sla")

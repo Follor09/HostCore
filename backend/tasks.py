@@ -37,7 +37,7 @@ KEEP_DAYS = 60
 ID_RE = re.compile(r"^[0-9a-f]{16}$")
 STATES = {"running": "Läuft", "ok": "OK", "error": "Fehler", "cancelled": "Abgebrochen", "timeout": "Zeitüberschreitung",
           "lost": "Unterbrochen"}
-_hooks: Dict[str, Callable[[Dict[str, Any]], None]] = {}
+_hooks: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
 _lock = threading.Lock()
 _user_systemd: Optional[bool] = None
 
@@ -48,7 +48,7 @@ class TaskError(Exception):
 
 def on_done(kind: str, fn: Callable[[Dict[str, Any]], None]) -> None:
     """fn(task) runs once in the dashboard after a task of this kind has ended."""
-    _hooks[kind] = fn
+    _hooks.setdefault(kind, []).append(fn)
 
 
 def _path(task_id: str, ext: str) -> str:
@@ -302,8 +302,7 @@ def poll() -> None:
             continue
         spec["hooked"] = True
         _write_json(_path(task_id, "json"), spec)
-        fn = _hooks.get(spec["kind"])
-        if fn:
+        for fn in _hooks.get(spec["kind"], []):
             try:
                 fn(t)
             except Exception as e:
