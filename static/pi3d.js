@@ -101,6 +101,8 @@
   function loop(now) {
     view.raf = 0;
     if (!view.visible || document.hidden || reduceMotion) return;
+    // The slow auto-turn needs no 60 fps: ~15 frames a second look the same and cost a quarter
+    if (view.last && now - view.last < 66) { view.raf = requestAnimationFrame(loop); return; }
     const dt = Math.min(0.1, (now - (view.last || now)) / 1000);
     view.last = now;
     if (!view.dragging && Date.now() - view.lastUser > 4000) {

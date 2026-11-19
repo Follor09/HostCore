@@ -302,7 +302,7 @@
     if (window.PiAuth) await window.PiAuth.ready;
     if (window.PiAuth && !window.PiAuth.user) return;
     poll();
-    setInterval(poll, 10000);
+    setInterval(() => { if (!document.hidden) poll(); }, 10000);
     window.addEventListener('hashchange', poll);
   }
 

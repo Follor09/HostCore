@@ -2758,7 +2758,7 @@
     if (!window.PiAuth || window.PiAuth.can('security.view')) loadActivity();
     // Sensors: history once, live values every 5 s while the page is open
     api('/api/sensors/history').then(h => { sensorHistory = h; return refreshSensors(); }).catch(() => refreshSensors());
-    setInterval(refreshSensors, 5000);
+    setInterval(() => { if (!document.hidden) refreshSensors(); }, 5000);
     document.querySelectorAll('#hogs-range button').forEach(b => b.addEventListener('click', () => {
       hogHours = +b.dataset.hours;
       document.querySelectorAll('#hogs-range button').forEach(x => x.classList.toggle('active', x === b));

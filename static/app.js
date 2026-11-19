@@ -235,7 +235,8 @@
       }
     }
     updateClock();
-    setInterval(updateClock, 1000);
+    setInterval(() => { if (!document.hidden) updateClock(); }, 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) updateClock(); });
   }
 
   // ---------------------------------------------------------------------------
@@ -2037,9 +2038,10 @@
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${location.host}/ws`;
 
-    state.ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl);
+    state.ws = ws;
 
-    state.ws.onopen = function () {
+    ws.onopen = function () {
       state.connected = true;
       state.reconnectAttempts = 0;
       if (els.wsStatusText) els.wsStatusText.textContent = 'Live WebSocket';
@@ -2049,7 +2051,7 @@
       }
     };
 
-    state.ws.onmessage = function (event) {
+    ws.onmessage = function (event) {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'live_update') {
@@ -2067,9 +2069,14 @@
       }
     };
 
-    state.ws.onclose = function (evt) {
+    ws.onclose = function (evt) {
       if (evt && evt.code === 4401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
+      if (state.ws !== ws) return;  // an older connection closing late
       state.connected = false;
+      if (state.paused) {
+        if (els.wsStatusText) els.wsStatusText.textContent = 'Pausiert (Tab im Hintergrund)';
+        return;
+      }
       if (els.wsStatusText) els.wsStatusText.textContent = 'Verbindung getrennt';
       if (els.wsStatusChip) {
         els.wsStatusChip.style.borderColor = 'rgba(255, 42, 95, 0.4)';
@@ -2081,10 +2088,33 @@
       setTimeout(connectWebSocket, delay);
     };
 
-    state.ws.onerror = function (err) {
+    ws.onerror = function (err) {
       console.warn('WebSocket error:', err);
-      state.ws.close();
+      ws.close();
     };
+  }
+
+  // A tab in the background needs no live data: after 15 s hidden the connection closes,
+  // so neither the server measures for it nor the browser repaints cards nobody sees.
+  function pauseLiveWhenHidden() {
+    let hideTimer = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          if (!document.hidden) return;
+          state.paused = true;
+          if (state.ws) state.ws.close();
+        }, 15000);
+      } else {
+        clearTimeout(hideTimer);
+        if (state.paused) {
+          state.paused = false;
+          state.reconnectAttempts = 0;
+          connectWebSocket();
+        }
+      }
+    });
   }
 
   // Used by replay.js: paint the cards with past values (sparklines get the minutes before them)
@@ -2101,7 +2131,7 @@
   };
 
   async function fetchSystemFallback() {
-    if (state.connected) return;
+    if (state.connected || state.paused || document.hidden) return;
     try {
       const res = await fetch('/api/system');
       if (res.ok) {
@@ -2988,8 +3018,8 @@
     initFilesModal();
     loadHomelab();
     loadWol();
-    setInterval(loadHomelab, 20000);
-    setInterval(loadWol, 60000);
+    setInterval(() => { if (!document.hidden) loadHomelab(); }, 20000);
+    setInterval(() => { if (!document.hidden) loadWol(); }, 60000);
 
     $('logs-modal-close').addEventListener('click', closeContainerLogs);
     $('logs-modal-refresh').addEventListener('click', loadContainerLogs);
@@ -3402,7 +3432,7 @@
     new ResizeObserver(() => renderHistoryChart()).observe(hEls.chart);
 
     loadHistory();
-    setInterval(loadHistory, 5 * 60 * 1000);
+    setInterval(() => { if (!document.hidden) loadHistory(); }, 5 * 60 * 1000);
   }
 
   // ---------------------------------------------------------------------------
@@ -3727,8 +3757,9 @@
     initNvmeHistory();
     initHomelab();
     connectWebSocket();
+    pauseLiveWhenHidden();
 
-    setInterval(loadWeather, 600000);
+    setInterval(() => { if (!document.hidden) loadWeather(); }, 600000);
     setInterval(fetchSystemFallback, 3000);
   }
 

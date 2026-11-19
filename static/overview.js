@@ -136,10 +136,10 @@
 
   if ($('status-bar')) {
     loadStatus();
-    setInterval(loadStatus, 30 * 1000);
+    setInterval(() => { if (!document.hidden) loadStatus(); }, 30 * 1000);
   }
   if ($('events-list')) {
     loadEvents();
-    setInterval(loadEvents, 60 * 1000);
+    setInterval(() => { if (!document.hidden) loadEvents(); }, 60 * 1000);
   }
 })();

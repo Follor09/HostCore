@@ -5,6 +5,7 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 """
 
 import asyncio
+import json
 import platform
 import re
 import threading
@@ -6071,11 +6072,53 @@ async def api_shutdown():
         }
 
 
+# Live data shared by all open dashboards: measured once per interval, not once per tab.
+# Each group refreshes at its own pace and gets a version that only moves when the content changed.
+_LIVE_EVERY = {"system": 1.5, "processes": 3.0, "services": 10.0, "storage": 15.0}
+_LIVE_GROUPS = {"system": ("system",), "processes": ("processes",), "services": ("services",),
+                "storage": ("storage", "drives")}
+_LIVE: dict[str, dict] = {"data": {}, "ts": {}, "ver": {}, "sig": {}}
+_LIVE_LOCK = asyncio.Lock()
+
+
+def _live_compute(due: list) -> dict:
+    out: dict[str, Any] = {}
+    for group in due:
+        try:
+            if group == "system":
+                out[group] = system_info.get_system_snapshot()
+            elif group == "processes":
+                out[group] = system_info.get_top_processes(limit=6)
+            elif group == "services":
+                out[group] = services_manager.get_services_status()
+            elif group == "storage":
+                out[group] = {"storage": storage.overview(), "drives": services_manager.get_mounted_drives()}
+        except Exception as e:
+            logger.warning(f"Live data {group}: {e}")
+    return out
+
+
+async def _live_data() -> tuple[dict, dict]:
+    async with _LIVE_LOCK:
+        now = time.monotonic()
+        due = [g for g, every in _LIVE_EVERY.items() if now - _LIVE["ts"].get(g, -1e9) >= every - 0.25]
+        if due:
+            fresh = await asyncio.to_thread(_live_compute, due)
+            for g, value in fresh.items():
+                _LIVE["ts"][g] = now
+                sig = json.dumps(value, sort_keys=True, default=str) if g != "system" else None
+                if g == "system" or sig != _LIVE["sig"].get(g):
+                    _LIVE["sig"][g] = sig
+                    _LIVE["ver"][g] = _LIVE["ver"].get(g, 0) + 1
+                    _LIVE["data"][g] = value
+        return _LIVE["data"], dict(_LIVE["ver"])
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for real-time live push updates.
-    Sends system snapshot, top processes, services, drives, and updater state every 1.5 seconds.
+    Every 1.5 s: system snapshot, plus processes, services, storage and updater state when they changed.
     """
     # Middleware doesn't cover WebSockets: check the session here
     await websocket.accept()
@@ -6093,25 +6136,25 @@ async def websocket_endpoint(websocket: WebSocket):
             await _ws_relay(websocket, remote, "/ws", user or "")
             return
     logger.info("WebSocket Client connected.")
+    sent: dict[str, int] = {}
+    last_updater = None
     try:
         while True:
-            snapshot = system_info.get_system_snapshot()
-            processes = system_info.get_top_processes(limit=6)
-            services = services_manager.get_services_status()
-            drives = services_manager.get_mounted_drives()
-            storage_overview = storage.overview()
-
-            payload = {
-                "type": "live_update",
-                "system": snapshot,
-                "processes": processes,
-                "services": services,
-                "drives": drives,
-                "storage": storage_overview,
-                "updater": updater.update_state
-            }
+            data, versions = await _live_data()
+            # Only parts that changed since this client's last message; "system" always changes
+            payload: dict[str, Any] = {"type": "live_update"}
+            for group, keys in _LIVE_GROUPS.items():
+                if group not in data or sent.get(group) == versions.get(group):
+                    continue
+                sent[group] = versions[group]
+                for k in keys:
+                    payload[k] = data[group][k] if group == "storage" else data[group]
+            upd = json.dumps(updater.update_state, sort_keys=True, default=str)
+            if upd != last_updater:
+                last_updater = upd
+                payload["updater"] = updater.update_state
             await websocket.send_json(payload)
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(_LIVE_EVERY["system"])
     except WebSocketDisconnect:
         logger.info("WebSocket Client disconnected.")
     except Exception as e:
