@@ -9,6 +9,54 @@
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   let state = null;
 
+  // ---------------------------------------------------------------------------
+  // The server this page shows. The selection is one cookie for the whole browser: another tab may
+  // switch it while this one still shows the old server. Every action and every live connection says
+  // which server it is meant for; the server refuses when that is no longer the selected one, so a
+  // restart, a terminal or a console never lands on a different machine than the page shows.
+  // ---------------------------------------------------------------------------
+  let pageHost = null;          // "local" or the remote's id, once known
+  let changedShown = false;
+
+  function hostChanged(detail) {
+    if (changedShown) return;
+    changedShown = true;
+    window.alert(detail || t('Inzwischen ist ein anderer Server ausgewählt. Die Seite wird neu geladen.'));
+    location.reload();
+  }
+
+  const prevFetch = window.fetch;
+  window.fetch = async function (input, init) {
+    if (pageHost) {
+      const method = String((init && init.method) || (input && typeof input === 'object' && input.method) || 'GET').toUpperCase();
+      let url = null;
+      try { url = new URL(typeof input === 'string' ? input : (input && input.url) || String(input), location.href); } catch (e) { /* not a URL */ }
+      if (url && url.origin === location.origin && url.pathname.startsWith('/api/') && method !== 'GET' && method !== 'HEAD') {
+        const headers = new Headers((init && init.headers) || (input instanceof Request ? input.headers : undefined));
+        headers.set('X-PiCore-Host', pageHost);
+        init = { ...(init || {}), headers };
+      }
+    }
+    const res = await prevFetch(input, init);
+    if (res.status === 409) {
+      try {
+        const d = await res.clone().json();
+        if (d && d.host_changed) hostChanged(d.detail);
+      } catch (e) { /* not ours */ }
+    }
+    return res;
+  };
+
+  window.PiHost = {
+    // Query parameter for WebSocket URLs ("&host=…"), empty while unknown
+    param: () => (pageHost ? `host=${encodeURIComponent(pageHost)}` : ''),
+    // Name of the server the page shows
+    name: () => (state ? (state.current ? state.current.name : state.local) : ''),
+    isRemote: () => !!(state && state.current),
+    // A WebSocket closed with 4409: the selection changed elsewhere
+    closed: code => { if (code === 4409) { hostChanged(); return true; } return false; }
+  };
+
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -116,6 +164,7 @@
       if (!res.ok) return;
       state = await res.json();
     } catch (e) { return; }
+    pageHost = state.current ? state.current.id : 'local';
     if (!state.hosts.length && !state.current) return;
     buildSwitcher();
     buildBanner();

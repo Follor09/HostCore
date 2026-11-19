@@ -137,7 +137,7 @@
     setStatus('warning', again ? 'Verbinde neu…' : 'Verbinde…');
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${proto}//${location.host}/ws/terminal?ticket=${encodeURIComponent(ticket)}&rows=${term.rows}&cols=${term.cols}`);
+    ws = new WebSocket(`${proto}//${location.host}/ws/terminal?ticket=${encodeURIComponent(ticket)}&rows=${term.rows}&cols=${term.cols}${window.PiHost && window.PiHost.param() ? `&${window.PiHost.param()}` : ''}`);
     let exit = null;
     ws.onopen = () => {
       setStatus('good', 'Verbunden');
@@ -170,6 +170,7 @@
       $('term-share').hidden = true;
       $('term-viewers').hidden = true;
       toggleShare(false);
+      if (window.PiHost && window.PiHost.closed(e.code)) return;
       if (e.code === 4401) { store.set(null); return showUnlock(t('Sitzung abgelaufen oder Ticket ungültig – bitte erneut anmelden.')); }
       if (exit) {
         // Ended on purpose: the shell is gone, or idle (then the password is needed again)

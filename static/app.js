@@ -2036,7 +2036,8 @@
   // ---------------------------------------------------------------------------
   function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${location.host}/ws`;
+    const hostParam = window.PiHost ? window.PiHost.param() : '';
+    const wsUrl = `${protocol}//${location.host}/ws${hostParam ? `?${hostParam}` : ''}`;
 
     const ws = new WebSocket(wsUrl);
     state.ws = ws;
@@ -2072,6 +2073,7 @@
     ws.onclose = function (evt) {
       if (evt && evt.code === 4401) { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}${location.hash}`; return; }
       if (state.ws !== ws) return;  // an older connection closing late
+      if (window.PiHost && window.PiHost.closed(evt && evt.code)) return;
       state.connected = false;
       if (state.paused) {
         if (els.wsStatusText) els.wsStatusText.textContent = 'Pausiert (Tab im Hintergrund)';
@@ -2148,15 +2150,19 @@
   // ---------------------------------------------------------------------------
   function openModal(action) {
     state.modalAction = action;
+    // Name the machine: with several servers it must be clear which one goes down
+    const name = window.PiHost && window.PiHost.name();
+    const remote = window.PiHost && window.PiHost.isRemote();
+    const who = name ? `„${name}“` : 'den Server';
     if (action === 'reboot') {
-      els.modalTitle.textContent = 'Server-Neustart';
-      els.modalMessage.textContent = 'Möchtest du den Server jetzt neu starten? Laufende Dienste werden beendet.';
+      els.modalTitle.textContent = name ? `${name} neu starten` : 'Server-Neustart';
+      els.modalMessage.textContent = `Möchtest du ${who} jetzt neu starten? Laufende Dienste werden beendet.${remote ? '' : ' Das ist der Server, auf dem dieses Dashboard läuft.'}`;
       els.btnModalConfirm.className = 'btn-confirm';
       els.btnModalConfirm.style.background = 'var(--accent-amber)';
       els.btnModalConfirm.textContent = 'Jetzt Neustarten';
     } else if (action === 'shutdown') {
-      els.modalTitle.textContent = 'Server herunterfahren';
-      els.modalMessage.textContent = 'Möchtest du das System sicher ausschalten? Danach muss die Stromversorgung getrennt bzw. wiederhergestellt werden.';
+      els.modalTitle.textContent = name ? `${name} herunterfahren` : 'Server herunterfahren';
+      els.modalMessage.textContent = `Möchtest du ${who} sicher ausschalten? Danach muss die Stromversorgung getrennt bzw. wiederhergestellt werden.${remote ? '' : ' Das ist der Server, auf dem dieses Dashboard läuft.'}`;
       els.btnModalConfirm.className = 'btn-confirm';
       els.btnModalConfirm.style.background = 'var(--accent-rose)';
       els.btnModalConfirm.textContent = 'Jetzt Ausschalten';

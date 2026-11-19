@@ -38,7 +38,7 @@ async function ticket() {
   return json;
 }
 
-const wsUrl = (tk, k, extra = '') => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/vm-console?ticket=${encodeURIComponent(tk)}&kind=${k}${extra}`;
+const wsUrl = (tk, k, extra = '') => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/vm-console?ticket=${encodeURIComponent(tk)}&kind=${k}${extra}${window.PiHost && window.PiHost.param() ? `&${window.PiHost.param()}` : ''}`;
 
 function disconnect() {
   clearInterval(pinger);
@@ -138,6 +138,7 @@ function connectSerial(tk) {
   };
   sock.onclose = e => {
     if (ws !== sock) return;
+    if (window.PiHost && window.PiHost.closed(e.code)) return;
     ws = null;
     clearInterval(pinger);
     setStatus('critical', 'Getrennt');

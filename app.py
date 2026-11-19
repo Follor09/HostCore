@@ -183,6 +183,7 @@ async def unexpected_error(request: Request, exc: Exception):
 
 # In-process API calls (MCP tools -> the dashboard's own API, with its permissions and activity log)
 INTERNAL_HEADER = "x-picore-internal"
+HOST_HEADER = "x-picore-host"   # which server the page in the browser shows ("local" or a remote id)
 INTERNAL_USER_HEADER = "x-picore-mcp-user"
 INTERNAL_KEY = secrets.token_hex(32)
 AGENT = agent.enabled()
@@ -205,12 +206,40 @@ def _remote_for(request_or_ws) -> Optional[dict]:
     return remotes.selected(request_or_ws.cookies.get(remotes.COOKIE))
 
 
+HOST_CHANGED_CLOSE = 4409   # WebSocket close code: the page shows another server than the one selected now
+
+
+def _host_changed(request_or_ws, want: Optional[str]) -> Optional[str]:
+    """The selection is one cookie for the whole browser, so a tab opened for server A still talks after
+    another tab switched to B. Pages say which server they show ("local" or a remote id); returns the
+    name of the server selected now if that is a different one, else None."""
+    if want is None or AGENT:
+        return None
+    remote = _remote_for(request_or_ws)
+    if want == (remote["id"] if remote else "local"):
+        return None
+    return remote["name"] if remote else "dieser Server"
+
+
+def _host_changed_response(now: str) -> JSONResponse:
+    return JSONResponse({"detail": f"Inzwischen ist ein anderer Server ausgewählt ({now}). Die Seite wird neu geladen – "
+                                   "danach bitte noch einmal versuchen.", "host_changed": True}, status_code=409)
+
+
 @app.middleware("http")
 async def remote_proxy(request: Request, call_next):
     """Innermost middleware (after login, permissions and the activity log): API calls for a
     selected remote server go to its agent, with this dashboard's permissions already checked."""
     path = request.url.path
     remote = _remote_for(request) if path.startswith("/api/") else None
+    # The selection is one cookie for the whole browser: a tab opened for server A still sends
+    # actions after another tab switched to server B. Pages say which server they show
+    # (X-PiCore-Host); an action that would land on a different one is refused instead.
+    if (path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS")
+            and (path.startswith("/api/terminal/") or (path != "/api/remotes/select" and not remotes.LOCAL_ONLY.match(path)))):
+        now = _host_changed(request, request.headers.get(HOST_HEADER))
+        if now:
+            return _host_changed_response(now)
     if not remote or remotes.LOCAL_ONLY.match(path):
         return await call_next(request)
     request.state.audit_detail = f"@{remote['name']}"
@@ -3005,6 +3034,9 @@ async def ws_terminal(websocket: WebSocket, ticket: str = "", rows: int = 24, co
         if not user or not auth.can(user, "terminal") or not same_origin:
             await websocket.close(code=4401)
             return
+        if _host_changed(websocket, websocket.query_params.get("host")):
+            await websocket.close(code=HOST_CHANGED_CLOSE)
+            return
         remote = _remote_for(websocket)
         if remote:
             # the ticket was issued by the remote agent (the ticket request went there too)
@@ -3433,6 +3465,9 @@ async def ws_vm_console(websocket: WebSocket, ticket: str = "", kind: str = "ser
             return
         if websec.blocked_from_outside("vms.manage", websec.client_ip(websocket)):
             await websocket.close(code=4403)
+            return
+        if _host_changed(websocket, websocket.query_params.get("host")):
+            await websocket.close(code=HOST_CHANGED_CLOSE)
             return
         remote = _remote_for(websocket)
         if remote:
@@ -6130,6 +6165,9 @@ async def websocket_endpoint(websocket: WebSocket):
         user = auth.user_from_token(websocket.cookies.get(auth.COOKIE_NAME))
         if not user and not auth.public_view():
             await websocket.close(code=4401)  # the page redirects to /login on this code
+            return
+        if _host_changed(websocket, websocket.query_params.get("host")):
+            await websocket.close(code=HOST_CHANGED_CLOSE)
             return
         remote = _remote_for(websocket)
         if remote:
