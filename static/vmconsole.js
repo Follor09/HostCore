@@ -101,7 +101,7 @@ function connectVnc(tk) {
 function ensureTerm() {
   if (term) return;
   term = new window.Terminal({
-    cursorBlink: true, fontFamily: "'JetBrains Mono', monospace", fontSize: 14, scrollback: 5000,
+    cursorBlink: true, fontFamily: "'IBM Plex Mono', ui-monospace, monospace", fontSize: 14, scrollback: 5000,
     theme: {
       background: '#05070c', foreground: '#d7e0ea', cursor: '#00f0ff', selectionBackground: 'rgba(0, 240, 255, 0.25)',
       black: '#1b2130', red: '#ff5c7c', green: '#00ffa3', yellow: '#ffb703', blue: '#38bdf8', magenta: '#a855f7', cyan: '#00f0ff', white: '#d7e0ea'

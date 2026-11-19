@@ -232,7 +232,7 @@
     });
     player.term = new window.Terminal({
       cols: header.width || 100, rows: header.height || 30, disableStdin: true, cursorBlink: false, scrollback: 2000,
-      fontFamily: "'JetBrains Mono', monospace", fontSize: 13,
+      fontFamily: "'IBM Plex Mono', ui-monospace, monospace", fontSize: 13,
       theme: { background: '#05070c', foreground: '#d7e0ea', cursor: '#00f0ff' }
     });
     player.term.open(q('rec-screen'));

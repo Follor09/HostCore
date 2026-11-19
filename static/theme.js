@@ -8,8 +8,8 @@
 
   const KEY = 'theme';
   const ACCENT_KEY = 'accent';
-  const ACCENTS = ['blue', 'cyan', 'green', 'violet', 'orange', 'pink'];
-  const DEFAULT_ACCENT = 'blue';
+  const ACCENTS = ['green', 'blue', 'cyan', 'violet', 'orange', 'pink'];
+  const DEFAULT_ACCENT = 'green';
 
   function accent() {
     try {
@@ -53,7 +53,7 @@
     const theme = resolved();
     document.documentElement.dataset.theme = theme;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = theme === 'light' ? '#fafafa' : '#09090b';
+    if (meta) meta.content = theme === 'light' ? '#e4e5e7' : '#16171a';
     window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, choice: choice() } }));
   }
 
@@ -77,7 +77,7 @@
   apply();
   document.addEventListener('DOMContentLoaded', () => {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = resolved() === 'light' ? '#fafafa' : '#09090b';
+    if (meta) meta.content = resolved() === 'light' ? '#e4e5e7' : '#16171a';
   });
 
   window.PiTheme = { choice, resolved, set, cycle, accent, setAccent, accents: ACCENTS };

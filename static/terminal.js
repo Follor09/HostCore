@@ -62,7 +62,7 @@
     if (term) return;
     term = new window.Terminal({
       cursorBlink: true,
-      fontFamily: "'JetBrains Mono', monospace",
+      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
       fontSize: 14,
       scrollback: 5000,
       theme: {
