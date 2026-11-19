@@ -417,71 +417,76 @@ class Monitor:
                 threading.Thread(target=dnswatch.check_if_due, daemon=True).start()
             except Exception as e:
                 logger.warning(f"DNS watch failed: {e}")
-            if now - self.last_cleanup > 3600:
+            if now - self.last_cleanup > 3600 and not _hourly_lock.locked():
                 self.last_cleanup = now
-                try:
-                    import insights
-                    insights.disk_snapshot()
-                except Exception as e:
-                    logger.warning(f"Disk snapshot failed: {e}")
-                try:
-                    import power
-                    power.rollup()
-                except Exception as e:
-                    logger.warning(f"Power roll-up failed: {e}")
-                try:
-                    import imagecheck
-                    imagecheck.check_if_due()
-                except Exception as e:
-                    logger.warning(f"Image check failed: {e}")
-                try:
-                    import geoip
-                    geoip.refresh_if_old()
-                except Exception as e:
-                    logger.warning(f"GeoIP refresh failed: {e}")
-                try:
-                    import capacity
-                    capacity.rollup()
-                except Exception as e:
-                    logger.warning(f"Capacity roll-up failed: {e}")
-                try:
-                    import backups
-                    backups.check_if_due()
-                except Exception as e:
-                    logger.warning(f"Backup check failed: {e}")
-                try:
-                    import domains
-                    threading.Thread(target=domains.check_if_due, daemon=True).start()
-                except Exception as e:
-                    logger.warning(f"Domain check failed: {e}")
-                for mod in ("vulns", "eol", "selftest", "hardening", "stackcheck", "secretscan"):
-                    try:
-                        __import__(mod).check_if_due()
-                    except Exception as e:
-                        logger.warning(f"{mod} check failed: {e}")
-                try:
-                    import patchsla
-                    patchsla.check_overdue()
-                except Exception as e:
-                    logger.warning(f"Patch deadline check failed: {e}")
-                for mod, fn in (("audit", "checkpoint_if_due"), ("versions", "cleanup")):
-                    try:
-                        getattr(__import__(mod), fn)()
-                    except Exception as e:
-                        logger.warning(f"{mod}.{fn} failed: {e}")
-                try:
-                    import terminal
-                    terminal.cleanup()
-                    import recordings
-                    recordings.cleanup()
-                except Exception as e:
-                    logger.warning(f"Terminal clean-up failed: {e}")
-                try:
-                    import files
-                    files.trash_purge()
-                except Exception as e:
-                    logger.warning(f"Trash purge failed: {e}")
-                cleanup(conn)
+                threading.Thread(target=_hourly_round, name="hourly-checks", daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Hourly round: one check after the other, never all at once
+# ---------------------------------------------------------------------------
+_hourly_lock = threading.Lock()
+HOURLY_MAX_WAIT = 30 * 60      # a check that hangs doesn't hold up the rest for longer than this
+
+
+def _busy(mod: str, attr: str, key: Optional[str] = None):
+    """Running flag of a check that works in its own thread (read at call time)."""
+    def check() -> bool:
+        v = getattr(__import__(mod), attr)
+        return bool(any(v.values()) if key == "*" else v[key] if key else v)
+    return check
+
+
+def _hourly_steps():
+    """(label, start, busy): start kicks off the step, busy says whether its own thread still runs."""
+    def call(mod: str, fn: str):
+        return lambda: getattr(__import__(mod), fn)()
+
+    def terminal_cleanup():
+        __import__("terminal").cleanup()
+        __import__("recordings").cleanup()
+
+    return [
+        ("Disk snapshot", call("insights", "disk_snapshot"), None),
+        ("Power roll-up", call("power", "rollup"), None),
+        ("GeoIP refresh", call("geoip", "refresh_if_old"), None),
+        ("Capacity roll-up", call("capacity", "rollup"), None),
+        ("Image check", call("imagecheck", "check_if_due"), _busy("imagecheck", "_state", "running")),
+        ("Backup check", call("backups", "check_if_due"), _busy("backups", "_running", "*")),
+        ("Domain check", call("domains", "check_if_due"), None),
+        ("vulns check", call("vulns", "check_if_due"), _busy("vulns", "_running", "active")),
+        ("eol check", call("eol", "check_if_due"), _busy("eol", "_running", "active")),
+        ("selftest check", call("selftest", "check_if_due"), _busy("selftest", "_running", "active")),
+        ("hardening check", call("hardening", "check_if_due"), _busy("hardening", "_running", "active")),
+        ("stackcheck check", call("stackcheck", "check_if_due"), _busy("stackcheck", "_running")),
+        ("secretscan check", call("secretscan", "check_if_due"), _busy("secretscan", "_running")),
+        ("Patch deadline check", call("patchsla", "check_overdue"), None),
+        ("audit.checkpoint_if_due", call("audit", "checkpoint_if_due"), None),
+        ("versions.cleanup", call("versions", "cleanup"), None),
+        ("Terminal clean-up", terminal_cleanup, None),
+        ("Trash purge", call("files", "trash_purge"), None),
+        ("Retention clean-up", cleanup, None),
+    ]
+
+
+def _hourly_round() -> None:
+    with _hourly_lock:
+        for label, start, busy in _hourly_steps():
+            try:
+                start()
+            except Exception as e:
+                logger.warning(f"{label} failed: {e}")
+                continue
+            if busy is None:
+                continue
+            time.sleep(2)              # its thread sets the flag right after starting
+            deadline = time.time() + HOURLY_MAX_WAIT
+            try:
+                while busy() and time.time() < deadline:
+                    time.sleep(5)
+            except Exception as e:
+                logger.warning(f"{label}: {e}")
+
 
 def cleanup(conn=None) -> None:
     """Drop everything older than the limits under Einstellungen -> Datenaufbewahrung."""
