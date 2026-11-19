@@ -79,8 +79,8 @@
     'Design: Solar Cyber aktiviert': 'Theme: Solar Cyber enabled', 'Design: Neon Cyber aktiviert': 'Theme: Neon Cyber enabled',
 
     // --- Clock / weather
-    'SYSTEMZEIT & BETRIEBSZEIT': 'SYSTEM TIME & UPTIME', 'Lade Datum...': 'Loading date...', 'Uptime': 'Uptime', 'Boot': 'Boot',
-    'WETTER & KLIMA': 'WEATHER', 'Ort ändern': 'Change location', 'Ort eingeben…': 'Enter location…', 'Wetter aktualisieren': 'Refresh weather',
+    'Systemzeit & Betriebszeit': 'System time & uptime', 'Lade Datum...': 'Loading date...', 'Uptime': 'Uptime', 'Boot': 'Boot',
+    'Wetter & Klima': 'Weather', 'Ort ändern': 'Change location', 'Ort eingeben…': 'Enter location…', 'Wetter aktualisieren': 'Refresh weather',
     'Wetterdaten werden aktualisiert...': 'Refreshing weather...', 'Jetzt': 'Now', 'Stunden': 'Hourly', 'Morgen': 'Tomorrow',
     '7 Tage': '7 days', 'Heute': 'Today', 'Luftfeuchte': 'Humidity', 'Wind': 'Wind', 'Regen': 'Rain', 'Wind max.': 'Max wind',
     'Sonne': 'Sun', 'UV-Index': 'UV index', 'Keine Stundenvorhersage verfügbar': 'No hourly forecast available',
@@ -95,7 +95,7 @@
     'Gewitter': 'Thunderstorm', 'Gewitter mit Hagel': 'Thunderstorm with hail', 'Heiter': 'Fair',
 
     // --- Services
-    'SERVER-DIENSTE & PORTS': 'SERVER SERVICES & PORTS', 'SSH Server': 'SSH server', 'Docker Engine': 'Docker Engine',
+    'Server-Dienste & Ports': 'Server services & ports', 'SSH Server': 'SSH server', 'Docker Engine': 'Docker Engine',
     'Webserver (HTTP)': 'Web server (HTTP)', 'NetBird VPN': 'NetBird VPN', 'Auto-Updater': 'Auto-updater',
     'Timer aus': 'Timer off', 'Letztes Update fehlgeschlagen': 'Last update failed', 'GitHub · jede Minute': 'GitHub · every minute',
     'Journal (letzte 150 Zeilen)': 'Journal (last 150 lines)', 'Journal konnte nicht geladen werden.': 'Could not load the journal.',
@@ -117,7 +117,7 @@
     '⚠️ Unterspannung (Netzteil zu schwach!)': '⚠️ Undervoltage (power supply too weak!)', '⚠️ Taktung begrenzt': '⚠️ Clock capped',
     '🔥 Thermisches Throttling aktiv': '🔥 Thermal throttling active', '🌡️ Soft Temp Limit erreicht': '🌡️ Soft temperature limit reached',
     'Arbeitsspeicher': 'Memory', 'Belegt:': 'Used:', 'Frei:': 'Free:', 'Verfügbar:': 'Available:', 'Gesamt:': 'Total:',
-    'SWAP SPEICHER': 'SWAP', 'Systemlaufwerk': 'System drive', 'NVMe SSD': 'NVMe SSD', 'SD-Karte': 'SD card', 'USB-SSD': 'USB SSD',
+    'Swap-Speicher': 'Swap', 'Systemlaufwerk': 'System drive', 'NVMe SSD': 'NVMe SSD', 'SD-Karte': 'SD card', 'USB-SSD': 'USB SSD',
     'Festplatte (HDD)': 'Hard disk (HDD)', 'eMMC': 'eMMC', 'Root-Partition (/)': 'Root partition (/)',
     'Gesamtkapazität': 'Capacity', 'Architektur': 'Architecture', 'NVMe-Zustand': 'NVMe health', 'Lebensdauer:': 'Life left:',
     'Reserve:': 'Spare:', 'Temperatur': 'Temperature', 'Geschrieben': 'Written', 'Betriebszeit': 'Power-on time',
@@ -271,7 +271,7 @@
     'Intervall': 'Interval',
     'Quellcode auf GitHub': 'Source code on GitHub', 'Alle Rechte vorbehalten.': 'All rights reserved.',
     'Wetterdaten: Open-Meteo.com (CC BY 4.0)': 'Weather data: Open-Meteo.com (CC BY 4.0)', 'Web-Terminal: xterm.js (MIT)': 'Web terminal: xterm.js (MIT)',
-    'Schriften: Inter, Outfit, JetBrains Mono (SIL OFL)': 'Fonts: Inter, Outfit, JetBrains Mono (SIL OFL)',
+    'Schriften: Inter, JetBrains Mono (SIL OFL)': 'Fonts: Inter, JetBrains Mono (SIL OFL)',
     '· Links werden anklickbar': '· links become clickable',
     'Laufwerke, Partitionen & Swap – wie lsblk': 'Drives, partitions & swap – like lsblk', 'NVMe-SSD': 'NVMe SSD', 'SD-Karte': 'SD card',
     'nicht eingehängt': 'not mounted', 'nur lesen': 'read-only', 'zram (komprimierter RAM)': 'zram (compressed RAM)', 'Datei': 'File',
@@ -803,6 +803,7 @@
     'Orange': 'Orange',
     'Pink': 'Pink',
     'Blau': 'Blue',
+    'Blau (Standard)': 'Blue (default)',
     'Breite ändern': 'Change width',
     'Breite: Normal': 'Width: normal',
     'Breite: Breit': 'Width: wide',

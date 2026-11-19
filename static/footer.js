@@ -8,7 +8,7 @@
   const CREDITS = [
     ['Wetterdaten: Open-Meteo.com (CC BY 4.0)', 'https://open-meteo.com/'],
     ['Web-Terminal: xterm.js (MIT)', 'https://xtermjs.org/'],
-    ['Schriften: Inter, Outfit, JetBrains Mono (SIL OFL)', 'https://fonts.google.com/'],
+    ['Schriften: Inter, JetBrains Mono (SIL OFL)', 'https://fonts.google.com/'],
     ['Länderdaten: DB-IP.com (CC BY 4.0)', 'https://db-ip.com/']
   ];
 

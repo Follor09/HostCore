@@ -8,26 +8,27 @@
 
   const KEY = 'theme';
   const ACCENT_KEY = 'accent';
-  const ACCENTS = ['cyan', 'green', 'violet', 'orange', 'pink', 'blue'];
+  const ACCENTS = ['blue', 'cyan', 'green', 'violet', 'orange', 'pink'];
+  const DEFAULT_ACCENT = 'blue';
 
   function accent() {
     try {
       const v = localStorage.getItem(ACCENT_KEY);
-      return ACCENTS.includes(v) ? v : 'cyan';
+      return ACCENTS.includes(v) ? v : DEFAULT_ACCENT;
     } catch (e) {
-      return 'cyan';
+      return DEFAULT_ACCENT;
     }
   }
 
   function applyAccent() {
     const a = accent();
-    if (a === 'cyan') delete document.documentElement.dataset.accent;
+    if (a === DEFAULT_ACCENT) delete document.documentElement.dataset.accent;
     else document.documentElement.dataset.accent = a;
   }
 
   function setAccent(a) {
     try {
-      if (a === 'cyan') localStorage.removeItem(ACCENT_KEY);
+      if (a === DEFAULT_ACCENT) localStorage.removeItem(ACCENT_KEY);
       else localStorage.setItem(ACCENT_KEY, a);
     } catch (e) { /* storage blocked: still switch for this page */ }
     applyAccent();
@@ -52,7 +53,7 @@
     const theme = resolved();
     document.documentElement.dataset.theme = theme;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = theme === 'light' ? '#eef2f7' : '#07090e';
+    if (meta) meta.content = theme === 'light' ? '#fafafa' : '#09090b';
     window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, choice: choice() } }));
   }
 
@@ -76,7 +77,7 @@
   apply();
   document.addEventListener('DOMContentLoaded', () => {
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = resolved() === 'light' ? '#eef2f7' : '#07090e';
+    if (meta) meta.content = resolved() === 'light' ? '#fafafa' : '#09090b';
   });
 
   window.PiTheme = { choice, resolved, set, cycle, accent, setAccent, accents: ACCENTS };
