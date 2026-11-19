@@ -379,41 +379,86 @@ def entries(query: str = "", category: str = "", limit: int = 200, before: int =
 # ---------------------------------------------------------------------------
 # Integrity
 # ---------------------------------------------------------------------------
-def verify() -> Dict[str, Any]:
-    """Walk the hash chain. ok=False names the first entry that doesn't fit."""
+VERIFY_CHUNK = 5000
+_verify_cache: Dict[str, Any] = {"ts": 0.0, "out": None}
+
+
+def _walk(chunked: bool) -> Dict[str, Any]:
+    """Walk the hash chain. ok=False names the first entry that doesn't fit.
+    chunked: read a few thousand rows at a time and let other requests write their entries in
+    between (the log only grows at the end, so the rows up to the newest id at the start stay put);
+    otherwise everything is read in one go under the lock."""
+    cols = "id, ts, user, ip, category, action, path, detail, status, prev, hash"
     with _chain_lock, _conn() as conn:
-        rows = conn.execute("SELECT id, ts, user, ip, category, action, path, detail, status, prev, hash FROM audit ORDER BY id").fetchall()
         anchor, anchor_id = _meta(conn, "anchor"), int(_meta(conn, "anchor_id") or 0)
-    legacy = sum(1 for r in rows if not r[10])
-    chained = [r for r in rows if r[10]]
-    out: Dict[str, Any] = {"ok": True, "checked": len(chained), "legacy": legacy, "problems": [], "head": "",
-                           "since": chained[0][1] if chained else 0, "verified_at": int(time.time())}
+        top = conn.execute("SELECT COALESCE(MAX(id), 0) FROM audit").fetchone()[0]
+        legacy = conn.execute("SELECT COUNT(*) FROM audit WHERE id <= ? AND (hash IS NULL OR hash = '')", (top,)).fetchone()[0]
+        first = None if chunked else conn.execute(f"SELECT {cols} FROM audit WHERE id <= ? ORDER BY id", (top,)).fetchall()
+
+    def batches():
+        if first is not None:
+            yield first
+            return
+        last = 0
+        while True:
+            with _chain_lock, _conn() as conn:
+                rows = conn.execute(f"SELECT {cols} FROM audit WHERE id > ? AND id <= ? ORDER BY id LIMIT ?", (last, top, VERIFY_CHUNK)).fetchall()
+            if not rows:
+                return
+            last = rows[-1][0]
+            yield rows
+
+    out: Dict[str, Any] = {"ok": True, "checked": 0, "legacy": legacy, "problems": [], "head": "", "since": 0, "verified_at": int(time.time())}
+    hashes: Dict[str, int] = {}
     expected = None
-    for i, r in enumerate(chained):
-        rid, ts, prev, h = r[0], r[1], r[9], r[10]
-        row = (r[1], r[2], r[3], r[4], r[5], r[6], r[7], int(r[8] or 0))
-        if i == 0:
-            first_ok = prev == GENESIS or bool(anchor and prev == anchor)
-            if not first_ok:
-                out["problems"].append({"id": rid, "ts": ts, "kind": "start", "text": "Anfang der Kette fehlt – ältere Einträge wurden entfernt."})
-        elif prev != expected:
-            out["problems"].append({"id": rid, "ts": ts, "kind": "gap", "text": "Davor fehlt ein Eintrag oder wurde ersetzt."})
-        if _digest(prev, row) != h:
-            out["problems"].append({"id": rid, "ts": ts, "kind": "changed", "text": "Eintrag wurde nachträglich geändert."})
-        expected = h
-        if len(out["problems"]) >= 20:
-            break
+    done = False
+    for rows in batches():
+        for r in rows:
+            if not r[10]:
+                continue
+            rid, ts, prev, h = r[0], r[1], r[9], r[10]
+            hashes[h] = rid
+            if not done:
+                row = (r[1], r[2], r[3], r[4], r[5], r[6], r[7], int(r[8] or 0))
+                if out["checked"] == 0:
+                    out["since"] = ts
+                    if not (prev == GENESIS or bool(anchor and prev == anchor)):
+                        out["problems"].append({"id": rid, "ts": ts, "kind": "start", "text": "Anfang der Kette fehlt – ältere Einträge wurden entfernt."})
+                elif prev != expected:
+                    out["problems"].append({"id": rid, "ts": ts, "kind": "gap", "text": "Davor fehlt ein Eintrag oder wurde ersetzt."})
+                if _digest(prev, row) != h:
+                    out["problems"].append({"id": rid, "ts": ts, "kind": "changed", "text": "Eintrag wurde nachträglich geändert."})
+                expected = h
+                out["checked"] += 1
+                done = len(out["problems"]) >= 20
     out["head"] = expected or ""
     # Checkpoints: each noted head must still be in the log (unless it was cleaned up legitimately)
     import settings_store
-    hashes = {r[10]: r[0] for r in chained}
     for cp in settings_store.get(HEADS_KEY, []) or []:
-        if cp["id"] > anchor_id and hashes.get(cp["hash"]) != cp["id"]:
+        if cp["id"] > anchor_id and cp["id"] <= top and hashes.get(cp["hash"]) != cp["id"]:
             out["problems"].append({"id": cp["id"], "ts": cp["ts"], "kind": "cut",
                                     "text": "Ein früher notierter Stand fehlt – Einträge wurden gelöscht oder ersetzt."})
             break
     out["ok"] = not out["problems"]
     return out
+
+
+def verify() -> Dict[str, Any]:
+    """Full check of the chain, in chunks so the dashboard keeps logging meanwhile. A finding is
+    confirmed with one consistent read before it is reported (a cleanup running in between could
+    otherwise look like a gap)."""
+    out = _walk(chunked=True)
+    if not out["ok"]:
+        out = _walk(chunked=False)
+    _verify_cache.update(ts=time.time(), out=out)
+    return out
+
+
+def verify_cached(max_age: int = 3600) -> Dict[str, Any]:
+    """The last full check if it is recent enough (for overviews that only need the verdict)."""
+    if _verify_cache["out"] is not None and time.time() - _verify_cache["ts"] < max_age:
+        return _verify_cache["out"]
+    return verify()
 
 
 def checkpoint() -> Dict[str, Any]:

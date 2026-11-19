@@ -203,7 +203,8 @@ def evidence() -> Dict[str, List[str]]:
     ch = _safe(lambda: __import__("changes").overview(), {}) or {}
     if ch.get("changes"):
         ev["ueberpruefung"].append(f"Änderungsverfahren mit Vier-Augen-Freigabe ({len(ch['changes'])} Anträge)")
-    gs = _safe(lambda: __import__("baseline").overview(), {}) or {}
+    # Only the last result: running the baseline check from here would start its privacy checks again
+    gs = _safe(lambda: __import__("baseline").overview(cached_only=True), {}) or {}
     if gs.get("score") is not None:
         ev["ueberpruefung"].append(f"Grundschutz-Check: Erfüllungsgrad {gs['score']} %")
     return ev
@@ -212,7 +213,8 @@ def evidence() -> Dict[str, List[str]]:
 # ---------------------------------------------------------------------------
 # Views
 # ---------------------------------------------------------------------------
-def overview() -> Dict[str, Any]:
+def overview(with_evidence: bool = True) -> Dict[str, Any]:
+    """with_evidence=False: without the findings collected from the other modules (cheap, for counts)."""
     import changes
     c = _cfg()
     names = changes._names()
@@ -223,7 +225,7 @@ def overview() -> Dict[str, Any]:
         stale = (not due and time.time() - a.get("updated", 0) > REVIEW_DAYS * 86400) or (due and due < today)
         acts.append({**a, "system_names": [names.get(s, s.split(":", 1)[-1]) for s in a.get("systems", [])],
                      "legal_labels": [LEGAL_BASES[b] for b in a["legal_bases"]], "review_due": bool(stale)})
-    ev = evidence()
+    ev = evidence() if with_evidence else {}
     tom = [{"id": a, "label": l, "hint": h, "text": (c["tom"].get(a) or {}).get("text", ""), "updated": (c["tom"].get(a) or {}).get("updated"),
             "evidence": ev.get(a, [])} for a, l, h in TOM_AREAS]
     return {"controller": c["controller"], "activities": acts, "tom": tom, "legal_bases": LEGAL_BASES,
@@ -265,7 +267,7 @@ def markdown(part: str = "all") -> str:
 
 
 def alerts() -> List[Dict[str, Any]]:
-    c = _safe(lambda: overview()["counts"], {}) or {}
+    c = _safe(lambda: overview(with_evidence=False)["counts"], {}) or {}
     if c.get("review_due"):
         return [{"level": "info", "text": f"Datenschutz: {c['review_due']} {'Verarbeitungstätigkeit' if c['review_due'] == 1 else 'Verarbeitungstätigkeiten'} zur Prüfung fällig"}]
     return []

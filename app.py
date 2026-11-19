@@ -5,7 +5,9 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 """
 
 import asyncio
+import functools
 import json
+from concurrent.futures import ThreadPoolExecutor
 import platform
 import re
 import threading
@@ -136,8 +138,10 @@ logger = logging.getLogger("pi_dashboard")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initial git check & background poller
-    updater.refresh_git_info()
+    # Startup: a pool big enough that short jobs never wait behind long ones (default: CPUs + 4)
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=SHARED_POOL_SIZE, thread_name_prefix="shared"))
+    # Initial git check & background poller
+    await asyncio.to_thread(updater.refresh_git_info)
     try:
         insights.record_start(updater.update_state.get("current_commit", ""))
     except Exception as e:
@@ -183,6 +187,18 @@ async def unexpected_error(request: Request, exc: Exception):
 
 # In-process API calls (MCP tools -> the dashboard's own API, with its permissions and activity log)
 INTERNAL_HEADER = "x-picore-internal"
+# Two pools: long computations (baseline check, evidence package, log verification, scans, exports)
+# get two workers of their own, so they queue behind each other instead of filling the shared pool
+# that live data, logins and the activity log of every request run in.
+HEAVY_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="heavy")
+SHARED_POOL_SIZE = 32
+
+
+async def heavy(fn, *args, **kwargs):
+    """Run a long computation in the heavy pool (like asyncio.to_thread, but never crowding out the rest)."""
+    return await asyncio.get_running_loop().run_in_executor(HEAVY_POOL, functools.partial(fn, *args, **kwargs))
+
+
 HOST_HEADER = "x-picore-host"   # which server the page in the browser shows ("local" or a remote id)
 INTERNAL_USER_HEADER = "x-picore-mcp-user"
 INTERNAL_KEY = secrets.token_hex(32)
@@ -2269,12 +2285,12 @@ async def api_tools_activity(q: str = "", category: str = "", limit: int = 200, 
 
 @app.get("/api/tools/activity/verify")
 async def api_tools_activity_verify():
-    return await asyncio.to_thread(audit.verify)
+    return await heavy(audit.verify)
 
 
 @app.get("/api/tools/activity/export")
 async def api_tools_activity_export():
-    body = await asyncio.to_thread(audit.export_csv)
+    body = await heavy(audit.export_csv)
     name = f"aktivitaet-{platform.node() or 'pi'}-{time.strftime('%Y-%m-%d')}.csv"
     return Response(body, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
@@ -2638,7 +2654,7 @@ async def api_stack_check():
 
 @app.post("/api/containers/stack-check/run")
 async def api_stack_check_run():
-    return await asyncio.to_thread(stackcheck.run)
+    return await heavy(stackcheck.run)
 
 
 @app.post("/api/containers/stack-check/ignore")
@@ -2795,7 +2811,7 @@ async def api_sbom_search(q: str = "", kind: str = ""):
 
 @app.get("/api/sbom/export")
 async def api_sbom_export(format: str = "cyclonedx"):
-    name, media, body = await asyncio.to_thread(sbom.export, "csv" if format == "csv" else "cyclonedx")
+    name, media, body = await heavy(sbom.export, "csv" if format == "csv" else "cyclonedx")
     return Response(body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
@@ -4333,7 +4349,7 @@ async def api_secret_scan():
 
 @app.post("/api/secret-scan/run")
 async def api_secret_scan_run():
-    return await asyncio.to_thread(_secretscan_call, secretscan.run)
+    return await heavy(_secretscan_call, secretscan.run)
 
 
 @app.post("/api/secret-scan/ignore")
@@ -4534,13 +4550,13 @@ async def api_capabilities():
 @app.get("/api/system")
 async def api_system():
     """Return full system snapshot."""
-    return system_info.get_system_snapshot()
+    return await asyncio.to_thread(system_info.get_system_snapshot)
 
 
 @app.get("/api/processes")
 async def api_processes(limit: int = 8):
     """Return top active processes."""
-    return {"processes": system_info.get_top_processes(limit=limit)}
+    return {"processes": await asyncio.to_thread(system_info.get_top_processes, limit=limit)}
 
 
 @app.get("/api/history")
@@ -4864,7 +4880,7 @@ async def api_fleet_capacity():
 
 @app.get("/api/capacity")
 async def api_capacity():
-    return await asyncio.to_thread(capacity.overview)
+    return await heavy(capacity.overview)
 
 
 @app.get("/api/capacity/summary")
@@ -5273,7 +5289,7 @@ async def api_access_review_csv():
 
 @app.get("/api/access-review/{review_id}/markdown")
 async def api_access_review_markdown(review_id: str):
-    text = await asyncio.to_thread(_review_call, accessreview.review_markdown, review_id)
+    text = await heavy(_review_call, accessreview.review_markdown, review_id)
     return Response(text, media_type="text/markdown; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="rechte-review-{review_id}.md"'})
 
@@ -5681,12 +5697,12 @@ async def api_problems_delete(pid: str):
 
 @app.get("/api/compliance/baseline")
 async def api_baseline(refresh: int = 0):
-    return await asyncio.to_thread(baseline.overview, bool(refresh))
+    return await heavy(baseline.overview, bool(refresh))
 
 
 @app.get("/api/compliance/baseline/markdown")
 async def api_baseline_markdown():
-    return _md_response(await asyncio.to_thread(baseline.markdown), "grundschutz-check.md")
+    return _md_response(await heavy(baseline.markdown), "grundschutz-check.md")
 
 
 @app.post("/api/compliance/baseline/assess")
@@ -5704,7 +5720,7 @@ async def api_privacy():
 @app.get("/api/compliance/privacy/markdown")
 async def api_privacy_markdown(part: str = "all"):
     part = part if part in ("all", "vvt", "tom") else "all"
-    return _md_response(await asyncio.to_thread(privacy.markdown, part), f"datenschutz-{part}.md")
+    return _md_response(await heavy(privacy.markdown, part), f"datenschutz-{part}.md")
 
 
 @app.post("/api/compliance/privacy/controller")
@@ -5747,7 +5763,7 @@ async def api_evidence_build(payload: dict, request: Request):
         since, until = int(payload.get("since") or 0), int(payload.get("until") or 0)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Ungültiger Zeitraum.")
-    content, name = await asyncio.to_thread(_call400, (evidence.EvidenceError,), evidence.build, since, until, request.state.user or "")
+    content, name = await heavy(_call400, (evidence.EvidenceError,), evidence.build, since, until, request.state.user or "")
     request.state.audit_detail = f"{name} · {len(content) // 1024} KB"
     return Response(content, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
@@ -5769,7 +5785,7 @@ async def api_history_interfaces():
 
 @app.get("/api/monitor/hogs")
 async def api_monitor_hogs(hours: int = 24):
-    return await asyncio.to_thread(monitor.resource_hogs, 168 if hours > 24 else 24)
+    return await heavy(monitor.resource_hogs, 168 if hours > 24 else 24)
 
 
 @app.get("/api/sensors")
@@ -5804,7 +5820,7 @@ async def api_disk_forecast():
 
 @app.get("/api/report")
 async def api_report():
-    return await asyncio.to_thread(insights.weekly_report)
+    return await heavy(insights.weekly_report)
 
 
 @app.get("/api/monitor/throttle")
@@ -5846,7 +5862,7 @@ async def api_apt_start(req: AptRunRequest, request: Request):
 @app.get("/api/services")
 async def api_services():
     """Return status of homelab services."""
-    return {"services": services_manager.get_services_status()}
+    return {"services": await asyncio.to_thread(services_manager.get_services_status)}
 
 
 @app.get("/api/drives")
@@ -5854,13 +5870,13 @@ async def api_drives(refresh: bool = False):
     """Mounted partitions (legacy list) and the lsblk-style storage overview."""
     if refresh:
         storage._cache["data"] = None
-    return {"drives": services_manager.get_mounted_drives(), "storage": await asyncio.to_thread(storage.overview)}
+    return {"drives": await asyncio.to_thread(services_manager.get_mounted_drives), "storage": await asyncio.to_thread(storage.overview)}
 
 
 @app.get("/api/logs")
 async def api_logs(lines: int = 30):
     """Return recent system journal logs."""
-    return {"logs": services_manager.get_recent_logs(lines=lines)}
+    return {"logs": await asyncio.to_thread(services_manager.get_recent_logs, lines=lines)}
 
 
 # ---------------------------------------------------------------------------
@@ -5885,15 +5901,13 @@ async def api_settings_update_channel(payload: dict, request: Request):
 @app.post("/api/updates/check")
 async def api_update_check():
     """Trigger manual check against GitHub remote."""
-    status = updater.check_for_updates()
-    return status
+    return await asyncio.to_thread(updater.check_for_updates)
 
 
 @app.post("/api/updates/apply")
 async def api_update_apply():
     """Pull latest Git commits, install requirements, and restart server."""
-    result = updater.perform_update()
-    return result
+    return await asyncio.to_thread(updater.perform_update)
 
 
 @app.post("/api/webhook/github")
@@ -6065,7 +6079,7 @@ async def api_exec_command(req: CommandRequest, request: Request):
                 "returncode": 0
             }
 
-        proc = subprocess.run(cmd_args, capture_output=True, text=True, timeout=8)
+        proc = await asyncio.to_thread(subprocess.run, cmd_args, capture_output=True, text=True, timeout=8)
         return {
             "command": cmd_key,
             "stdout": proc.stdout or proc.stderr,

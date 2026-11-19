@@ -12,6 +12,7 @@ covered on this server.
 - Fulfilment per area and in total; export as Markdown.
 """
 
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -21,6 +22,8 @@ KEY = "baseline"
 STATES = {"ok": "Erfüllt", "partial": "Teilweise", "fail": "Nicht erfüllt", "na": "Entbehrlich", "open": "Offen"}
 VALUE = {"ok": 1.0, "partial": 0.5, "fail": 0.0}
 _cache: Dict[str, Any] = {"ts": 0.0, "auto": None}
+_auto_lock = threading.Lock()   # two tabs (or two clicks) share one run instead of computing twice
+_local = threading.local()      # set while this thread runs the checks
 
 
 class BaselineError(Exception):
@@ -193,7 +196,7 @@ def a_secrets():
 
 
 def a_auditlog():
-    v = _mod("audit").verify()
+    v = _mod("audit").verify_cached()
     return ("ok" if v.get("ok") else "fail"), (f"Aktivitätsprotokoll: {v.get('checked', 0)} Einträge, Kette unversehrt" if v.get("ok") else "Aktivitätsprotokoll: Kette beschädigt")
 
 
@@ -284,7 +287,7 @@ def a_owners():
 
 
 def a_vvt():
-    o = _mod("privacy").overview()
+    o = _mod("privacy").overview(with_evidence=False)
     if not o["counts"]["activities"]:
         return "fail", "Kein Eintrag im Verzeichnis der Verarbeitungstätigkeiten"
     due = o["counts"]["review_due"]
@@ -292,7 +295,7 @@ def a_vvt():
 
 
 def a_tom():
-    o = _mod("privacy").overview()
+    o = _mod("privacy").overview(with_evidence=False)
     miss = o["counts"]["tom_missing"]
     return ("ok" if not miss else "partial" if miss < len(o["tom"]) else "fail"), (
         "Alle TOM-Bereiche beschrieben" if not miss else f"{miss} von {len(o['tom'])} TOM-Bereichen ohne Beschreibung")
@@ -347,6 +350,22 @@ def _auto() -> Dict[str, Optional[Tuple[str, str]]]:
     """Automatic ratings, cached for two minutes (several of them walk logs and scans)."""
     if _cache["auto"] is not None and time.time() - _cache["ts"] < 120:
         return _cache["auto"]
+    # A check that (through other modules) asks for the baseline check again gets no ratings instead of
+    # starting the whole run once more - that loop used to run until Python's recursion limit
+    if getattr(_local, "busy", False):
+        return {}
+    with _auto_lock:
+        # Whoever waited here gets the result of the run that just finished
+        if _cache["auto"] is not None and time.time() - _cache["ts"] < 120:
+            return _cache["auto"]
+        _local.busy = True
+        try:
+            return _auto_run()
+        finally:
+            _local.busy = False
+
+
+def _auto_run() -> Dict[str, Optional[Tuple[str, str]]]:
     out: Dict[str, Optional[Tuple[str, str]]] = {}
     for cid, _, _, _, _, fn in CONTROLS:
         if not fn:
@@ -386,10 +405,16 @@ def assess(cid: str, state: str, note: str, evidence: str, user: str = "") -> Di
     return overview()
 
 
-def overview(refresh: bool = False) -> Dict[str, Any]:
-    if refresh:
-        _cache["auto"] = None
-    auto = _auto()
+def overview(refresh: bool = False, cached_only: bool = False) -> Dict[str, Any]:
+    """cached_only: from the last run however old it is, never starting the checks (None score if none ran yet)."""
+    if cached_only:
+        if _cache["auto"] is None:
+            return {"score": None}
+        auto = _cache["auto"]
+    else:
+        if refresh:
+            _cache["auto"] = None
+        auto = _auto()
     manual = _manual()
     items = []
     for cid, area, module, title, desc, fn in CONTROLS:

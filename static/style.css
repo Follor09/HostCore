@@ -12614,3 +12614,8 @@ body.pg-split .settings-sections { align-items: stretch; }
 @media (min-width: 1281px) { .topnav .side-search { width: 230px; } }
 /* With the bar above it the page header is a plain title row */
 body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom: 8px; }
+
+/* Print view of reports: short codes (IAM-1, OPS.1.1.3, dates) stay on one line */
+#pr-doc td { word-break: normal; overflow-wrap: break-word; hyphens: auto; }
+#pr-doc td:first-child, #pr-doc th:first-child { white-space: nowrap; }
+#pr-doc td:nth-child(2):not(:last-child) { white-space: nowrap; }
