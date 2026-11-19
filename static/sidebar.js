@@ -32,18 +32,20 @@
     menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
     chevron: '<path d="M9 18l6-6-6-6"/>'
   };
+  // [href, icon, label, permission, capability, group]: "ops" = running the servers, "docs" = knowledge and evidence,
+  // "foot" = pinned at the bottom
   const PAGES = [
-    ['/system', 'tools', 'System-Werkzeuge', 'system.view'],
-    ['/containers', 'box', 'Container', 'system.view'],
-    ['/vms', 'vm', 'VMs', 'system.view', 'vms'],
-    ['/flotte', 'fleet', 'Flotte', 'system.view'],
-    ['/doku', 'book', 'Dokumentation', ''],
-    ['/nachweise', 'shield', 'Compliance', ''],
-    ['/wissen', 'wiki', 'Wissen', ''],
-    ['/report', 'report', 'Wochenbericht', 'system.view'],
-    ['/werkzeuge', 'toolbox', 'IT-Toolbox', ''],
-    ['/terminal', 'terminal', 'Terminal', 'terminal'],
-    ['/settings', 'settings', 'Einstellungen', '']
+    ['/system', 'tools', 'System-Werkzeuge', 'system.view', '', 'ops'],
+    ['/containers', 'box', 'Container', 'system.view', '', 'ops'],
+    ['/vms', 'vm', 'VMs', 'system.view', 'vms', 'ops'],
+    ['/flotte', 'fleet', 'Flotte', 'system.view', '', 'ops'],
+    ['/terminal', 'terminal', 'Terminal', 'terminal', '', 'ops'],
+    ['/doku', 'book', 'Dokumentation', '', '', 'docs'],
+    ['/nachweise', 'shield', 'Compliance', '', '', 'docs'],
+    ['/wissen', 'wiki', 'Wissen', '', '', 'docs'],
+    ['/report', 'report', 'Wochenbericht', 'system.view', '', 'docs'],
+    ['/werkzeuge', 'toolbox', 'IT-Toolbox', '', '', 'docs'],
+    ['/settings', 'settings', 'Einstellungen', '', '', 'foot']
   ];
   const onDashboard = location.pathname === '/';
 
@@ -97,21 +99,27 @@
   head.append(brand, toggle);
 
   const scroll = el('nav', 'sidebar-scroll');
+  const searchGroup = group('');
   const boardsGroup = group(t('Boards'));
-  const pagesGroup = group(t('Seiten'));
+  const opsGroup = group(t('Betrieb'));
+  const docsGroup = group(t('Wissen & Nachweise'));
   const linksGroup = group(t('Links'));
-  const actionsGroup = group(t('Aktionen'));
   linksGroup.hidden = true;
-  scroll.append(boardsGroup, pagesGroup, linksGroup, actionsGroup);
-  side.append(head, scroll);
+  scroll.append(searchGroup, boardsGroup, opsGroup, docsGroup, linksGroup);
+  // Bottom: settings and the small actions as one row of icons
+  const foot = el('div', 'sidebar-foot');
+  const actionsGroup = el('div', 'side-actions');
+  side.append(head, scroll, foot);
+  const GROUPS = { ops: opsGroup, docs: docsGroup, foot };
 
-  // Pages, with the sections of the current page below it
-  PAGES.forEach(([href, icon, label, perm, cap]) => {
+  // Pages; pages without tabs list their sections below them (pages with groups have tabs for that)
+  PAGES.forEach(([href, icon, label, perm, cap, where]) => {
     const current = location.pathname === href || (href === '/doku' && location.pathname === '/docs');
     const a = item('a', svg(ICON[icon]), t(label), { href, perm, cap, cls: current ? 'active' : '' });
     if (current) a.setAttribute('aria-current', 'page');
+    const pagesGroup = GROUPS[where];
     pagesGroup.appendChild(a);
-    const nav = current && document.querySelector('.settings-nav');
+    const nav = current && where !== 'foot' && !document.body.classList.contains('pg-grouped') && document.querySelector('.settings-nav');
     if (!nav) return;
     const subs = el('div', 'side-subs');
     [...nav.querySelectorAll('a')].forEach(orig => {
@@ -181,11 +189,18 @@
       const ic = el('span', 'side-icon');
       [...btn.childNodes].forEach(n => ic.appendChild(n));
       btn.append(ic, el('span', 'side-label', label));
-      if (btn.id === 'btn-palette') btn.appendChild(el('kbd', 'side-kbd', t('Strg+K')));
+      if (btn.id === 'btn-palette') {
+        btn.appendChild(el('kbd', 'side-kbd', t('Strg+K')));
+        btn.classList.add('side-search');
+        searchGroup.appendChild(btn);
+        return;
+      }
       actionsGroup.appendChild(btn);
     });
   }
+  searchGroup.hidden = !searchGroup.querySelector('.side-item');
   actionsGroup.hidden = !actionsGroup.querySelector('.side-item');
+  foot.appendChild(actionsGroup);
 
   // Phone: a menu button opens the sidebar as a drawer
   const burger = el('button', 'icon-button sidebar-burger');

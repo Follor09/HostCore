@@ -382,7 +382,10 @@
   tabs.setAttribute('aria-label', t('Gruppen'));
   const overview = el('div', 'pg-overview');
   const head = el('div', 'pg-head');
-  container.prepend(tabs, overview, head);
+  // Inside a group: a list of its sections on the left, only the chosen one is shown
+  const subnav = el('nav', 'pg-subnav');
+  subnav.setAttribute('aria-label', t('Bereiche'));
+  container.prepend(tabs, overview, head, subnav);
   // The tabs stick right below the (sticky) page header
   const header = document.querySelector('.app-header');
   const stick = () => {
@@ -490,33 +493,49 @@
     row.appendChild(el('h2', 'pg-head-title', t(g.label)));
     if (g.desc) row.appendChild(el('span', 'pg-head-desc', t(g.desc)));
     head.appendChild(row);
-    const list = g.sections.filter(available);
-    if (list.length > 1) {
-      const chips = el('div', 'pg-head-links');
-      list.forEach(id => {
-        const a = el('a', 'pg-chip', title(id));
-        a.href = `#${id}`;
-        chips.appendChild(a);
-      });
-      head.appendChild(chips);
-    }
+  }
+
+  function showSubnav(g, sel) {
+    subnav.innerHTML = '';
+    const list = g ? g.sections.filter(available) : [];
+    subnav.hidden = list.length < 2;
+    if (subnav.hidden) return;
+    list.forEach(id => {
+      const a = el('a', `pg-sub${id === sel ? ' pg-active' : ''}`, title(id));
+      a.href = `#${id}`;
+      if (id === sel) a.setAttribute('aria-current', 'true');
+      subnav.appendChild(a);
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Routing
   // ---------------------------------------------------------------------------
   let current = null;
+  let currentSection = null;
+  const lastSection = {};   // per group: the section that was open last
   let userScrolled = false;
   ['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(ev => window.addEventListener(ev, () => { userScrolled = true; }, { passive: true }));
   function show(groupId, scrollTo) {
     const g = groups.find(x => x.id === groupId) || null;
     current = g ? g.id : 'start';
     document.body.classList.toggle('pg-on-overview', !g);
-    const visible = new Set(g ? g.sections : (cfg.overview || []));
+    const list = g ? g.sections.filter(available) : [];
+    const split = list.length > 1;
+    let sel = null;
+    if (split) {
+      sel = list.includes(scrollTo) ? scrollTo : list.includes(lastSection[g.id]) ? lastSection[g.id] : list[0];
+      lastSection[g.id] = sel;
+      scrollTo = null;   // one section on screen: start at the top
+    }
+    currentSection = sel;
+    document.body.classList.toggle('pg-split', split);
+    const visible = new Set(split ? [sel] : g ? g.sections : (cfg.overview || []));
     sections.forEach(s => s.classList.toggle('pg-off', !visible.has(s.id)));
     overview.hidden = !!g;
     head.hidden = !g;
     showHead(g);
+    showSubnav(g, sel);
     // "pg-active", not "active": the pages' scroll observers reset "active" on the links of .settings-nav
     [...tabs.children, ...(nav ? nav.children : [])].forEach(a => {
       const on = a.dataset.group === current;
@@ -568,7 +587,12 @@
   // Permissions and capabilities hide sections a moment later: refresh tiles and chips
   const refresh = () => { groups.forEach(renderTile); tabs.querySelectorAll('.pg-tab').forEach(a => { const g = groups.find(x => x.id === a.dataset.group); if (g) a.hidden = !groupAvailable(g); });
     if (nav) nav.querySelectorAll('a').forEach(a => { const g = groups.find(x => x.id === a.dataset.group); if (g) a.hidden = !groupAvailable(g); });
-    if (current && current !== 'start') showHead(groups.find(x => x.id === current)); };
+    if (current && current !== 'start') {
+      const g = groups.find(x => x.id === current);
+      showHead(g);
+      // The open section may have been hidden by permissions: fall back to the first one
+      if (currentSection && !available(currentSection)) show(g.id); else showSubnav(g, currentSection);
+    } };
   if (window.PiAuth && window.PiAuth.ready) window.PiAuth.ready.then(() => { refresh(); if (current === 'start') { factsLoaded = 0; loadFacts(); } });
   setTimeout(refresh, 1500);
   sections.forEach(s => new MutationObserver(refresh).observe(s, { attributes: true, attributeFilter: ['hidden'] }));

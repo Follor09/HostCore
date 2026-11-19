@@ -2485,6 +2485,7 @@
     'Bestand': 'Assets',
     'Hardware-Inventar und Steckbriefe der Dienste': 'Hardware inventory and service docs',
     'Betrieb': 'Operations',
+    'Wissen & Nachweise': 'Knowledge & evidence',
     'Betriebstagebuch, Runbooks und Befehle': 'Operations journal, runbooks and commands',
     'Verträge & Kosten': 'Contracts & costs',
     'Verträge, Domains und Homelab-Kosten': 'Contracts, domains and homelab costs',

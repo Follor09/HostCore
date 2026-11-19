@@ -19,6 +19,7 @@
   const STATUS_EVERY = 60000;
   const KEY_ACTIVE = 'board';
   const KEY_COLLAPSED = 'boardCollapsed';
+  const KEY_EXPANDED = 'boardExpanded';
 
   const CARD_LABELS = {
     clock: 'Uhrzeit & Betriebszeit', weather: 'Wetter', services: 'Server-Dienste', cpu: 'CPU-Auslastung',
@@ -94,10 +95,23 @@
     try { return new Set(JSON.parse(localStorage.getItem(KEY_COLLAPSED) || '[]')); } catch (e) { return new Set(); }
   }
 
+  // Sections folded by default ("collapsed" in the board) stay folded until opened in this browser
+  function expandedSet() {
+    try { return new Set(JSON.parse(localStorage.getItem(KEY_EXPANDED) || '[]')); } catch (e) { return new Set(); }
+  }
+
+  function isCollapsed(section) {
+    return collapsedSet().has(section.id) || (!!section.collapsed && !expandedSet().has(section.id));
+  }
+
   function setCollapsed(id, on) {
     const s = collapsedSet();
-    if (on) s.add(id); else s.delete(id);
-    try { localStorage.setItem(KEY_COLLAPSED, JSON.stringify([...s])); } catch (e) { /* ignore */ }
+    const x = expandedSet();
+    if (on) { s.add(id); x.delete(id); } else { s.delete(id); x.add(id); }
+    try {
+      localStorage.setItem(KEY_COLLAPSED, JSON.stringify([...s]));
+      localStorage.setItem(KEY_EXPANDED, JSON.stringify([...x]));
+    } catch (e) { /* ignore */ }
   }
 
   // ---------------------------------------------------------------------------
@@ -589,7 +603,7 @@
 
   function sectionHead(section, index, board) {
     const head = el('div', 'board-section-head');
-    const collapsed = !editing && collapsedSet().has(section.id);
+    const collapsed = !editing && isCollapsed(section);
     const toggle = el('button', 'board-section-toggle');
     toggle.type = 'button';
     toggle.setAttribute('aria-expanded', String(!collapsed));
@@ -600,7 +614,7 @@
     toggle.append(chev, name);
     toggle.addEventListener('click', () => {
       if (editing) return;
-      setCollapsed(section.id, !collapsedSet().has(section.id));
+      setCollapsed(section.id, !isCollapsed(section));
       render();
     });
     head.appendChild(toggle);

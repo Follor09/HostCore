@@ -12239,3 +12239,62 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
   .dashboard-container, .settings-layout { padding: 16px 16px 40px; }
   .dash-tabs { padding: 0 16px; }
 }
+
+/* ==========================================================================
+   Less clutter: one section at a time, quieter navigation and header
+   ========================================================================== */
+/* Group pages: section list on the left, the chosen section on the right */
+.pg-subnav { display: flex; flex-direction: column; gap: 1px; }
+.pg-subnav[hidden] { display: none; }
+.pg-sub {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pg-sub:hover { color: var(--text-main); background: rgba(var(--ink-rgb), 0.05); }
+.pg-sub.pg-active { color: var(--text-strong); background: rgba(var(--ink-rgb), 0.08); }
+body.pg-split .settings-sections { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px 28px; align-items: start; }
+body.pg-split .settings-sections > * { grid-column: 1 / -1; }
+body.pg-split .settings-sections > .pg-subnav { grid-column: 1; position: sticky; top: 120px; }
+body.pg-split .settings-sections > .settings-section { grid-column: 2; }
+.pg-head { padding: 8px 0 4px; }
+.pg-head-title { font-size: 1.15rem; font-weight: 600; letter-spacing: -0.015em; }
+.pg-head-desc { display: none; }
+@media (max-width: 900px) {
+  body.pg-split .settings-sections { grid-template-columns: minmax(0, 1fr); }
+  body.pg-split .settings-sections > .pg-subnav { grid-column: 1; position: static; flex-direction: row; overflow-x: auto; scrollbar-width: none; gap: 4px; }
+  body.pg-split .settings-sections > .settings-section { grid-column: 1; }
+  .pg-sub { flex-shrink: 0; border: 1px solid var(--border-subtle); border-radius: 999px; padding: 5px 12px; }
+}
+
+/* Overview tiles: title, state and one line of description; the description already names the sections */
+.pg-tile-links { display: none; }
+.pg-tile-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-dim); }
+.pg-grid { gap: 12px; }
+.pg-tile { gap: 6px; padding: 16px 18px; min-height: 0; }
+
+/* Sidebar: search on top, pages in two groups, settings and small actions pinned at the bottom */
+.sidebar-scroll { gap: 16px; }
+.side-search { border: 1px solid var(--border-subtle) !important; background: rgba(var(--ink-rgb), 0.03); color: var(--text-dim); }
+.side-search:hover { color: var(--text-main); }
+.sidebar-foot { padding: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 6px; }
+.side-actions { display: flex; gap: 2px; padding: 0 2px; }
+.side-actions[hidden] { display: none; }
+.side-actions .side-item { width: 32px; min-height: 30px; padding: 0; justify-content: center; flex: 0 0 auto; }
+.side-actions .side-label { display: none; }
+body.sidebar-collapsed .side-actions { flex-direction: column; align-items: center; }
+body.sidebar-collapsed .side-search { border-color: transparent !important; background: none; }
+@media (max-width: 760px) { .sidebar-foot { padding-bottom: 16px; } }
+
+/* Header: fewer chips; power actions as icons (the label stays as tooltip) */
+.app-header .git-chip { display: none; }
+.app-header .warning-pill, .app-header .danger-pill { width: 32px; padding: 0; justify-content: center; }
+.app-header .warning-pill span, .app-header .danger-pill span { display: none; }
+.app-header .header-center { gap: 8px; }
+.app-header .header-right { gap: 6px; }

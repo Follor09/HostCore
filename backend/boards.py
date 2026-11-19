@@ -46,7 +46,7 @@ ENGINES = {
 MAX_BOARDS, MAX_SECTIONS, MAX_ITEMS = 20, 20, 300
 MIN_COLUMNS, MAX_COLUMNS = 4, 24
 
-_lock = threading.Lock()
+_lock = threading.RLock()   # get() takes it too and is called while it is held
 _ping_cache: Dict[str, Dict[str, Any]] = {}
 PING_MAX_AGE = 50
 _tree: Dict[str, Any] = {"ts": 0, "names": None}
@@ -63,7 +63,22 @@ class BoardConflict(BoardError):
 # ---------------------------------------------------------------------------
 # Default board (first start / reset): the familiar dashboard plus the own links as apps
 # ---------------------------------------------------------------------------
+# "System": what you look at every time - load, services, network, events, history
 DEFAULT_CARDS = [
+    ("cpu", 0, 0, 3, 7), ("temp", 3, 0, 3, 7), ("ram", 6, 0, 3, 7), ("disk", 9, 0, 3, 7),
+    ("services", 0, 7, 4, 5), ("network", 4, 7, 4, 5), ("events", 8, 7, 4, 5),
+    ("history", 0, 12, 12, 8), ("workloads", 0, 20, 12, 5),
+]
+# "Mehr": everything else, folded away until wanted
+DEFAULT_MORE = [
+    ("clock", 0, 0, 4, 6), ("weather", 4, 0, 4, 6), ("updates", 8, 0, 4, 6),
+    ("wol", 0, 6, 3, 6), ("notes", 3, 6, 3, 6), ("reminders", 6, 6, 3, 6), ("kanban", 9, 6, 3, 6),
+    ("health", 0, 12, 3, 6), ("actions", 3, 12, 3, 6), ("fan", 6, 12, 3, 6), ("power", 9, 12, 3, 6),
+    ("pi3d", 0, 18, 3, 6), ("storage", 0, 24, 6, 14), ("processes", 6, 24, 6, 14),
+]
+# The default "System" section before the tidy-up: a board still laid out exactly like this was never
+# changed by hand and moves to the new layout by itself
+_OLD_DEFAULT_CARDS = [
     ("clock", 0, 0, 4, 6), ("weather", 4, 0, 4, 6), ("services", 8, 0, 4, 6),
     ("cpu", 0, 6, 3, 7), ("temp", 3, 6, 3, 7), ("ram", 6, 6, 3, 7), ("disk", 9, 6, 3, 7),
     ("network", 0, 13, 3, 6), ("fan", 3, 13, 3, 6), ("power", 6, 13, 3, 6), ("updates", 9, 13, 3, 6),
@@ -85,12 +100,36 @@ def default_config() -> Dict[str, Any]:
         top.append({"id": _new_id(), "kind": "app", "name": link.get("name", "")[:40], "url": link.get("url", ""),
                     "icon": "", "description": "", "ping": True, "ping_url": "", "new_tab": True,
                     "x": i % 12, "y": 1 + (i // 12) * 2, "w": 1, "h": 2})
-    cards = [{"id": _new_id(), "kind": "card", "card": card, "x": x, "y": y, "w": w, "h": h}
-             for card, x, y, w, h in DEFAULT_CARDS]
     board = {"id": "start", "name": "", "columns": 12, "background": {"url": "", "dim": 40},
-             "sections": [{"id": _new_id(), "name": "", "collapsed": False, "items": top},
-                          {"id": _new_id(), "name": "System", "collapsed": False, "items": cards}]}
-    return {"rev": 1, "boards": [board]}
+             "sections": [{"id": _new_id(), "name": "", "collapsed": False, "items": top}, *_default_card_sections()]}
+    return {"rev": 1, "boards": [board], "tidied": True}
+
+
+def _cards(spec: list) -> List[Dict[str, Any]]:
+    return [{"id": _new_id(), "kind": "card", "card": card, "x": x, "y": y, "w": w, "h": h} for card, x, y, w, h in spec]
+
+
+def _default_card_sections() -> List[Dict[str, Any]]:
+    return [{"id": _new_id(), "name": "System", "collapsed": False, "items": _cards(DEFAULT_CARDS)},
+            {"id": _new_id(), "name": "Mehr", "collapsed": True, "items": _cards(DEFAULT_MORE)}]
+
+
+def _tidy_untouched(cfg: Dict[str, Any]) -> bool:
+    """Boards whose "System" section is still the old default get the new, calmer layout; changed ones stay."""
+    changed = False
+    old = sorted(_OLD_DEFAULT_CARDS)
+    for board in cfg.get("boards", []):
+        secs = board.get("sections") or []
+        for i, sec in enumerate(secs):
+            items = sec.get("items") or []
+            if sec.get("name") != "System" or any(it.get("kind") != "card" for it in items):
+                continue
+            if sorted((it.get("card"), it.get("x"), it.get("y"), it.get("w"), it.get("h")) for it in items) != old:
+                continue
+            board["sections"] = secs[:i] + _default_card_sections() + secs[i + 1:]
+            changed = True
+            break
+    return changed
 
 
 def get() -> Dict[str, Any]:
@@ -101,6 +140,14 @@ def get() -> Dict[str, Any]:
             if not isinstance(cfg, dict) or not cfg.get("boards"):
                 cfg = default_config()
                 cfg["icons_pending"] = True
+                settings_store.set("boards", cfg)
+    if not cfg.get("tidied"):
+        with _lock:
+            cfg = settings_store.get("boards")
+            if isinstance(cfg, dict) and not cfg.get("tidied"):
+                if _tidy_untouched(cfg):
+                    cfg["rev"] = int(cfg.get("rev", 1)) + 1
+                cfg["tidied"] = True
                 settings_store.set("boards", cfg)
     return cfg
 
@@ -279,7 +326,7 @@ def save(data: Dict[str, Any], base_rev: int, user: str = "") -> Dict[str, Any]:
         cur = get()
         if int(base_rev) != int(cur.get("rev", 0)):
             raise BoardConflict("Das Board wurde inzwischen auf einem anderen Gerät geändert.")
-        cfg = {"rev": int(cur.get("rev", 0)) + 1, "boards": boards}
+        cfg = {"rev": int(cur.get("rev", 0)) + 1, "boards": boards, "tidied": True}
         if cur.get("icons_pending"):
             cfg["icons_pending"] = True
         settings_store.set("boards", cfg)
@@ -291,6 +338,7 @@ def reset() -> Dict[str, Any]:
     with _lock:
         rev = int((settings_store.get("boards") or {}).get("rev", 0) or 0)
         cfg = default_config()
+        cfg["tidied"] = True
         cfg["rev"] = rev + 1
         settings_store.set("boards", cfg)
         _record(cfg, "", note="Auf Standard zurückgesetzt")
@@ -375,7 +423,7 @@ def restore(rev: int, base_rev: int, user: str = "") -> Dict[str, Any]:
         cur = get()
         if int(base_rev) != int(cur.get("rev", 0)):
             raise BoardConflict("Das Board wurde inzwischen auf einem anderen Gerät geändert.")
-        cfg = {"rev": int(cur.get("rev", 0)) + 1, "boards": [_board(b) for b in h["boards"]]}
+        cfg = {"rev": int(cur.get("rev", 0)) + 1, "boards": [_board(b) for b in h["boards"]], "tidied": True}
         settings_store.set("boards", cfg)
         when = time.strftime("%d.%m. %H:%M", time.localtime(h["ts"]))
         _record(cfg, user, note=f"Wiederhergestellt: Stand vom {when}")
