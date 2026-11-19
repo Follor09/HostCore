@@ -1,17 +1,16 @@
 /**
- * HostCore Dashboard - collapsible sidebar on every page
+ * HostCore Dashboard - navigation bar on every page
  *
- * One place for everything that used to be unlabeled icons in the header:
- * - Boards (the start page's boards; on the dashboard they switch in place)
- * - Pages with their names; the current page's sections (.settings-nav) are listed below it
- * - own links (Einstellungen -> Eigene Links)
+ * One bar at the top for everything that used to be unlabeled icons in the header:
+ * - Übersicht (the start page; several boards are listed in its menu and switch in place on the dashboard)
+ * - the pages; hovering a page opens a menu with its groups (or, on pages without groups, its sections)
+ * - "Wissen & Nachweise" and own links (Einstellungen -> Eigene Links) as menus
  * - actions: the header's icon buttons are moved here (same elements, so their handlers keep working)
- * Expanded / collapsed (icons only) is remembered per browser; on phones it is a drawer.
+ * On phones the bar is a drawer behind a menu button.
  */
 (function () {
   'use strict';
 
-  const KEY = 'sidebar';
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
   const svg = path => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
   const ICON = {
@@ -32,22 +31,34 @@
     menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
     chevron: '<path d="M9 18l6-6-6-6"/>'
   };
-  // [href, icon, label, permission, capability, group]: "ops" = running the servers, "docs" = knowledge and evidence,
-  // "foot" = pinned at the bottom
+  // [href, icon, label, short label, permission, capability, where]: "ops" = in the bar, "docs" = in the
+  // "Wissen & Nachweise" menu, "right" = at the right end
   const PAGES = [
-    ['/system', 'tools', 'System-Werkzeuge', 'system.view', '', 'ops'],
-    ['/containers', 'box', 'Container', 'system.view', '', 'ops'],
-    ['/vms', 'vm', 'VMs', 'system.view', 'vms', 'ops'],
-    ['/flotte', 'fleet', 'Flotte', 'system.view', '', 'ops'],
-    ['/terminal', 'terminal', 'Terminal', 'terminal', '', 'ops'],
-    ['/doku', 'book', 'Dokumentation', '', '', 'docs'],
-    ['/nachweise', 'shield', 'Compliance', '', '', 'docs'],
-    ['/wissen', 'wiki', 'Wissen', '', '', 'docs'],
-    ['/report', 'report', 'Wochenbericht', 'system.view', '', 'docs'],
-    ['/werkzeuge', 'toolbox', 'IT-Toolbox', '', '', 'docs'],
-    ['/settings', 'settings', 'Einstellungen', '', '', 'foot']
+    ['/system', 'tools', 'System-Werkzeuge', 'System', 'system.view', '', 'ops'],
+    ['/containers', 'box', 'Container', 'Container', 'system.view', '', 'ops'],
+    ['/vms', 'vm', 'VMs', 'VMs', 'system.view', 'vms', 'ops'],
+    ['/flotte', 'fleet', 'Flotte', 'Flotte', 'system.view', '', 'ops'],
+    ['/terminal', 'terminal', 'Terminal', 'Terminal', 'terminal', '', 'ops'],
+    ['/doku', 'book', 'Dokumentation', 'Dokumentation', '', '', 'docs'],
+    ['/nachweise', 'shield', 'Compliance', 'Compliance', '', '', 'docs'],
+    ['/wissen', 'wiki', 'Wissen', 'Wissen', '', '', 'docs'],
+    ['/report', 'report', 'Wochenbericht', 'Wochenbericht', 'system.view', '', 'docs'],
+    ['/werkzeuge', 'toolbox', 'IT-Toolbox', 'IT-Toolbox', '', '', 'docs'],
+    ['/settings', 'settings', 'Einstellungen', 'Einstellungen', '', '', 'right']
   ];
+  // The groups of the long pages (same ids as pagegroups.js), shown when hovering the page in the bar
+  const GROUPS = {
+    '/system': [['zustand', 'Zustand'], ['netzwerk', 'Netzwerk'], ['sicherheit', 'Sicherheit', 'security.view'], ['hardware', 'Hardware & Strom'],
+      ['speicher', 'Speicher & Backups'], ['logs', 'Logs'], ['wartung', 'Pakete & Wartung'], ['software', 'Schwachstellen & Support']],
+    '/containers': [['docker', 'Docker'], ['sicherheitscheck', 'Sicherheitscheck'], ['datenbanken', 'Datenbanken'], ['kubernetes', 'Kubernetes'],
+      ['images', 'Image-Updates'], ['gitops', 'GitOps'], ['vorlagen', 'Stack-Vorlagen'], ['statistik', 'Statistik'], ['apps', 'App-Store']],
+    '/settings': [['konto', 'Konto & Zugang'], ['dashboard', 'Dashboard'], ['ueberwachung', 'Überwachung'], ['verbindungen', 'Verbindungen'], ['system', 'System & Daten']],
+    '/nachweise': [['grundschutz', 'Grundschutz-Check'], ['nis2', 'NIS-2-Meldefristen'], ['richtlinien', 'Richtlinien'], ['lieferkette', 'Dienstleister'],
+      ['audits', 'Interne Audits'], ['datenschutz', 'Datenschutz'], ['nachweise', 'Nachweis-Paket']],
+    '/doku': [['bestand', 'Bestand'], ['betrieb', 'Betrieb'], ['notfall', 'Notfallhandbuch'], ['vertraege', 'Verträge & Kosten'], ['aenderungen', 'Änderungen']]
+  };
   const onDashboard = location.pathname === '/';
+  const isCurrent = href => location.pathname === href || (href === '/doku' && location.pathname === '/docs');
 
   const header = document.querySelector('.app-header');
   if (!header) return;
@@ -65,7 +76,7 @@
     else a.type = 'button';
     if (opts.perm) a.dataset.perm = opts.perm;
     if (opts.cap) a.dataset.cap = opts.cap;   // caps.js hides it where the feature is off
-    a.title = label;
+    if (opts.title) a.title = opts.title;
     const ic = el('span', 'side-icon');
     ic.innerHTML = icon;
     const text = el('span', 'side-label', label);
@@ -74,16 +85,40 @@
     return a;
   }
 
-  function group(title) {
-    const g = el('div', 'side-group');
-    if (title) g.appendChild(el('div', 'side-group-title', title));
-    return g;
+  // One entry of the bar: a link (or a plain label) with an optional menu that opens on hover / focus
+  function navItem(trigger, opts = {}) {
+    const wrap = el('div', `tn-item${opts.group ? ' tn-group' : ''}`);
+    if (trigger.dataset.perm) wrap.dataset.perm = trigger.dataset.perm;
+    if (trigger.dataset.cap) wrap.dataset.cap = trigger.dataset.cap;
+    wrap.appendChild(trigger);
+    const menu = el('div', 'tn-menu');
+    menu.setAttribute('role', 'menu');
+    wrap.appendChild(menu);
+    wrap.menu = menu;
+    return wrap;
+  }
+
+  function menuLink(href, label, opts = {}) {
+    const a = el('a', `tn-menu-link${opts.cls ? ` ${opts.cls}` : ''}`, label);
+    a.href = href;
+    a.setAttribute('role', 'menuitem');
+    if (opts.perm) a.dataset.perm = opts.perm;
+    if (opts.cap) a.dataset.cap = opts.cap;
+    if (opts.raw) a.setAttribute('data-no-i18n', '');
+    return a;
+  }
+
+  function fillMenu(wrap) {
+    const has = !!wrap.menu.querySelector('.tn-menu-link');
+    wrap.classList.toggle('has-menu', has);
+    const trig = wrap.firstElementChild;
+    if (has) trig.setAttribute('aria-haspopup', 'true'); else trig.removeAttribute('aria-haspopup');
   }
 
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
-  const side = el('aside', 'sidebar');
+  const side = el('nav', 'sidebar topnav');
   side.id = 'sidebar';
   side.setAttribute('aria-label', 'Navigation');
 
@@ -93,66 +128,68 @@
   brand.title = 'HostCore';
   brand.innerHTML = '<span class="sidebar-logo">H</span><span class="side-label">HOST<b>CORE</b></span>';
   brand.setAttribute('data-no-i18n', '');
-  const toggle = el('button', 'sidebar-toggle');
-  toggle.type = 'button';
-  toggle.innerHTML = svg(ICON.collapse);
-  head.append(brand, toggle);
+  head.append(brand);
 
-  const scroll = el('nav', 'sidebar-scroll');
-  const searchGroup = group('');
-  const boardsGroup = group(t('Boards'));
-  const opsGroup = group(t('Betrieb'));
-  const docsGroup = group(t('Wissen & Nachweise'));
-  const linksGroup = group(t('Links'));
-  linksGroup.hidden = true;
-  scroll.append(searchGroup, boardsGroup, opsGroup, docsGroup, linksGroup);
-  // Bottom: settings and the small actions as one row of icons
-  const foot = el('div', 'sidebar-foot');
-  const actionsGroup = el('div', 'side-actions');
-  side.append(head, scroll, foot);
-  const GROUPS = { ops: opsGroup, docs: docsGroup, foot };
+  const main = el('div', 'tn-main');
+  const right = el('div', 'tn-right');
+  side.append(head, main, right);
 
-  // Pages; pages without tabs list their sections below them (pages with groups have tabs for that)
-  PAGES.forEach(([href, icon, label, perm, cap, where]) => {
-    const current = location.pathname === href || (href === '/doku' && location.pathname === '/docs');
-    const a = item('a', svg(ICON[icon]), t(label), { href, perm, cap, cls: current ? 'active' : '' });
+  // Boards: "Übersicht" goes to the start page; several boards are listed in its menu
+  const boardsItem = navItem(item('a', svg(ICON.board), t('Übersicht'), { href: '/', cls: onDashboard ? 'active' : '' }));
+  main.appendChild(boardsItem);
+
+  function pageItem([href, icon, label, short, perm, cap]) {
+    const current = isCurrent(href);
+    const a = item('a', svg(ICON[icon]), t(short), { href, perm, cap, cls: current ? 'active' : '', title: t(label) });
     if (current) a.setAttribute('aria-current', 'page');
-    const pagesGroup = GROUPS[where];
-    pagesGroup.appendChild(a);
-    const nav = current && where !== 'foot' && !document.body.classList.contains('pg-grouped') && document.querySelector('.settings-nav');
-    if (!nav) return;
-    const subs = el('div', 'side-subs');
-    [...nav.querySelectorAll('a')].forEach(orig => {
-      const sub = orig.cloneNode(true);
-      sub.removeAttribute('id');
-      const mirror = () => { sub.className = `side-sub ${orig.className}`.trim(); };
-      mirror();
-      new MutationObserver(mirror).observe(orig, { attributes: true, attributeFilter: ['class'] });
-      // The page's own handlers (smooth scrolling, active state) stay on the original link
-      sub.addEventListener('click', e => { e.preventDefault(); orig.click(); closeDrawer(); });
-      subs.appendChild(sub);
-    });
-    pagesGroup.appendChild(subs);
-    document.body.classList.add('sidebar-sections');
-  });
+    const wrap = navItem(a);
+    (GROUPS[href] || []).forEach(([id, glabel, gperm]) => wrap.menu.appendChild(menuLink(`${href}#g-${id}`, t(glabel), { perm: gperm })));
+    // Pages without groups: their own sections, while the page is open
+    const nav = current && !GROUPS[href] && document.querySelector('.settings-nav');
+    if (nav) {
+      [...nav.querySelectorAll('a')].forEach(orig => {
+        const sub = menuLink(orig.getAttribute('href'), orig.textContent.trim());
+        sub.addEventListener('click', e => { e.preventDefault(); orig.click(); closeDrawer(); });
+        wrap.menu.appendChild(sub);
+      });
+    }
+    fillMenu(wrap);
+    return wrap;
+  }
 
-  // Boards: switched in place on the dashboard, links to it elsewhere
+  PAGES.filter(p => p[6] === 'ops').forEach(p => main.appendChild(pageItem(p)));
+
+  // Knowledge and evidence: one menu
+  const docsPages = PAGES.filter(p => p[6] === 'docs');
+  const docsTrigger = item('button', svg(ICON.book), t('Wissen & Nachweise'), { cls: docsPages.some(p => isCurrent(p[0])) ? 'active' : '' });
+  const docsItem = navItem(docsTrigger, { group: true });
+  docsPages.forEach(([href, , label, , perm, cap]) => docsItem.menu.appendChild(menuLink(href, t(label), { perm, cap, cls: isCurrent(href) ? 'active' : '' })));
+  fillMenu(docsItem);
+  main.appendChild(docsItem);
+
+  // Own links: one menu, only when there are some
+  const linksItem = navItem(item('button', svg(ICON.link), t('Links')), { group: true });
+  linksItem.hidden = true;
+  main.appendChild(linksItem);
+
   function renderBoards(list, activeId) {
-    boardsGroup.querySelectorAll('.side-item').forEach(n => n.remove());
-    (list || []).forEach((b, i) => {
-      const href = i === 0 ? '/' : `/#board-${b.id}`;
-      const a = item('a', svg(ICON.board), b.name, { href, raw: true, cls: onDashboard && b.id === activeId ? 'active' : '' });
-      if (i < 9) a.title = `${b.name} (Alt+${i + 1})`;
-      if (onDashboard) {
-        a.addEventListener('click', e => {
-          if (!window.PiLayout) return;
-          e.preventDefault();
-          window.PiLayout.switchTab(b.id);
-          closeDrawer();
-        });
-      }
-      boardsGroup.appendChild(a);
-    });
+    boardsItem.menu.innerHTML = '';
+    if ((list || []).length > 1) {
+      list.forEach((b, i) => {
+        const a = menuLink(i === 0 ? '/' : `/#board-${b.id}`, b.name, { raw: true, cls: onDashboard && b.id === activeId ? 'active' : '' });
+        if (i < 9) a.title = `${b.name} (Alt+${i + 1})`;
+        if (onDashboard) {
+          a.addEventListener('click', e => {
+            if (!window.PiLayout) return;
+            e.preventDefault();
+            window.PiLayout.switchTab(b.id);
+            closeDrawer();
+          });
+        }
+        boardsItem.menu.appendChild(a);
+      });
+    }
+    fillMenu(boardsItem);
   }
 
   if (onDashboard) {
@@ -163,24 +200,23 @@
     }).catch(() => {});
   }
 
-  // Own links
   fetch('/api/links').then(r => (r.ok ? r.json() : null)).then(data => {
     const links = (data && data.links) || [];
     links.forEach(l => {
-      const a = item('a', '', l.name, { href: l.url, raw: true });
+      const a = menuLink(l.url, l.name, { raw: true });
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
-      a.querySelector('.side-icon').textContent = (l.name.trim()[0] || '?').toUpperCase();
-      a.querySelector('.side-icon').classList.add('letter');
-      linksGroup.appendChild(a);
+      linksItem.menu.appendChild(a);
     });
-    linksGroup.hidden = !links.length;
+    linksItem.hidden = !links.length;
+    fillMenu(linksItem);
   }).catch(() => {});
 
-  // Actions: the header's icon buttons move into the sidebar (page links are replaced by the list above)
-  const right = header.querySelector('.header-right');
-  if (right) {
-    [...right.querySelectorAll(':scope > .icon-button')].forEach(btn => {
+  // Right end: search, the header's small actions as icons, settings
+  const actions = el('div', 'side-actions');
+  const hr = header.querySelector('.header-right');
+  if (hr) {
+    [...hr.querySelectorAll(':scope > .icon-button')].forEach(btn => {
       const href = btn.getAttribute('href');
       if (href && PAGES.some(p => p[0] === href)) { btn.remove(); return; }
       const label = btn.getAttribute('title') || btn.getAttribute('aria-label') || '';
@@ -192,17 +228,17 @@
       if (btn.id === 'btn-palette') {
         btn.appendChild(el('kbd', 'side-kbd', t('Strg+K')));
         btn.classList.add('side-search');
-        searchGroup.appendChild(btn);
+        right.appendChild(btn);
         return;
       }
-      actionsGroup.appendChild(btn);
+      actions.appendChild(btn);
     });
   }
-  searchGroup.hidden = !searchGroup.querySelector('.side-item');
-  actionsGroup.hidden = !actionsGroup.querySelector('.side-item');
-  foot.appendChild(actionsGroup);
+  actions.hidden = !actions.querySelector('.side-item');
+  right.appendChild(actions);
+  PAGES.filter(p => p[6] === 'right').forEach(p => right.appendChild(pageItem(p)));
 
-  // Phone: a menu button opens the sidebar as a drawer
+  // Phones: the bar becomes a drawer behind a menu button
   const burger = el('button', 'icon-button sidebar-burger');
   burger.type = 'button';
   burger.title = t('Menü');
@@ -213,33 +249,25 @@
   const backdrop = el('div', 'sidebar-backdrop');
 
   document.body.prepend(side, backdrop);
-  document.body.classList.add('has-sidebar');
-
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
-  function stored() {
-    try { return localStorage.getItem(KEY); } catch (e) { return null; }
-  }
-
-  function setCollapsed(on, remember) {
-    document.body.classList.toggle('sidebar-collapsed', on);
-    toggle.title = on ? t('Seitenleiste ausklappen') : t('Seitenleiste einklappen');
-    toggle.setAttribute('aria-label', toggle.title);
-    toggle.setAttribute('aria-expanded', String(!on));
-    if (remember) { try { localStorage.setItem(KEY, on ? 'collapsed' : 'expanded'); } catch (e) { /* ignore */ } }
-    window.dispatchEvent(new Event('resize'));  // grids and charts re-measure
-  }
+  document.body.classList.add('has-sidebar', 'has-topnav');
 
   function closeDrawer() { document.body.classList.remove('sidebar-open'); }
-
-  const pref = stored();
-  setCollapsed(pref ? pref === 'collapsed' : window.innerWidth < 1280, false);
-  toggle.addEventListener('click', () => setCollapsed(!document.body.classList.contains('sidebar-collapsed'), true));
+  // A menu closes right after a click in it (hover would keep it open)
+  side.addEventListener('click', e => {
+    if (e.target.closest('.tn-menu-link')) {
+      const it = e.target.closest('.tn-item');
+      if (it) { it.classList.add('tn-closed'); setTimeout(() => it.classList.remove('tn-closed'), 400); }
+      if (document.activeElement) document.activeElement.blur();
+    }
+    if (e.target.closest('a[href]:not([target])')) closeDrawer();
+  });
   burger.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
   backdrop.addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
-  side.addEventListener('click', e => { if (e.target.closest('a.side-item[href]:not([target])')) closeDrawer(); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    closeDrawer();
+    if (side.contains(document.activeElement)) document.activeElement.blur();
+  });
 })();
 
 /**

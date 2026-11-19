@@ -12452,3 +12452,165 @@ code, pre, kbd, .mono, td.mono { font-family: var(--font-mono); }
 .throttle-status-box { border: 0 !important; border-radius: var(--radius); background: rgba(var(--ink-rgb), 0.045) !important; }
 .login-passkey { border: 0 !important; border-radius: 999px; background: rgba(var(--ink-rgb), 0.08) !important; }
 .login-passkey:hover { background: rgba(var(--ink-rgb), 0.13) !important; }
+
+/* ==========================================================================
+   Navigation bar at the top (sidebar.js), menus open on hover / keyboard focus
+   ========================================================================== */
+.tn-menu { display: none; }
+.tn-item[hidden] { display: none; }
+
+@media (min-width: 761px) {
+  body.has-sidebar, body.has-sidebar.sidebar-collapsed { padding-left: 0; }
+  .sidebar.topnav {
+    position: relative;
+    inset: auto;
+    width: auto;
+    height: 52px;
+    z-index: 70;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+    padding: 0 20px;
+    background: var(--surface-bar);
+    border: 0;
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.07);
+    transform: none;
+  }
+  .topnav .sidebar-head { min-height: 0; padding: 0; border: 0; flex-shrink: 0; }
+  .topnav .tn-main { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+  .topnav .tn-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .topnav .side-actions { display: flex; gap: 0; padding: 0; }
+  .topnav .side-actions[hidden] { display: none; }
+
+  .tn-item { position: relative; }
+  .tn-item > .side-item {
+    min-height: 32px;
+    width: auto;
+    padding: 0 12px;
+    gap: 6px;
+    border-radius: 999px;
+    font-size: 0.86rem;
+    white-space: nowrap;
+  }
+  .tn-item > .side-item .side-icon { display: none; }
+  .tn-item > .side-item.active { background: rgba(var(--ink-rgb), 0.1); color: var(--text-strong); }
+  .tn-item.has-menu > .side-item::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 2px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+    opacity: 0.55;
+  }
+  /* The menu: hangs below its item; a transparent strip bridges the gap so it stays open on the way down */
+  .tn-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 220px;
+    max-height: 70vh;
+    overflow-y: auto;
+    margin-top: 6px;
+    padding: 6px;
+    flex-direction: column;
+    gap: 1px;
+    border-radius: var(--radius);
+    background: var(--surface-float);
+    box-shadow: var(--shadow-pop);
+    z-index: 90;
+  }
+  .tn-menu::before { content: ''; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+  .tn-right .tn-item .tn-menu { left: auto; right: 0; }
+  .tn-item.has-menu:hover > .tn-menu,
+  .tn-item.has-menu:focus-within > .tn-menu { display: flex; }
+  .tn-item.tn-closed > .tn-menu { display: none !important; }
+  .tn-item.has-menu:hover > .side-item { background: rgba(var(--ink-rgb), 0.08); color: var(--text-main); }
+
+  .topnav .side-search { width: 190px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 0 !important; background: rgba(var(--ink-rgb), 0.07); }
+  .topnav .side-search .side-label { flex: 1; }
+  .topnav .side-actions .side-item { width: 32px; min-height: 32px; border-radius: 999px; }
+  .sidebar-burger { display: none !important; }
+}
+
+/* Narrow desktop: search shrinks to its icon */
+@media (min-width: 761px) and (max-width: 1280px) {
+  .topnav .side-search { width: 32px; padding: 0; justify-content: center; }
+  .topnav .side-search .side-label, .topnav .side-search .side-kbd { display: none; }
+  .sidebar.topnav { gap: 12px; padding: 0 12px; }
+  .tn-item > .side-item { padding: 0 9px; }
+}
+
+.tn-menu-link {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.tn-menu-link:hover, .tn-menu-link:focus-visible { background: rgba(var(--ink-rgb), 0.08); color: var(--text-strong); outline: none; }
+.tn-menu-link.active { color: var(--text-strong); box-shadow: inset 2px 0 0 var(--accent-cyan); }
+.tn-menu-link[hidden] { display: none; }
+
+/* Phones: the bar is a drawer; menus of the pure groups (Wissen & Nachweise, Links) are listed open */
+@media (max-width: 760px) {
+  .sidebar.topnav { display: flex; flex-direction: column; overflow-y: auto; padding: 0 8px 40px; gap: 8px; background: var(--surface-bar); }
+  .topnav .tn-main, .topnav .tn-right { display: flex; flex-direction: column; gap: 2px; }
+  .topnav .tn-group > .side-item { pointer-events: none; color: var(--text-dim); font-size: 0.75rem; min-height: 26px; margin-top: 8px; }
+  .topnav .tn-group > .side-item .side-icon { display: none; }
+  .topnav .tn-group > .tn-menu { display: flex; flex-direction: column; }
+  .topnav .tn-group .tn-menu-link { padding: 8px 10px; color: var(--text-muted); font-size: 0.86rem; }
+  .topnav .side-actions { display: flex; flex-direction: row; }
+}
+
+/* Sections of a group: a second, quieter tab row instead of a list on the left */
+body.pg-split .settings-sections { display: flex; flex-direction: column; gap: 16px; }
+body.pg-split .settings-sections > .pg-subnav {
+  position: static;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  padding: 0 2px;
+  border-bottom: 1px solid rgba(var(--ink-rgb), 0.08);
+}
+body.pg-split .pg-sub, body.pg-split .pg-sub.pg-active {
+  position: relative;
+  padding: 8px 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+body.pg-split .pg-sub.pg-active { color: var(--text-strong); }
+body.pg-split .pg-sub.pg-active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent-cyan); }
+@media (max-width: 900px) {
+  body.pg-split .settings-sections > .pg-subnav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+}
+
+/* Pages with their own section list (IT-Toolbox, VMs): a row of chips on top instead of a column on the left */
+@media (min-width: 761px) {
+  body.has-topnav .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  body.has-topnav .settings-nav {
+    position: sticky;
+    top: 64px;
+    z-index: 20;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 0 10px;
+    background: var(--bg-deep);
+  }
+  body.has-topnav .settings-nav a { padding: 6px 12px; border-radius: 999px; background: rgba(var(--ink-rgb), 0.07); }
+  body.has-topnav .settings-nav a.active { background: var(--button-ink); color: var(--button-ink-text); }
+}
+body.has-topnav .task-dock, body.has-topnav.sidebar-collapsed .task-dock { left: 0; }
+body.pg-split .settings-sections { align-items: stretch; }
+@media (min-width: 1281px) { .topnav .side-search { width: 230px; } }
+/* With the bar above it the page header is a plain title row */
+body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom: 8px; }
