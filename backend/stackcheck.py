@@ -25,6 +25,7 @@ import settings_store
 logger = logging.getLogger("pi_dashboard.stackcheck")
 
 IGNORE_KEY = "stack_check_ignore"
+RESULT_KEY = "stack_check_result"   # kept across restarts: otherwise every start re-checks all stacks
 CHECK_INTERVAL = 24 * 3600
 WEIGHT = {"critical": 30, "warning": 10, "info": 3}
 DANGEROUS_CAPS = {"ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_PTRACE", "SYS_RAWIO", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_TIME"}
@@ -34,7 +35,7 @@ SECRET_KEY = re.compile(r"(PASS(WORD|WD)?|SECRET(_?KEY)?|TOKEN|API_?KEY|PRIVATE_
 # KEY: value / KEY=value / - KEY=value in a compose file (environment section)
 SECRET_LINE = re.compile(r"^\s*(?:-\s*)?[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?\s*[:=]\s*[\"']?([^\"'#\s][^\"'#]*?)[\"']?\s*(?:#.*)?$")
 _lock = threading.Lock()
-_result: Dict[str, Any] = {"stacks": [], "checked": 0}
+_result: Dict[str, Any] = {"stacks": [], "checked": 0, "loaded": False}
 _running = False
 
 
@@ -201,18 +202,28 @@ def run() -> Dict[str, Any]:
     try:
         stacks = [check_stack(s) for s in containers.stacks()]
         with _lock:
-            _result.update(stacks=stacks, checked=int(time.time()))
+            _result.update(stacks=stacks, checked=int(time.time()), loaded=True)
+            settings_store.set(RESULT_KEY, {"stacks": stacks, "checked": _result["checked"]})
     finally:
         _running = False
     return overview()
 
 
+def _load() -> None:
+    with _lock:
+        if not _result["loaded"]:
+            saved = settings_store.get(RESULT_KEY) or {}
+            _result.update(stacks=saved.get("stacks") or [], checked=saved.get("checked") or 0, loaded=True)
+
+
 def check_if_due() -> None:
+    _load()
     if time.time() - _result["checked"] >= CHECK_INTERVAL and not _running:
         threading.Thread(target=run, daemon=True).start()
 
 
 def overview() -> Dict[str, Any]:
+    _load()
     ignored = _ignored()
     with _lock:
         stacks = [_with_ignored(e, ignored) for e in _result["stacks"]]

@@ -35,6 +35,8 @@ logger = logging.getLogger("pi_dashboard.monitor")
 RETENTION_DAYS = 730          # upper limit for the throttling / uptime views (actual: retention "uptime")
 PROC_KEEP = 12                 # programs stored per sample (top by CPU + top by RAM)
 GAP_SECONDS = 3 * 60           # longer without a sample = dashboard was off
+STARTUP_GRACE = 10 * 60        # the hourly checks wait this long after the dashboard starts, the minutely
+                               # ones after a reboot - so they don't all run while containers come up
 
 THROTTLE_BITS = {              # kind: (bit active now, bit "has occurred" since boot)
     "undervoltage": (0, 16),
@@ -371,7 +373,7 @@ class Monitor:
         self.throttle = _ThrottleWatch()
         self.ifaces = _IfaceWatch()
         self.procs = _ProcWatch()
-        self.last_cleanup = 0.0
+        self.last_cleanup = time.time() - 3600 + STARTUP_GRACE
 
     def sample(self, temp: Optional[float]) -> None:
         now = int(time.time())
@@ -392,6 +394,8 @@ class Monitor:
                 anomalies.check()
             except Exception as e:
                 logger.warning(f"Anomaly check failed: {e}")
+            if now - psutil.boot_time() < STARTUP_GRACE:
+                return
             if now % 300 < 60:
                 try:
                     import netscan
