@@ -119,7 +119,10 @@ def _dpkg_since(since: int) -> Set[str]:
             continue
     files: Set[str] = set()
     for pkg in packages:
-        for name in glob.glob(f"/var/lib/dpkg/info/{glob.escape(pkg)}*.list") + glob.glob(f"/var/lib/dpkg/info/{glob.escape(pkg)}*.conffiles"):
+        # Exactly this package (plus its ":arch" variant) - a prefix would let an update of python3
+        # explain changed files of python3-requests and every other python3-* package
+        base = f"/var/lib/dpkg/info/{glob.escape(pkg)}"
+        for name in [n for ext in ("list", "conffiles") for n in glob.glob(f"{base}.{ext}") + glob.glob(f"{base}:*.{ext}")]:
             try:
                 with open(name, errors="replace") as f:
                     files.update(x.strip() for x in f)

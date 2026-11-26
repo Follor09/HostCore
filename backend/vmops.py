@@ -260,9 +260,18 @@ def _record(sid: str, **fields: Any) -> None:
             settings_store.set(SCHEDULES_KEY, items)
 
 
-def _prune_snapshots(vm: str, keep: int) -> None:
-    autos = [s["name"] for s in vms.snapshots(vm) if s["name"].startswith("auto-")]
-    for name in sorted(autos)[:-keep]:   # the name holds the date, so this is oldest first
+OLD_AUTO_RE = re.compile(r"^auto-\d{8}-\d{4}$")   # before snapshots carried their schedule's id
+
+
+def _prune_snapshots(vm: str, sid: str, keep: int) -> None:
+    """Keep the newest `keep` snapshots of this schedule - two schedules on one VM don't eat each other's."""
+    own = f"auto-{sid}-"
+    others = [x for x in settings_store.get(SCHEDULES_KEY, []) or [] if x["vm"] == vm and x["action"] == "snapshot" and x["id"] != sid]
+    autos = [s["name"] for s in vms.snapshots(vm)
+             if s["name"].startswith(own) or (not others and OLD_AUTO_RE.match(s["name"]))]
+    # oldest first: the name ends with the date; old-style names sort before the schedule's own
+    autos.sort(key=lambda n: (not OLD_AUTO_RE.match(n), n))
+    for name in autos[:-keep]:
         vms.snapshot_action(vm, name, "delete")
 
 
@@ -294,8 +303,8 @@ def _run(s: Dict[str, Any], now: float) -> None:
             raise VmOpsError("VM gibt es nicht mehr.")
         state = vms._state(vm)
         if action == "snapshot":
-            vms.snapshot_create(vm, time.strftime("auto-%Y%m%d-%H%M", time.localtime(now)), "Automatischer Snapshot")
-            _prune_snapshots(vm, s["keep"])
+            vms.snapshot_create(vm, time.strftime(f"auto-{s['id']}-%Y%m%d-%H%M", time.localtime(now)), "Automatischer Snapshot")
+            _prune_snapshots(vm, s["id"], s["keep"])
         elif action == "backup":
             task = backup_start(vm, "Zeitplan", keep=s["keep"], schedule=s["id"])
             _record(s["id"], last_run=int(now), last_state="running", last_error="", task=task["id"])
@@ -305,9 +314,12 @@ def _run(s: Dict[str, Any], now: float) -> None:
         elif action == "shutdown" and state == "running":
             vms.action(vm, "shutdown")
         _record(s["id"], last_run=int(now), last_state="ok", last_error="")
-    except (vms.VmError, tasks.TaskError) as e:
+    except Exception as e:
+        # Any failure counts as this slot's run: otherwise it would be retried every minute until the
+        # catch-up window closes, and the schedules after it would wait
         logger.warning(f"VM schedule {vm}/{action}: {e}")
-        _record(s["id"], last_run=int(now), last_state="error", last_error=str(e)[:300])
+        text = str(e) if isinstance(e, (vms.VmError, tasks.TaskError)) else f"{type(e).__name__}: {e}"
+        _record(s["id"], last_run=int(now), last_state="error", last_error=text[:300])
 
 
 def tick(now: Optional[float] = None) -> None:
@@ -317,8 +329,11 @@ def tick(now: Optional[float] = None) -> None:
     if not items or not vms.enabled():
         return
     for s in items:
-        if _due(s, now):
-            _run(s, now)
+        try:
+            if _due(s, now):
+                _run(s, now)
+        except Exception as e:      # a broken entry must not keep the others from running
+            logger.warning(f"VM schedule {s.get('id')}: {e}")
 
 
 def _backup_done(task: Dict[str, Any]) -> None:

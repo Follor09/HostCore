@@ -50,6 +50,10 @@
   window.PiHost = {
     // Query parameter for WebSocket URLs ("&host=…"), empty while unknown
     param: () => (pageHost ? `host=${encodeURIComponent(pageHost)}` : ''),
+    // "local" or the remote's id the page shows - for requests that don't go through fetch (XHR uploads)
+    id: () => pageHost,
+    // An answer said the selection changed elsewhere (409 with host_changed)
+    changed: detail => hostChanged(detail),
     // Name of the server the page shows
     name: () => (state ? (state.current ? state.current.name : state.local) : ''),
     isRemote: () => !!(state && state.current),

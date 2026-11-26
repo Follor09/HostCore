@@ -4,6 +4,14 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.4.1 – 2026-11-26
+
+### Fixed
+- **Uploads land on the server the page shows:** file uploads went past the server check added in v1.4.0, so a file list opened for Pi 2 uploaded to the main server once another tab had switched back. Uploads now say which server they are meant for and are refused with a note and a reload otherwise.
+- **File integrity explains only the updated package itself:** an update of `python3` also marked changed files of `python3-requests` and every other `python3-*` package as explained and closed them; `libc6` did the same for `libc6-dev`. Now only the package's own files (and its `:arch` variant) count.
+- **Two snapshot schedules on one VM keep their own snapshots:** retention counted all automatic snapshots of the VM, so a daily schedule keeping 7 and a weekly one keeping 4 left only 4. Automatic snapshots now carry their schedule's id and each schedule removes only its own; snapshots from before stay untouched while a VM has more than one snapshot schedule.
+- **A failing VM schedule is not repeated every minute:** an unexpected error (e.g. a virsh timeout) was not recorded, so the snapshot or backup was tried again every minute for 30 minutes and the schedules after it waited. Every failure now counts as that slot's run and shows up as a warning.
+
 ## v1.4.0 – 2026-11-26
 
 Virtual machines, a new look and navigation, more compliance tools, and a fix for the baseline check that could stop the dashboard from answering.

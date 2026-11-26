@@ -1380,12 +1380,16 @@
     return new Promise(resolve => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', `/api/files/upload?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(file.name)}&overwrite=${overwrite ? 1 : 0}`);
+      const host = window.PiHost && window.PiHost.id();   // XHR bypasses the fetch wrapper: say which server this is meant for
+      if (host) xhr.setRequestHeader('X-PiCore-Host', host);
       xhr.upload.onprogress = e => {
         if (e.lengthComputable) row.querySelector('.upload-fill').style.width = `${e.loaded / e.total * 100}%`;
       };
       xhr.onload = () => {
         let detail = '';
-        try { detail = JSON.parse(xhr.responseText).detail || ''; } catch (e) { /* ignore */ }
+        let hostChanged = false;
+        try { const d = JSON.parse(xhr.responseText); detail = d.detail || ''; hostChanged = !!d.host_changed; } catch (e) { /* ignore */ }
+        if (xhr.status === 409 && hostChanged && window.PiHost) window.PiHost.changed(detail);
         resolve({ status: xhr.status, detail });
       };
       xhr.onerror = () => resolve({ status: 0, detail: 'Verbindung abgebrochen.' });
