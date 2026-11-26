@@ -1160,17 +1160,6 @@ class HiddenServicesRequest(BaseModel):
     hidden: list[str]
 
 
-def _os_name() -> str:
-    try:
-        with open("/etc/os-release") as f:
-            for line in f:
-                if line.startswith("PRETTY_NAME="):
-                    return line.split("=", 1)[1].strip().strip('"')
-    except OSError:
-        pass
-    return f"{platform.system()} {platform.release()}"
-
-
 def _settings_payload(user: str) -> dict:
     import services_manager as sm
     updater.refresh_git_info()
@@ -3875,7 +3864,7 @@ def _os_name() -> str:
                     return line.split("=", 1)[1].strip().strip('"')[:80]
     except OSError:
         pass
-    return platform.system()
+    return f"{platform.system()} {platform.release()}"
 
 
 class RemoteRequest(BaseModel):

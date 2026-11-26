@@ -64,12 +64,12 @@
     $('bk-summary').textContent = `${data.backups.length} ${t('Sicherungen')} · ${size(data.total)}`;
     table($('bk-table'), ['VM', 'Zeitpunkt', 'Größe', 'Art', 'Pool', ''], data.backups.map(b => {
       const a = el('div', 'ops-actions');
-      a.append(button('Wiederherstellen', 'text-btn', () => restoreForm(b), 'vms.manage'),
-        confirmButton('Löschen', 'text-btn danger', async () => {
+      if (!b.partial) a.append(button('Wiederherstellen', 'text-btn', () => restoreForm(b), 'vms.manage'));
+      a.append(confirmButton('Löschen', 'text-btn danger', async () => {
           const r = await run(() => api(`/api/vms/backups/${b.id}/delete`, {}));
           if (r) { Object.assign(data, r); renderBackups(); }
         }, 'vms.manage'));
-      return [raw('strong', '', b.vm), time(b.ts), size(b.size), tag('', b.schedule ? 'Zeitplan' : 'Von Hand'), b.pool, a];
+      return [raw('strong', '', b.vm), time(b.ts), size(b.size), b.partial ? tag('warning', 'Unvollständig') : tag('', b.schedule ? 'Zeitplan' : 'Von Hand'), b.pool, a];
     }), 'Noch keine Sicherungen. Eine VM sichern: Details der VM, Übersicht.');
     const sel = $('bk-pool');
     if (sel && !sel.dataset.done && sel.options.length) { sel.value = data.config.pool; sel.dataset.done = '1'; }

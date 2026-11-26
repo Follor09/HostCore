@@ -11,6 +11,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 - **File integrity explains only the updated package itself:** an update of `python3` also marked changed files of `python3-requests` and every other `python3-*` package as explained and closed them; `libc6` did the same for `libc6-dev`. Now only the package's own files (and its `:arch` variant) count.
 - **Two snapshot schedules on one VM keep their own snapshots:** retention counted all automatic snapshots of the VM, so a daily schedule keeping 7 and a weekly one keeping 4 left only 4. Automatic snapshots now carry their schedule's id and each schedule removes only its own; snapshots from before stay untouched while a VM has more than one snapshot schedule.
 - **A failing VM schedule is not repeated every minute:** an unexpected error (e.g. a virsh timeout) was not recorded, so the snapshot or backup was tried again every minute for 30 minutes and the schedules after it waited. Every failure now counts as that slot's run and shows up as a warning.
+- **Deleting a VM backup no longer leaves disks behind unseen:** when a backup disk couldn't be removed, the backup vanished from the list anyway and the disk kept taking space in the pool. Now the backup stays in the list marked *Unvollständig* with the disks that are left, deleting it again retries them, and it can't be restored any more. Retention of scheduled backups does the same.
+- The VM page names the real reason when VMs aren't available (Raspberry Pi, not Linux, or an unsupported platform) instead of always saying Raspberry Pi.
+- The operating system name in the settings is cut at 80 characters like everywhere else (one function instead of two).
 
 ## v1.4.0 – 2026-11-26
 

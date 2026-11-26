@@ -126,6 +126,14 @@ def available() -> bool:
     return sys.platform.startswith("linux") and host_arch() in PACKAGES and not system_info.is_raspberry_pi()
 
 
+def unavailable_reason() -> str:
+    if system_info.is_raspberry_pi():
+        return "Virtuelle Maschinen gibt es auf einem Raspberry Pi nicht."
+    if not sys.platform.startswith("linux"):
+        return "Virtuelle Maschinen gibt es nur auf Linux-Servern."
+    return f"Virtuelle Maschinen werden auf dieser Plattform ({platform.machine()}) nicht unterstützt."
+
+
 def enabled() -> bool:
     return available() and bool(settings_store.get(FEATURE_KEY, True))
 
@@ -136,7 +144,7 @@ def feature() -> Dict[str, Any]:
 
 def set_enabled(on: bool) -> Dict[str, Any]:
     if not available():
-        raise VmError("Virtuelle Maschinen gibt es auf diesem Gerät nicht (Raspberry Pi oder nicht unterstützte Plattform).")
+        raise VmError(unavailable_reason())
     settings_store.set(FEATURE_KEY, bool(on))
     system_info.reset_capabilities()
     _invalidate()
@@ -147,7 +155,7 @@ def set_enabled(on: bool) -> Dict[str, Any]:
 def require_enabled() -> None:
     if not enabled():
         raise VmDisabled("Virtuelle Maschinen sind auf diesem Server ausgeschaltet (Einstellungen → Virtuelle Maschinen)."
-                         if available() else "Virtuelle Maschinen gibt es auf einem Raspberry Pi nicht.")
+                         if available() else unavailable_reason())
 
 
 # ---------------------------------------------------------------------------

@@ -414,10 +414,22 @@ def prune(vm: str, schedule: str, keep: int) -> None:
                 items.append(m)
     items.sort(key=lambda m: -m["ts"])
     for m in items[keep:]:
+        when = time.strftime('%d.%m.%Y %H:%M', time.localtime(m['ts']))
+        left = []
         for d in m["disks"]:
-            virsh("vol-delete", "--pool", m["pool"], d["volume"], check=False)
-        os.unlink(os.path.join(BACKUP_DIR, f"{m['id']}.json"))
-        say(f"   Alte Sicherung vom {time.strftime('%d.%m.%Y %H:%M', time.localtime(m['ts']))} entfernt.")
+            res = subprocess.run(["virsh", "-c", URI, "vol-delete", "--pool", m["pool"], d["volume"]], capture_output=True, text=True,
+                                 timeout=120, env={**os.environ, "LC_ALL": "C"}, errors="replace")
+            if res.returncode != 0 and not re.search(r"not found|no storage vol", res.stderr, re.I):
+                left.append(d)
+                say(f"   ⚠ {d['volume']} ließ sich nicht entfernen: {res.stderr.strip().replace('error: ', '')[:300]}")
+        path = os.path.join(BACKUP_DIR, f"{m['id']}.json")
+        if left:
+            # keep it visible (incomplete) instead of leaving the disk in the pool unseen
+            write_manifest({**m, "disks": left, "partial": True})
+            say(f"   Alte Sicherung vom {when} nur teilweise entfernt – sie bleibt als unvollständig in der Liste.")
+        else:
+            os.unlink(path)
+            say(f"   Alte Sicherung vom {when} entfernt.")
 
 
 def backup(spec: dict) -> None:

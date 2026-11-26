@@ -184,6 +184,8 @@ def backup_start(name: str, user: str, keep: int = 0, schedule: str = "", pool: 
 
 def backup_restore(bid: str, name: str, pool: str, user: str) -> Dict[str, Any]:
     m = _manifest(bid)
+    if m.get("partial"):
+        raise VmOpsError("Diese Sicherung ist unvollständig (teilweise gelöscht) und lässt sich nicht wiederherstellen.")
     vms.check_name(name)
     pool = pool or m["pool"]
     vms.check_name(pool, "Pool")
@@ -193,12 +195,31 @@ def backup_restore(bid: str, name: str, pool: str, user: str) -> Dict[str, Any]:
                           key=f"vm:{name}", vm=name)
 
 
+GONE_RE = re.compile(r"not found|no storage vol", re.I)   # already removed: nothing left to clean up
+
+
 def backup_delete(bid: str) -> Dict[str, Any]:
+    """Remove the disks, then the manifest. A disk that can't be removed keeps its manifest (marked
+    incomplete), so it doesn't sit in the pool unseen; deleting again retries the rest."""
     m = _manifest(bid)
+    left, error = [], ""
     for d in m["disks"]:
-        vms._virsh("vol-delete", "--pool", m["pool"], d["volume"], check=False)
-    os.unlink(os.path.join(BACKUP_DIR, f"{bid}.json"))
-    return backups()
+        try:
+            vms._virsh("vol-delete", "--pool", m["pool"], d["volume"], timeout=120)
+        except vms.VmError as e:
+            if not GONE_RE.search(str(e)):
+                left.append(d)
+                error = error or str(e)
+    path = os.path.join(BACKUP_DIR, f"{bid}.json")
+    if not left:
+        os.unlink(path)
+        return backups()
+    tmp = os.path.join(BACKUP_DIR, f".{bid}.tmp")
+    with open(tmp, "w") as f:
+        json.dump({**m, "disks": left, "partial": True}, f)
+    os.replace(tmp, path)
+    raise VmOpsError(f"{len(left)} Laufwerk(e) der Sicherung ließen sich nicht entfernen ({error}). "
+                     "Die Sicherung bleibt als unvollständig in der Liste – später noch einmal löschen.")
 
 
 # ---------------------------------------------------------------------------
