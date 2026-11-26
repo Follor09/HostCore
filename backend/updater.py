@@ -14,6 +14,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from typing import Dict, Any, Optional
 
@@ -234,8 +235,12 @@ def perform_update() -> Dict[str, Any]:
         update_state["commits_behind"] = 0
         update_state["last_update_log"] = "\n".join(logs)
 
-        # 4. Trigger restart in background after a brief delay
-        asyncio.create_task(_restart_server_delayed())
+        # 4. Restart after a brief delay, so the answer still goes out. perform_update runs in a worker
+        # thread (apply endpoint, webhook) as well as in the event loop (poller): a timer works in both,
+        # asyncio.create_task only in the loop - from a thread it failed after the code was already updated.
+        timer = threading.Timer(1.2, _restart_now)
+        timer.daemon = True
+        timer.start()
 
         return {
             "status": "success",
@@ -265,9 +270,8 @@ def run_update_now() -> Dict[str, Any]:
     return {"ok": True, "message": "Update gestartet – der Server holt die neueste Version und startet das Dashboard bei Bedarf neu."}
 
 
-async def _restart_server_delayed():
-    """Wait 1 second so response finishes, then restart server service or process."""
-    await asyncio.sleep(1.2)
+def _restart_now():
+    """Restart the dashboard service, or the process when it doesn't run under systemd."""
     logger.info("Restarting dashboard process...")
 
     # Check if systemd service is active on Raspberry Pi

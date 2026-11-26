@@ -133,6 +133,7 @@
     gitChip: document.getElementById('git-chip'),
     gitCommitTag: document.getElementById('git-commit-tag'),
     btnHeaderUpdate: document.getElementById('btn-header-update'),
+    btnUpdateNow: document.getElementById('btn-update-now'),
     headerUpdateText: document.getElementById('header-update-text'),
     updatesStatusBox: document.getElementById('updates-status-box'),
     updateStatusIcon: document.getElementById('update-status-icon'),
@@ -1593,6 +1594,12 @@
     }
 
     // Update banner & button state
+    if (els.btnUpdateNow) {
+      els.btnUpdateNow.classList.toggle('has-update', !!u.update_available);
+      els.btnUpdateNow.title = u.update_available
+        ? `Update installieren${u.latest_release ? ` (${u.latest_release})` : ` (${u.commits_behind} neu)`}`
+        : 'Nach Updates suchen und installieren';
+    }
     if (u.update_available) {
       if (els.btnHeaderUpdate) {
         els.btnHeaderUpdate.style.display = 'flex';
@@ -2223,13 +2230,67 @@
     }
   }
 
-  function initUpdaterControls() {
-    // Header update pill -> jumps to updates tab
-    if (els.btnHeaderUpdate) {
-      els.btnHeaderUpdate.addEventListener('click', () => {
-        if (els.tabBtnUpdates) els.tabBtnUpdates.click();
-      });
+  // ---------------------------------------------------------------------------
+  // Update by hand: check, confirm, install through the update unit (like the timer), wait for the restart
+  // ---------------------------------------------------------------------------
+  let updating = false;
+
+  async function waitForRestart(before) {
+    const until = Date.now() + 4 * 60 * 1000;
+    let wasDown = false;
+    while (Date.now() < until) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const res = await fetch('/api/about', { cache: 'no-store' });
+        if (!res.ok) { wasDown = true; continue; }
+        const a = await res.json();
+        if ((a.commit && a.commit !== before.commit) || (a.version && a.version !== before.version) || wasDown) {
+          showToast(`Update installiert${a.version ? ` – ${a.version}` : ''}. Seite wird neu geladen …`, 'success');
+          setTimeout(() => location.reload(), 1200);
+          return;
+        }
+      } catch (e) { wasDown = true; /* restarting */ }
     }
+    showToast('Das Update läuft noch oder hat nichts geändert – Details unter Einstellungen → Auto-Update.', 'warning');
+  }
+
+  async function runManualUpdate() {
+    if (updating) return;
+    updating = true;
+    const btns = [els.btnUpdateNow, els.btnHeaderUpdate, els.btnApplyUpdate].filter(Boolean);
+    btns.forEach(b => { b.disabled = true; b.classList.add('busy'); });
+    try {
+      showToast('Suche nach Updates …', 'info');
+      const res = await fetch('/api/updates/check', { method: 'POST' });
+      const u = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(u.detail || `Fehler ${res.status}`);
+      renderUpdater(u);
+      if (!u.is_git_repo) throw new Error('Das Dashboard ist kein Git-Checkout – Update nur über install.sh.');
+      if (!u.update_available) {
+        showToast(`Bereits auf dem neuesten Stand${u.version ? ` (${u.version})` : ''}.`, 'success');
+        return;
+      }
+      const what = u.latest_release || `${u.commits_behind} neue Änderung${u.commits_behind === 1 ? '' : 'en'}`;
+      const msg = u.latest_remote_message ? `\n\n${u.latest_remote_commit}: ${u.latest_remote_message.slice(0, 200)}` : '';
+      if (!window.confirm(`Update installieren: ${what}?${msg}\n\nDas Dashboard startet danach kurz neu.`)) return;
+      const before = { commit: u.current_commit, version: u.version };
+      const ap = await fetch('/api/updates/apply', { method: 'POST' });
+      const d = await ap.json().catch(() => ({}));
+      if (!ap.ok || d.status === 'error') throw new Error(d.detail || d.message || `Fehler ${ap.status}`);
+      showToast(d.message || 'Update gestartet – das Dashboard startet gleich neu.', 'info');
+      if (els.updateTerminalLog) els.updateTerminalLog.textContent = d.logs || d.message || '';
+      await waitForRestart(before);
+    } catch (e) {
+      showToast(`Update fehlgeschlagen: ${e.message}`, 'error');
+    } finally {
+      updating = false;
+      btns.forEach(b => { b.disabled = false; b.classList.remove('busy'); });
+    }
+  }
+
+  function initUpdaterControls() {
+    if (els.btnUpdateNow) els.btnUpdateNow.addEventListener('click', runManualUpdate);
+    if (els.btnHeaderUpdate) els.btnHeaderUpdate.addEventListener('click', runManualUpdate);
 
     // Check updates button
     if (els.btnCheckUpdates) {
@@ -2256,33 +2317,7 @@
     }
 
     // Apply update button
-    if (els.btnApplyUpdate) {
-      els.btnApplyUpdate.addEventListener('click', async () => {
-        showToast('Installiere Update vom GitHub Repo...', 'info');
-        if (els.updateTerminalLog) els.updateTerminalLog.textContent = 'Starte git pull und Abhängigkeiten-Prüfung...\n';
-        els.btnApplyUpdate.disabled = true;
-
-        try {
-          const res = await fetch('/api/updates/apply', { method: 'POST' });
-          const data = await res.json();
-          if (res.ok && data.status === 'success') {
-            if (els.updateTerminalLog) els.updateTerminalLog.textContent = data.logs + '\n\n' + data.message;
-            showToast('Update installiert! Server wird neu gestartet...', 'success');
-            // Give server 3 seconds to restart and reload page
-            setTimeout(() => {
-              location.reload();
-            }, 3500);
-          } else {
-            showToast(`Update fehlgeschlagen: ${data.message || 'Fehler'}`, 'error');
-            if (els.updateTerminalLog) els.updateTerminalLog.textContent = data.logs || data.message || 'Fehler beim Update.';
-            els.btnApplyUpdate.disabled = false;
-          }
-        } catch (e) {
-          showToast(`Netzwerkfehler: ${e.message}`, 'error');
-          els.btnApplyUpdate.disabled = false;
-        }
-      });
-    }
+    if (els.btnApplyUpdate) els.btnApplyUpdate.addEventListener('click', runManualUpdate);
   }
 
   function initHeaderControls() {

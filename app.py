@@ -5970,7 +5970,11 @@ async def api_update_check():
 
 @app.post("/api/updates/apply")
 async def api_update_apply():
-    """Pull latest Git commits, install requirements, and restart server."""
+    """Install the update now: through the update unit like the timer (update.sh, also updates root's copy
+    of the helpers), in this process only where that unit doesn't exist (development)."""
+    res = await asyncio.to_thread(updater.run_update_now)
+    if res.get("ok"):
+        return {"status": "started", "message": res["message"]}
     return await asyncio.to_thread(updater.perform_update)
 
 

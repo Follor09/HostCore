@@ -12716,3 +12716,14 @@ body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom
 .os-snapshots { margin-top: 10px; }
 .os-password { padding: 4px 8px; border-radius: 6px; background: rgba(var(--shade-rgb), 0.35); user-select: all; word-break: break-all; }
 .os-target { gap: inherit; }
+
+/* Update by hand (start page): a lit dot while an update waits, turning while it runs */
+.update-now { position: relative; }
+.update-now.has-update .side-icon::after, .update-now.has-update.icon-button::after {
+  content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent-cyan); box-shadow: 0 0 6px var(--accent-cyan);
+}
+.update-now .side-icon { position: relative; }
+.update-now.busy svg { animation: update-spin 1.2s linear infinite; }
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-now.busy svg { animation: none; } }

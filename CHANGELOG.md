@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Update button on the start page:** the arrow icon in the navigation bar looks for an update, says what would be installed, asks once and installs it the same way as the update timer (`update.sh`, which also updates root's copy of the helpers); the page waits for the restart and reloads by itself. A lit dot on the icon shows that an update is waiting. Needs the permission *Updates installieren*.
+
+### Fixed
+- **Installing an update from the dashboard restarted nothing:** the button in the update tab (and the GitHub webhook) ran the update in a worker thread, where scheduling the restart failed after the new code was already in place – the dashboard kept running the old version and reported the update as failed. It now goes through the update unit like the timer; only where that unit doesn't exist (development) does it update in place, and the restart works from any thread.
+
 ## v1.5.0 – 2026-11-26
 
 ### New
