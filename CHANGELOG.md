@@ -4,6 +4,10 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.4.0 – 2026-11-26
+
+Virtual machines, a new look and navigation, more compliance tools, and a fix for the baseline check that could stop the dashboard from answering.
+
 ### New
 - **VM templates:** tested base configurations (size, network, cloud-init without a password) as the starting point for new VMs, also from the service catalog.
 - **VM backups:** full, self-contained copies of a VM's disks in a storage pool, while it runs (`virsh backup-begin`) or switched off, with retention. A restore creates a new VM with new MAC addresses and leaves it switched off.
