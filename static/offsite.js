@@ -64,6 +64,7 @@
       parts.push(`${Number(p.files_done || 0).toLocaleString(U.LOCALE)} ${t('von')} ${Number(p.total_files).toLocaleString(U.LOCALE)} ${t('Dateien')}`);
       if (p.total_bytes) parts.push(`${size(p.bytes_done || 0)} ${t('von')} ${size(p.total_bytes)}`);
     }
+    if (p.uploaded != null) parts.push(`${t('hochgeladen')} ${size(p.uploaded)}${p.upload_speed != null ? ` · ${size(p.upload_speed)}/s` : ''}`);
     if (p.errors) parts.push(`${p.errors} ${t('nicht lesbar')}`);
     if (parts.length) box.appendChild(raw('div', 'os-progress-line', parts.join(' · ')));
     const times = [`${t('läuft seit')} ${dur(p.elapsed)}`];

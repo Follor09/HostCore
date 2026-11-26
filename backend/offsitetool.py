@@ -281,7 +281,9 @@ class Restic:
         self.opts = []
         if repo.startswith("rclone:"):
             extra = " --drive-use-trash=false" if (spec.get("target") or {}).get("kind") == "drive" else ""
-            self.opts = ["-o", "rclone.timeout=5m", "-o", f"rclone.args=serve restic --stdio --b2-hard-delete{extra}"]
+            # rclone reports what it really uploaded and how fast, every 30 s (read by backup() for the log and the progress)
+            self.opts = ["-o", "rclone.timeout=5m", "-o", f"rclone.args=serve restic --stdio --b2-hard-delete{extra} "
+                         "--stats 30s --stats-one-line --stats-log-level NOTICE"]
         host = socket.gethostname()
         self.host = host if HOST_RE.match(host) else "server"
 
@@ -345,6 +347,54 @@ class Restic:
                                              for s in items][-200:]}
 
 
+UNITS = {"B": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4, "KB": 1000, "MB": 1000 ** 2, "GB": 1000 ** 3, "TB": 1000 ** 4}
+STATS_RE = re.compile(r"([\d.]+)\s*([KMGT]?i?B)\s*/\s*[\d.]+\s*[KMGT]?i?B,\s*(?:-|\d+%),\s*([\d.]+)\s*([KMGT]?i?B)/s")
+
+
+def rclone_stats(line: str):
+    """(bytes uploaded so far, bytes per second) from rclone's one-line stats, or None."""
+    m = STATS_RE.search(line)
+    if not m or m.group(2) not in UNITS or m.group(4) not in UNITS:
+        return None
+    return int(float(m.group(1)) * UNITS[m.group(2)]), int(float(m.group(3)) * UNITS[m.group(4)])
+
+
+class StderrWatch:
+    """restic's stderr, which also carries rclone's: kept for the error message at the end, while rclone's
+    upload statistics go to the progress and its warnings (throttling, retries) to the log right away."""
+
+    def __init__(self, prog, stream):
+        self.prog, self.lines, self.last_seen = prog, [], {}
+        self.last_stats = 0.0
+        self.thread = threading.Thread(target=self._read, args=(stream,), daemon=True)
+        self.thread.start()
+
+    def _read(self, stream) -> None:
+        for line in stream:
+            self.lines.append(line)
+            if len(self.lines) > 2000:
+                del self.lines[:1000]
+            st = rclone_stats(line)
+            if st:
+                self.prog.write(False, uploaded=st[0], upload_speed=st[1])
+                if time.time() - self.last_stats > 120:
+                    self.last_stats = time.time()
+                    say(f"   rclone: {human(st[0])} hochgeladen · {human(st[1])}/s")
+                continue
+            if RCLONE_HINT.search(line) or "retry" in line.lower() or "pacer" in line.lower():
+                limited = re.search(r"ratelimit|quota|\b429\b", line, re.I)
+                # the same message again (or any throttling): at most once a minute
+                key = "throttled" if limited else re.sub(r"^[\d/: ]+|\b[0-9a-f]{6,}\b", "", line)[:120]
+                if time.time() - self.last_seen.get(key, 0) > 60:
+                    self.last_seen[key] = time.time()
+                    text = throttled(line) if limited else line.strip()
+                    say(f"   ⚠ {text[:300]}")
+
+    def text(self) -> str:
+        self.thread.join(timeout=10)
+        return "".join(self.lines)
+
+
 def human(n) -> str:
     n = float(n or 0)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -379,9 +429,7 @@ def backup(spec, r: Restic) -> None:
     proc = subprocess.Popen(["nice", "-n", "15", "ionice", "-c3", "restic", *r.opts, *args, *paths], env={**r.env, "RESTIC_PROGRESS_FPS": "0.5"},
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
     # stderr is read alongside: a run with many unreadable files would otherwise fill the pipe and stall
-    err_lines = []
-    reader = threading.Thread(target=lambda: err_lines.extend(proc.stderr), daemon=True)
-    reader.start()
+    watch = StderrWatch(prog, proc.stderr)
     summary, last_print = {}, 0.0
     for line in proc.stdout:
         try:
@@ -403,10 +451,10 @@ def backup(spec, r: Restic) -> None:
         elif kind == "summary":
             summary = msg
     rc = proc.wait()
-    reader.join(timeout=10)
+    err_text = watch.text()
     if rc not in (0, 3):              # 3: some files could not be read, the snapshot exists anyway
         prog.write(phase="error")
-        die(f"restic backup: {explain(''.join(err_lines)) if err_lines else f'Fehler {rc}'}")
+        die(f"restic backup: {explain(err_text) if err_text.strip() else f'Fehler {rc}'}")
     prog.write(percent=100, remaining=0, backup_seconds=int(time.time() - start))
     if rc == 3:
         say("⚠ Einige Dateien ließen sich nicht lesen – der Stand ist trotzdem gespeichert.")

@@ -143,7 +143,7 @@ def progress(j: Dict[str, Any], now: Optional[float] = None) -> Optional[Dict[st
         percent = 100.0
     return {"phase": phase, "label": PHASES[phase], "percent": percent, "elapsed": elapsed, "remaining": remaining, "estimate": estimate,
             "previous": int(previous) if previous else None,
-            **{k: p.get(k) for k in ("files_done", "total_files", "bytes_done", "total_bytes", "errors")}}
+            **{k: p.get(k) for k in ("files_done", "total_files", "bytes_done", "total_bytes", "errors", "uploaded", "upload_speed")}}
 
 
 def _public(j: Dict[str, Any]) -> Dict[str, Any]:

@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Real upload speed of an off-site backup:** for Google Drive, Dropbox and WebDAV the progress shows how much rclone has really uploaded and how fast (from rclone's own statistics every 30 s), next to restic's files and data read. Throttling by the provider, failed uploads and retries reach the task log while the backup runs – once a minute at most – instead of only at the end.
+
 ## v1.5.4 – 2026-11-26
 
 ### Fixed
