@@ -246,6 +246,30 @@
       tbox.appendChild(el('p', 'field-hint full', t(HINT[k])));
       if (k === 'drive' || k === 'dropbox') {
         token = '';
+        // Own Google client (recommended): its own quota instead of the one every rclone user shares
+        let cid = null, csec = null;
+        if (k === 'drive') {
+          const own = el('details', 'db-details full');
+          own.open = !!val('client_id');
+          own.appendChild(el('summary', '', t('Eigene Google-Client-ID (empfohlen)')));
+          const help = el('p', 'field-hint');
+          help.append(t('Ohne eigene Client-ID teilt sich die Sicherung das Kontingent aller rclone-Nutzer – Google drosselt das oft, das Hochladen bleibt dann stehen. Eine eigene ist in fünf Minuten angelegt: '));
+          const a = el('a', '', t('Anleitung von rclone'));
+          a.href = 'https://rclone.org/drive/#making-your-own-client-id';
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          help.append(a, t('. Danach hier eintragen und neu verbinden.'));
+          own.appendChild(help);
+          const g = el('div', 'inline-grid');
+          cid = input('text', val('client_id'), { placeholder: '123456789-abc….apps.googleusercontent.com' });
+          csec = input('password', '', { autocomplete: 'new-password', placeholder: same && old.has_client_secret ? t('gespeichert – leer lassen zum Behalten') : 'GOCSPX-…' });
+          field(g, 'Client-ID', cid, true);
+          field(g, 'Client-Secret', csec, true);
+          own.appendChild(g);
+          tbox.appendChild(own);
+          tget.client_id = () => cid.value.trim();
+          tget.client_secret = () => csec.value.trim();
+        }
         const state = el('span', 'field-hint', same && old.has_token ? t('Verbunden – nur neu verbinden, wenn nötig.') : t('Noch nicht verbunden.'));
         const row = el('div', 'vm-manage-row full');
         const addr = input('text', '', { placeholder: 'http://127.0.0.1:53682/?state=…&code=…' });
@@ -261,7 +285,8 @@
         finish.hidden = true;
         row.append(button(`Mit ${data.providers[k]} verbinden`, 'btn-secondary', async b => {
           b.disabled = true;
-          const r = await run(() => api('/api/offsite/auth/start', { kind: k }));
+          const r = await run(() => api('/api/offsite/auth/start', { kind: k, client_id: cid ? cid.value.trim() : '', client_secret: csec ? csec.value.trim() : '',
+            job: job ? job.id : '' }));
           b.disabled = false;
           if (!r) return;
           window.open(r.url, '_blank', 'noopener');

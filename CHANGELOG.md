@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Fixed
+- **Off-site backup to Google Drive stopped or failed with "context deadline exceeded":** the sign-in used rclone's own Google client, which every rclone user shares and Google throttles; rclone then waits and retries for minutes, the upload seems to stand still, and the next start ran into restic's one-minute limit for rclone's first answer. Now:
+  - an own Google client ID and secret can be entered with the backup (*Eigene Google-Client-ID*, with a link to rclone's five-minute guide); the sign-in is then made for it and the backup gets its own quota;
+  - before each run a quick connection check says in plain words what is wrong – throttled, sign-in expired or revoked, no answer within 3 minutes – instead of restic's timeout;
+  - restic gives rclone 5 minutes for its first answer, rclone's own error messages reach the log, and on Google Drive old data removed by the retention bypasses the trash, which would otherwise keep counting against the storage quota.
+
 ## v1.5.2 – 2026-11-26
 
 ### New

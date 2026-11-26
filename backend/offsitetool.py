@@ -136,6 +136,12 @@ def target(spec, tmpdir: str):
         lines += [f"type = {kind}", f"token = {json.dumps(tok, separators=(',', ':'))}"]
         if kind == "drive":
             lines.append("scope = drive")
+            # Own Google client: its own quota instead of the one all rclone users share (heavily throttled)
+            cid, csec = text(t, "client_id", 200), text(t, "client_secret", 200)
+            if cid:
+                if not re.match(r"^[0-9]+-[A-Za-z0-9_]+\.apps\.googleusercontent\.com$", cid) or not re.match(r"^[A-Za-z0-9_-]{10,100}$", csec):
+                    die("Ungültige Google-Client-ID oder ungültiges Client-Secret.")
+                lines += [f"client_id = {cid}", f"client_secret = {csec}"]
             root = text(t, "root_folder_id", 100)
             if root:
                 if not re.match(r"^[A-Za-z0-9_-]{5,100}$", root):
@@ -217,6 +223,28 @@ class Progress:
 # ---------------------------------------------------------------------------
 # restic
 # ---------------------------------------------------------------------------
+RCLONE_HINT = re.compile(r"ERROR|Failed|failed to|googleapi|rateLimit|quota|invalid_grant|token|unauthorized|forbidden|\b40[0-9]\b|\b50[0-9]\b", re.I)
+
+
+def explain(stderr: str) -> str:
+    """The useful part of a failure: restic's last line, plus rclone's own message (the real cause) if any."""
+    lines = [ln.strip() for ln in (stderr or "").splitlines() if ln.strip()]
+    if not lines:
+        return "unbekannter Fehler"
+    last = lines[-1]
+    cause = next((ln for ln in reversed(lines[:-1]) if RCLONE_HINT.search(ln) and ln != last), "")
+    low = (cause + " " + last).lower()
+    if "ratelimit" in low or "quota" in low or "429" in low:
+        return ("Google Drive drosselt die Anfragen (Kontingent). Abhilfe: in der Sicherung eine eigene Google-Client-ID eintragen "
+                "und neu verbinden. – " + (cause or last)[:250])
+    if "invalid_grant" in low or "token has been expired or revoked" in low:
+        return "Die Anmeldung beim Anbieter ist abgelaufen oder wurde widerrufen – in der Sicherung neu verbinden."
+    if "error talking http to rclone" in low or ("context deadline exceeded" in low and "rclone" in low):
+        return ("rclone hat nicht rechtzeitig geantwortet – meist wartet es auf den Anbieter, der drosselt (bei Google Drive: "
+                "eigene Google-Client-ID eintragen und neu verbinden) oder nicht erreichbar ist." + (f" rclone: {cause[:250]}" if cause else ""))
+    return (f"{last[:300]} – rclone: {cause[:250]}" if cause else last[:400])
+
+
 class Restic:
     def __init__(self, spec, tmpdir: str):
         if not shutil.which("restic"):
@@ -232,18 +260,40 @@ class Restic:
         self.env = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root", "LC_ALL": "C",
                     "RESTIC_REPOSITORY": repo, "RESTIC_PASSWORD_FILE": pw, "RESTIC_CACHE_DIR": os.path.join(STATE_DIR, "restic-cache"), **env}
         self.repo = repo
+        # rclone: more time to answer the first request (restic's default is 1 minute, too short while
+        # Drive backs off), and on Google Drive deleted packs bypass the trash, which counts against the quota
+        self.opts = []
+        if repo.startswith("rclone:"):
+            extra = " --drive-use-trash=false" if (spec.get("target") or {}).get("kind") == "drive" else ""
+            self.opts = ["-o", "rclone.timeout=5m", "-o", f"rclone.args=serve restic --stdio --b2-hard-delete{extra}"]
         host = socket.gethostname()
         self.host = host if HOST_RE.match(host) else "server"
 
     def run(self, *args, check=True, timeout=None, capture=True):
-        res = subprocess.run(["restic", *args], env=self.env, capture_output=capture, text=True, timeout=timeout, errors="replace")
+        res = subprocess.run(["restic", *self.opts, *args], env=self.env, capture_output=capture, text=True, timeout=timeout, errors="replace")
         if check and res.returncode != 0:
-            err = (res.stderr or "").strip().splitlines()
-            die(f"restic {args[0]}: {(err[-1] if err else 'fehlgeschlagen')[:400]}")
+            die(f"restic {args[0]}: {explain(res.stderr) if res.stderr else 'fehlgeschlagen'}")
         return res
 
+    def preflight(self) -> None:
+        """rclone targets: one quick listing first, so a throttled or expired sign-in says so in plain words
+        instead of restic's 'context deadline exceeded' after a minute."""
+        if not self.repo.startswith("rclone:"):
+            return
+        say("▶ Verbindung prüfen")
+        try:
+            res = subprocess.run(["rclone", "lsjson", "--dirs-only", "--max-depth", "1", "--retries", "1", "--low-level-retries", "3",
+                                  "--contimeout", "30s", "--timeout", "90s", "hc:"], env=self.env, capture_output=True, text=True,
+                                 timeout=180, errors="replace")
+        except subprocess.TimeoutExpired:
+            die("Das Ziel antwortet nicht innerhalb von 3 Minuten. Bei Google Drive ist das meist die Drosselung der gemeinsamen "
+                "rclone-Kennung – in der Sicherung eine eigene Google-Client-ID eintragen und neu verbinden.")
+        if res.returncode != 0:
+            die(f"Ziel nicht erreichbar: {explain(res.stderr)}")
+
     def ensure_repo(self) -> None:
-        res = self.run("cat", "config", check=False, timeout=300)
+        self.preflight()
+        res = self.run("cat", "config", check=False, timeout=600)
         if res.returncode == 0:
             return
         err = res.stderr or ""
@@ -253,17 +303,16 @@ class Restic:
             return
         if "wrong password" in err.lower() or res.returncode == 12:
             die("Das Repository gibt es schon, aber das Passwort passt nicht.")
-        lines = err.strip().splitlines()
-        die(f"Ziel nicht erreichbar: {(lines[-1] if lines else 'unbekannter Fehler')[:400]}")
+        die(f"Ziel nicht erreichbar: {explain(err)}")
 
     def snapshots(self):
+        self.preflight()
         res = self.run("snapshots", "--json", "--host", self.host, "--tag", TAG, check=False, timeout=300)
         if res.returncode != 0:
             err = res.stderr or ""
             if res.returncode == 10 or "does not exist" in err or "unable to open config file" in err.lower():
                 return {"exists": False, "snapshots": []}
-            lines = err.strip().splitlines()
-            die((lines[-1] if lines else "restic snapshots fehlgeschlagen")[:400])
+            die(explain(err))
         items = json.loads(res.stdout or "[]") or []
         return {"exists": True, "snapshots": [{"id": s.get("short_id") or s["id"][:8], "time": s.get("time", ""), "paths": s.get("paths", []),
                                               "summary": {k: (s.get("summary") or {}).get(k) for k in ("total_files_processed", "total_bytes_processed", "data_added")}}
@@ -301,7 +350,7 @@ def backup(spec, r: Restic) -> None:
         args += ["--exclude", e]
     start = time.time()
     # A status line every 2 s (restic's default without a terminal is one a minute)
-    proc = subprocess.Popen(["nice", "-n", "15", "ionice", "-c3", "restic", *args, *paths], env={**r.env, "RESTIC_PROGRESS_FPS": "0.5"},
+    proc = subprocess.Popen(["nice", "-n", "15", "ionice", "-c3", "restic", *r.opts, *args, *paths], env={**r.env, "RESTIC_PROGRESS_FPS": "0.5"},
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
     # stderr is read alongside: a run with many unreadable files would otherwise fill the pipe and stall
     err_lines = []
@@ -331,8 +380,7 @@ def backup(spec, r: Restic) -> None:
     reader.join(timeout=10)
     if rc not in (0, 3):              # 3: some files could not be read, the snapshot exists anyway
         prog.write(phase="error")
-        lines = "".join(err_lines).strip().splitlines()
-        die(f"restic backup: {(lines[-1] if lines else f'Fehler {rc}')[:400]}")
+        die(f"restic backup: {explain(''.join(err_lines)) if err_lines else f'Fehler {rc}'}")
     prog.write(percent=100, remaining=0, backup_seconds=int(time.time() - start))
     if rc == 3:
         say("⚠ Einige Dateien ließen sich nicht lesen – der Stand ist trotzdem gespeichert.")

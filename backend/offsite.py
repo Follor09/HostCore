@@ -48,9 +48,9 @@ SOURCES = {
     "logs": ("Logs", "/var/log mit dem Journal"),
     "home": ("Benutzerordner", "/home"),
 }
-SECRETS = {"drive": ("token",), "dropbox": ("token",), "webdav": ("password",), "s3": ("secret",), "local": ()}
+SECRETS = {"drive": ("token", "client_secret"), "dropbox": ("token",), "webdav": ("password",), "s3": ("secret",), "local": ()}
 FIELDS = {
-    "drive": ("token", "folder", "root_folder_id"),
+    "drive": ("token", "folder", "root_folder_id", "client_id", "client_secret"),
     "dropbox": ("token", "folder"),
     "webdav": ("url", "vendor", "user", "password", "folder"),
     "s3": ("endpoint", "region", "bucket", "folder", "key_id", "secret"),
@@ -210,6 +210,13 @@ def _clean_target(kind: str, f: Dict[str, Any], old: Dict[str, Any]) -> Dict[str
         out["token"] = json.dumps(tok, separators=(",", ":"))
         if kind == "drive" and out["root_folder_id"] and not re.match(r"^[A-Za-z0-9_-]{5,100}$", out["root_folder_id"]):
             raise OffsiteError("Die Ordner-ID ist der letzte Teil der Drive-Adresse des Ordners (Buchstaben, Ziffern, - und _).")
+        if kind == "drive":
+            _check_client(out["client_id"], out["client_secret"])
+            if not out["client_id"]:
+                out["client_secret"] = ""
+            # A sign-in belongs to the client it was made with: a new client needs a new sign-in
+            if old.get("kind") == "drive" and out["client_id"] != old.get("client_id", "") and out["token"] == old.get("token"):
+                raise OffsiteError("Die Google-Client-ID wurde geändert – bitte danach neu mit Google Drive verbinden.")
     if kind in ("drive", "dropbox", "webdav"):
         out["folder"] = out["folder"].strip("/") or f"HostCore/{_hostname()}"
         if not re.match(r"^[A-Za-z0-9._/ +-]{1,200}$", out["folder"]):
@@ -236,6 +243,15 @@ def _clean_target(kind: str, f: Dict[str, Any], old: Dict[str, Any]) -> Dict[str
             raise OffsiteError("Zielordner unter /mnt, /media, /srv oder /data angeben, z. B. /mnt/usb/hostcore.")
         out["path"] = p
     return out
+
+
+def _check_client(cid: str, secret: str) -> None:
+    if not cid and not secret:
+        return
+    if not re.match(r"^[0-9]+-[A-Za-z0-9_]+\.apps\.googleusercontent\.com$", cid or ""):
+        raise OffsiteError("Die Client-ID sieht aus wie 123456789-abc….apps.googleusercontent.com.")
+    if not re.match(r"^[A-Za-z0-9_-]{10,100}$", secret or ""):
+        raise OffsiteError("Zur Client-ID gehört das Client-Secret (beginnt meist mit GOCSPX-).")
 
 
 def _hostname() -> str:
@@ -527,17 +543,26 @@ def _auth_stop() -> None:
     _auth.clear()
 
 
-def auth_start(kind: str) -> Dict[str, Any]:
-    """Start rclone authorize and return the provider's sign-in address."""
+def auth_start(kind: str, client_id: str = "", client_secret: str = "", job: str = "") -> Dict[str, Any]:
+    """Start rclone authorize and return the provider's sign-in address. With an own Google client, the
+    sign-in is made for it (its secret may be the one already saved with the backup)."""
     import httpx
     if kind not in ("drive", "dropbox"):
         raise OffsiteError("Anmelden gibt es nur für Google Drive und Dropbox.")
+    client_id, client_secret = (client_id or "").strip(), (client_secret or "").strip()
+    if kind == "drive" and client_id and not client_secret and job:
+        saved = (_job(job).get("target") or {})
+        if saved.get("client_id") == client_id:
+            client_secret = saved.get("client_secret", "")
+    if kind != "drive":
+        client_id = client_secret = ""
+    _check_client(client_id, client_secret)
     if not shutil.which("rclone"):
         raise OffsiteError("rclone ist nicht installiert – oben „restic und rclone installieren“.")
     with _lock:
         _auth_stop()
         try:
-            proc = subprocess.Popen(["rclone", "authorize", kind, "--auth-no-open-browser"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            proc = subprocess.Popen(["rclone", "authorize", kind, *([client_id, client_secret] if client_id else []), "--auth-no-open-browser"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     stdin=subprocess.DEVNULL, text=True, errors="replace")
         except OSError as e:
             raise OffsiteError(f"rclone ließ sich nicht starten: {e}")

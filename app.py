@@ -2750,7 +2750,8 @@ async def api_offsite_install():
 
 @app.post("/api/offsite/auth/start")
 async def api_offsite_auth_start(payload: dict):
-    return await asyncio.to_thread(_offsite, offsite.auth_start, str(payload.get("kind", "")))
+    return await asyncio.to_thread(_offsite, offsite.auth_start, str(payload.get("kind", "")), str(payload.get("client_id", "")),
+                                   str(payload.get("client_secret", "")), str(payload.get("job", "")))
 
 
 @app.post("/api/offsite/auth/finish")
