@@ -533,7 +533,8 @@
     const visible = new Set(split ? [sel] : g ? g.sections : (cfg.overview || []));
     sections.forEach(s => s.classList.toggle('pg-off', !visible.has(s.id)));
     overview.hidden = !!g;
-    head.hidden = !g;
+    // A group with one section: its own heading says it, no second title above
+    head.hidden = !g || list.length < 2;
     showHead(g);
     showSubnav(g, sel);
     // "pg-active", not "active": the pages' scroll observers reset "active" on the links of .settings-nav

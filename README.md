@@ -7,7 +7,7 @@ Instead of stitching together a start page, a container UI, a VM manager, a serv
 > 🇩🇪 Deutsche Fassung mit allen Details: **[README.de.md](README.de.md)** · Getting started: **[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)**
 > The interface is German by default; an English translation can be switched on (Settings → Language). MIT licensed.
 
-![Compliance – baseline check](docs/screenshots/compliance.png)
+![HostCore overview: load, temperature, memory, disk, services and events of one server](docs/screenshots/overview.png)
 
 ## Install
 
@@ -61,20 +61,27 @@ git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 - **NIS-2 deadlines** (§ 32 BSIG, Art. 33 GDPR), **policies** with acknowledgement, **supplier register** and **internal audits** with corrective actions
 - **Service catalog:** standard requests as forms with approval, fulfilled as a task, change request, VM or quick action
 
+**Use it**
+- A calm interface modelled on instrument panels: readings in large figures, meters as LED segments, colour only for status; dark and light theme with a choice of signal colour
+- One navigation bar on every page – hover a page to jump straight into one of its groups; long pages show one section at a time
+- Built to stay responsive on a Raspberry Pi: one shared measurement for all open tabs, background tabs pause their live data, long checks run apart from everything else
+
 Plus: Homarr-style boards, command palette (Ctrl+K), alerting with escalation, e-mail reports, public status page, NetBox integration, built-in MCP server for Claude.
 
 ## Screenshots
 
 | | |
 |---|---|
-| ![Containers](docs/screenshots/containers.png) | ![GitOps](docs/screenshots/gitops.png) |
-| Containers & stacks | GitOps with diff and drift |
+| ![Containers](docs/screenshots/containers.png) | ![Virtual machines](docs/screenshots/vms.png) |
+| Containers & compose stacks | Virtual machines (KVM) |
+| ![VM details](docs/screenshots/vm-detail.png) | ![Baseline check](docs/screenshots/compliance.png) |
+| VM details with console, disks and snapshots | Baseline check, filtered to what needs doing |
 | ![Change requests](docs/screenshots/changes.png) | ![Patch deadlines](docs/screenshots/patch-deadlines.png) |
 | Change requests with four-eyes approval | Patch deadlines per severity |
-| ![Access review](docs/screenshots/access-review.png) | ![Baseline check](docs/screenshots/compliance.png) |
-| Access review | Baseline check |
-| ![Virtual machines](docs/screenshots/vms.png) | ![VM details](docs/screenshots/vm-detail.png) |
-| Virtual machines (KVM) | VM details with console, disks and snapshots |
+| ![Access review](docs/screenshots/access-review.png) | ![Light theme](docs/screenshots/light-theme.png) |
+| Access review | Light theme: System-Werkzeuge overview |
+
+<sub>Screenshots from a demo server with sample data.</sub>
 
 ## Security model in short
 
