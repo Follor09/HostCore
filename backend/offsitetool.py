@@ -226,9 +226,25 @@ class Progress:
 RCLONE_HINT = re.compile(r"ERROR|Failed|failed to|googleapi|rateLimit|quota|invalid_grant|token|unauthorized|forbidden|\b40[0-9]\b|\b50[0-9]\b", re.I)
 
 
+def tidy(line: str) -> str:
+    """A log line short enough to read: restic's JSON message, no timestamps, addresses without their long
+    query, pack names cut - so the actual reason at the end of rclone's lines isn't lost to truncation."""
+    line = line.strip()
+    if line.startswith("{"):
+        try:
+            line = str(json.loads(line).get("message") or line)
+        except (ValueError, AttributeError):
+            pass
+    line = re.sub(r"^(rclone:\s*)+", "", line)
+    line = re.sub(r"\d{4}/\d\d/\d\d \d\d:\d\d:\d\d\s*", "", line)
+    line = re.sub(r"(https?://[^/\s\"]+)[^\s\"]*", r"\1/…", line)
+    line = re.sub(r"\b([0-9a-f]{8})[0-9a-f]{24,}\b", r"\1…", line)
+    return re.sub(r"\s{2,}", " ", line).strip()
+
+
 def explain(stderr: str) -> str:
     """The useful part of a failure: restic's last line, plus rclone's own message (the real cause) if any."""
-    lines = [ln.strip() for ln in (stderr or "").splitlines() if ln.strip()]
+    lines = [tidy(ln) for ln in (stderr or "").splitlines() if ln.strip()]
     if not lines:
         return "unbekannter Fehler"
     last = lines[-1]
@@ -241,7 +257,7 @@ def explain(stderr: str) -> str:
     if "error talking http to rclone" in low or ("context deadline exceeded" in low and "rclone" in low):
         return ("rclone hat nicht rechtzeitig geantwortet – meist wartet es auf den Anbieter, der drosselt (bei Google Drive: "
                 "eigene Google-Client-ID eintragen und neu verbinden) oder nicht erreichbar ist." + (f" rclone: {cause[:250]}" if cause else ""))
-    return (f"{last[:300]} – rclone: {cause[:250]}" if cause else last[:400])
+    return (f"{last[:300]} – rclone: {cause[-400:]}" if cause else last[:400])
 
 
 RCLONE_PROJECT = "202264815644"     # Google project of rclone's built-in client, shared by every rclone user
@@ -280,7 +296,11 @@ class Restic:
         # Drive backs off), and on Google Drive deleted packs bypass the trash, which counts against the quota
         self.opts = []
         if repo.startswith("rclone:"):
-            extra = " --drive-use-trash=false" if (spec.get("target") or {}).get("kind") == "drive" else ""
+            # Drive: deleted packs bypass the trash (it counts against the quota); every pack from 1 MB up goes as a
+            # resumable upload in 8 MB pieces, so a failed piece is sent again instead of failing the whole pack
+            # (a plain upload can't be repeated once its data is streamed - rclone then answers restic with 500)
+            extra = " --drive-use-trash=false --drive-upload-cutoff 1M --drive-chunk-size 8M" if (spec.get("target") or {}).get("kind") == "drive" else ""
+            extra += " --low-level-retries 20"
             # rclone reports what it really uploaded and how fast, every 30 s (read by backup() for the log and the progress)
             self.opts = ["-o", "rclone.timeout=5m", "-o", f"rclone.args=serve restic --stdio --b2-hard-delete{extra} "
                          "--stats 30s --stats-one-line --stats-log-level NOTICE"]
@@ -387,8 +407,8 @@ class StderrWatch:
                 key = "throttled" if limited else re.sub(r"^[\d/: ]+|\b[0-9a-f]{6,}\b", "", line)[:120]
                 if time.time() - self.last_seen.get(key, 0) > 60:
                     self.last_seen[key] = time.time()
-                    text = throttled(line) if limited else line.strip()
-                    say(f"   ⚠ {text[:300]}")
+                    text = throttled(line) if limited else tidy(line)
+                    say(f"   ⚠ {text[:500]}")
 
     def text(self) -> str:
         self.thread.join(timeout=10)

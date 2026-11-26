@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Fixed
+- **Off-site backup to Google Drive failed with "500 Internal Server Error":** one failed upload of a data pack failed the whole backup, because a plain upload can't be repeated once its data is on the way – rclone then answered restic with an error. Packs from 1 MB up now go to Drive as resumable uploads in 8 MB pieces, and a failed piece is sent again (up to 20 times).
+- **Error messages of the off-site backup lost the actual reason:** rclone's lines start with a long Google address and the pack's name, so the cut-off kept only those. Addresses, timestamps and pack names are shortened now and the end of the line – the reason – is kept.
+- The backup's card says for Google Drive whether an own client ID or rclone's shared, often throttled one is in use.
+
 ## v1.5.5 – 2026-11-26
 
 ### New

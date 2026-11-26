@@ -105,6 +105,7 @@
     const facts = el('dl', 'backup-facts');
     const add = (k, v, cls2) => { if (v === '' || v == null) return; facts.append(el('dt', '', t(k)), raw('dd', cls2 || '', v)); };
     add('Was', [...j.sources.map(s => t((data.sources[s] || {}).label || s)), ...(j.custom || [])].join(', '));
+    if (j.target.kind === 'drive') add('Google-Kennung', j.target.client_id ? t('eigene Client-ID') : t('gemeinsame von rclone – wird oft gedrosselt, eigene Client-ID eintragen'), j.target.client_id ? '' : 'warn');
     add('Zeitplan', schedText(j.schedule));
     add('Aufbewahrung', keepText(j.keep || {}));
     add('Zuletzt erfolgreich', j.last_ok ? time(j.last_ok) : '');
