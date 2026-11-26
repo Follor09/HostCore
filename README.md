@@ -14,6 +14,12 @@ Instead of stitching together a start page, a container UI, a VM manager, a serv
 On any 64-bit Debian 12+ or Ubuntu 22.04+ machine – a PC, a mini server, a VM or a Raspberry Pi (Pi 5 recommended, Pi 4 works) with Raspberry Pi OS – and a user with `sudo`:
 
 ```bash
+curl -fsSL https://github.com/Follor09/HostCore/releases/latest/download/setup.sh | bash
+```
+
+`setup.sh` installs git if needed, clones the newest release to `~/pi-dashboard` and runs `install.sh`. Run as plain root (e.g. a fresh VPS), it creates a user `hostcore` for the dashboard (`--user <name>` for another one). For an agent: `… | bash -s -- --agent --from <main-dashboard-ip>`. Or by hand:
+
+```bash
 git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ~/pi-dashboard/install.sh
 ```

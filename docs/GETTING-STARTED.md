@@ -6,9 +6,10 @@ HostCore has a lot of features. You don't need them all on day one – this is a
 ## 1. Install and sign in
 
 ```bash
-git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
-~/pi-dashboard/install.sh
+curl -fsSL https://github.com/Follor09/HostCore/releases/latest/download/setup.sh | bash
 ```
+
+(Or by hand: `git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard && ~/pi-dashboard/install.sh`.)
 
 The script asks for the first administrator at the end. Then open `http://<server-ip>:8000` and sign in.
 Forgot the password? On the server: `~/pi-dashboard/set-password.sh` always works.

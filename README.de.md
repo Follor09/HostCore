@@ -78,6 +78,12 @@ Ein schlankes, hochmodernes **Server- & Homelab-Dashboard** für Linux-Server (D
 ### Schnellstart – direkt auf dem Server (per SSH)
 
 ```bash
+curl -fsSL https://github.com/Follor09/HostCore/releases/latest/download/setup.sh | bash
+```
+
+`setup.sh` installiert bei Bedarf git, klont den neuesten Release nach `~/pi-dashboard` und startet `install.sh`. Als reiner root (z.B. frischer VPS) legt es für das Dashboard den Benutzer `hostcore` an (anderer Name: `--user <name>`). Für einen Agent: `… | bash -s -- --agent --from <IP des Haupt-Dashboards>`. Oder von Hand:
+
+```bash
 git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ~/pi-dashboard/install.sh
 ```

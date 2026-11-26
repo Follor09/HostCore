@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Install in one line:** `curl -fsSL https://github.com/Follor09/HostCore/releases/latest/download/setup.sh | bash` installs git if needed, clones the newest release and runs `install.sh` (first admin asked as before, also under `curl | bash`). As plain root it creates a user `hostcore` for the dashboard; `--user`, `--dir`, `--main` and the install.sh options (`--agent --from <ip>`) work too. Every release tag now becomes a GitHub release with its changelog section and `setup.sh` attached.
+
 ## v1.9.1 – 2026-11-26
 
 ### Changed

@@ -1,0 +1,52 @@
+# A pushed release tag vX.Y.Z becomes a GitHub release: the notes are that version's section
+# of CHANGELOG.md, and setup.sh is attached, so the newest one is always at
+# https://github.com/<owner>/<repo>/releases/latest/download/setup.sh
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:          # for a tag that was pushed before this workflow existed
+    inputs:
+      tag:
+        description: 'Tag, z.B. v1.9.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check setup.sh
+        run: bash -n setup.sh
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="## ${TAG} " 'index($0, v) == 1 {on = 1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
+          cat >> notes.md <<NOTES
+
+          ---
+          **Neu installieren** (Debian, Ubuntu, Raspberry Pi OS):
+          \`\`\`
+          curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/setup.sh | bash
+          \`\`\`
+          Agent für ein Haupt-Dashboard: \`... | bash -s -- --agent --from <IP des Haupt-Dashboards>\`
+          NOTES
+
+      - name: Create or update the release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file notes.md
+            gh release upload "$TAG" setup.sh --clobber
+          else
+            gh release create "$TAG" setup.sh --title "$TAG" --notes-file notes.md --verify-tag
+          fi
