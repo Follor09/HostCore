@@ -123,7 +123,8 @@
     });
 
     renderUpdater(updater);
-    renderWolSettings(data.wol_devices);
+    renderWolSettings(data.wol_devices || []);
+    loadWolSettings();
 
     renderKv($('history-info'), [
       ['Speicherplatz', fmtBytes(history.size_bytes)],
@@ -174,6 +175,28 @@
     if (sel) sel.value = u.channel;
   }
 
+  let wolHosts = [];
+
+  function wolHostSelect(sel, value) {
+    sel.innerHTML = '';
+    const hosts = wolHosts.length ? wolHosts : [{ id: '', name: 'Dieses Dashboard' }];
+    hosts.forEach(h => sel.appendChild(new Option(h.name, h.id)));
+    if (value && !hosts.some(h => h.id === value)) sel.appendChild(new Option('Server entfernt – bitte wählen', value));
+    sel.value = value || '';
+  }
+
+  async function loadWolSettings() {
+    try {
+      const res = await fetch('/api/wol');
+      if (!res.ok) return;
+      const d = await res.json();
+      wolHosts = d.hosts || [];
+      data.wol_devices = d.devices || [];
+      renderWolSettings(data.wol_devices);
+      wolHostSelect($('wol-via'), $('wol-via').value);
+    } catch (e) { /* ignore */ }
+  }
+
   function renderWolSettings(devices) {
     const list = $('wol-settings-list');
     list.innerHTML = '';
@@ -195,6 +218,21 @@
       sub.className = 'workload-sub';
       sub.textContent = `${d.mac} · Broadcast ${d.broadcast}`;
       main.append(n, sub);
+      const via = document.createElement('select');
+      via.className = 'wol-via';
+      via.title = 'Von diesem Server aus wird der Weckruf gesendet';
+      via.setAttribute('aria-label', `${d.name}: wecken über`);
+      wolHostSelect(via, d.via || '');
+      via.addEventListener('change', async () => {
+        try {
+          const res = await api(`/api/settings/wol/${encodeURIComponent(d.id)}/update`, { via: via.value });
+          Object.assign(d, res.device);
+          toast(`${d.name} wird über ${via.selectedOptions[0].textContent} geweckt.`, 'success');
+        } catch (err) {
+          via.value = d.via || '';
+          toast(err.message, 'error');
+        }
+      });
       const del = document.createElement('button');
       del.className = 'btn-danger';
       del.textContent = 'Entfernen';
@@ -208,7 +246,10 @@
           toast(err.message, 'error');
         }
       });
-      item.append(main, del);
+      const actions = document.createElement('div');
+      actions.className = 'wol-actions';
+      actions.append(via, del);
+      item.append(main, actions);
       list.appendChild(item);
     });
   }
@@ -598,7 +639,8 @@
         const res = await api('/api/settings/wol', {
           name: $('wol-name').value.trim(),
           mac: $('wol-mac').value.trim(),
-          broadcast: $('wol-broadcast').value.trim()
+          broadcast: $('wol-broadcast').value.trim(),
+          via: $('wol-via').value
         });
         data.wol_devices.push(res.device);
         renderWolSettings(data.wol_devices);

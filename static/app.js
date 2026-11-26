@@ -2942,7 +2942,9 @@
       n.textContent = d.name;
       const m = document.createElement('span');
       m.className = 'workload-sub';
-      m.textContent = d.mac;
+      m.textContent = d.via ? `${d.mac} · über ${d.via_name}` : d.mac;
+      if (d.via) m.title = d.via_missing ? 'Der Server, über den geweckt wird, existiert nicht mehr – in den Einstellungen einen anderen wählen.'
+        : `Der Weckruf wird von ${d.via_name} aus gesendet (im selben Netz wie das Gerät).`;
       main.append(n, m);
       const btn = document.createElement('button');
       btn.className = 'btn-wake';

@@ -128,7 +128,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/settings/public-view$", "users.manage"),   # decides who sees the dashboard at all
 
     # --- Dashboard settings
-    ("POST", r"^/api/settings/(services|history/clear|wol|wol/[^/]+/delete|health|health/[^/]+/(delete|run|update)|links|links/[^/]+/(delete|move))$", "settings.manage"),
+    ("POST", r"^/api/settings/(services|history/clear|wol|wol/[^/]+/(delete|update)|health|health/[^/]+/(delete|run|update)|links|links/[^/]+/(delete|move))$", "settings.manage"),
     ("POST", r"^/api/weather/location$", "settings.manage"),
     ("*", r"^/api/settings/status-page$", "settings.manage"),
 

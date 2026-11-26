@@ -645,7 +645,7 @@
       <!-- Wake-on-LAN -->
       <section class="glass-card settings-section" id="wake-on-lan" data-perm="settings.manage">
         <h2>Wake-on-LAN</h2>
-        <p class="section-desc">Geräte, die im Dashboard per Klick geweckt werden können. Wake-on-LAN muss im BIOS / in der Netzwerkkarte des Geräts aktiviert sein.</p>
+        <p class="section-desc">Geräte, die im Dashboard per Klick geweckt werden können – eine Liste für alle Server, egal welcher gerade ausgewählt ist. Ein Weckruf kommt nicht über Router hinweg: unter „Wecken über“ den Server wählen, der im selben Netz wie das Gerät steht (z.B. den Raspberry Pi zuhause statt des VPS). Wake-on-LAN muss im BIOS / in der Netzwerkkarte des Geräts aktiviert sein.</p>
         <div class="wol-settings-list" id="wol-settings-list"></div>
         <form class="inline-form wol-add" id="wol-form" autocomplete="off">
           <label class="login-field grow">
@@ -659,6 +659,10 @@
           <label class="login-field grow">
             <span>Broadcast <em>(optional)</em></span>
             <input type="text" id="wol-broadcast" placeholder="255.255.255.255" spellcheck="false">
+          </label>
+          <label class="login-field">
+            <span>Wecken über</span>
+            <select id="wol-via"></select>
           </label>
           <button type="submit" class="btn-primary">Hinzufügen</button>
         </form>

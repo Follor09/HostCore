@@ -633,6 +633,24 @@ body {
   font-size: 0.7rem;
 }
 
+.wol-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wol-actions .wol-via {
+  max-width: 200px;
+  font-size: 0.75rem;
+  padding: 5px 8px;
+}
+
+@media (max-width: 600px) {
+  .wol-settings-list .wol-item { flex-wrap: wrap; }
+  .wol-actions { width: 100%; justify-content: flex-end; }
+}
+
 .wol-add {
   flex-wrap: wrap;
 }

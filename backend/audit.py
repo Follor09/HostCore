@@ -116,6 +116,8 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/settings/history/clear$", "settings", "Verlauf gelöscht"),
     ("POST", r"^/api/settings/wol/[^/]+/delete$", "settings", "Wake-on-LAN-Gerät entfernt"),
     ("POST", r"^/api/settings/wol$", "settings", "Wake-on-LAN-Gerät hinzugefügt"),
+    ("POST", r"^/api/settings/wol/[^/]+/update$", "settings", "Wake-on-LAN-Gerät geändert"),
+    ("POST", r"^/api/agent/wol$", "network", "Gerät per Wake-on-LAN geweckt (für das Haupt-Dashboard)"),
     ("POST", r"^/api/weather/location$", "settings", "Wetter-Ort geändert"),
     ("POST", r"^/api/updates/apt$", "system", "System-Update gestartet"),
     ("POST", r"^/api/updates/check$", "system", "Dashboard-Update gesucht"),
