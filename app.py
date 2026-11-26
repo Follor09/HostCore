@@ -5,7 +5,6 @@ drives explorer, Git auto-updater, diagnostics runner, and system monitoring.
 """
 
 import asyncio
-import functools
 import json
 from concurrent.futures import ThreadPoolExecutor
 import platform
@@ -41,6 +40,36 @@ import auth
 import settings_store
 import wol
 import hostctx
+import webutil
+from routes import remote_servers as remote_servers_routes
+from routes import incidents as incidents_routes
+from routes import email_notify as email_notify_routes
+from routes import retention as retention_routes
+from routes import tasks as tasks_routes
+from routes import dbmonitor as dbmonitor_routes
+from routes import backup_check as backup_check_routes
+from routes import imagepolicy as imagepolicy_routes
+from routes import maintenance as maintenance_routes
+from routes import anomalies as anomalies_routes
+from routes import changes as changes_routes
+from routes import versions as versions_routes
+from routes import processes as processes_routes
+from routes import stackcheck as stackcheck_routes
+from routes import offsite as offsite_routes
+from routes import services as services_routes
+from routes import containers_page as containers_page_routes
+from routes import secretscan as secretscan_routes
+from routes import gitops as gitops_routes
+from routes import docs as docs_routes
+from routes.docs import _docs_call
+from routes import fleet_latency as fleet_latency_routes
+from routes import drhandbook as drhandbook_routes
+from routes import accessreview as accessreview_routes
+from routes import secwatch as secwatch_routes
+from routes import servicecatalog as servicecatalog_routes
+from routes import alarms as alarms_routes
+from routes import compliance as compliance_routes
+from routes import files as files_routes
 from routes import wol as wol_routes
 from routes.wol import _wol_public, _lan_mark_wol
 import files
@@ -49,7 +78,6 @@ import systools
 import security
 import geoip
 import containers
-import imagecheck
 import changelog
 import power
 import packages
@@ -58,49 +86,29 @@ import agent
 import remotes
 import netbox
 import boards
-import exchange
-import search
 import fleet
 import mcp_server
 import webhooks
 import attachments
 import wiki
-import costs
 geoip.on_update.append(security.geoblock_reapply)
-import monitor
 import netscan
 import fancurve
 import audit
-import sensors
 import actions
 import nettools
 import healthchecks
 import storage
 import insights
 import access
-import appstore
 import statuspage
-import kanban
-import reminders
-import maintenance
 import docs
 import autoupdate
-import anomalies
 import apidocs
-import backups
-import offsite
-import capacity
-import dnswatch
-import incidents
 import latency
-import stacktemplates
-import domains
 import notify
-import retention
 import alerting
-import dbmonitor
 import tasks
-import stackcheck
 import recordings
 import vulns
 import eol
@@ -112,28 +120,8 @@ import websec
 import webauthn
 import versions
 import oidc
-import gitops
-import drhandbook
-import changes
-import accessreview
-import imagepolicy
-import secretscan
-import patchsla
-import problems
 import vmops
-import fim
-import sudolog
-import malware
-import falco
-import servicecatalog
-import nis2
-import policies
-import suppliers
-import auditplan
 import scheduler
-import privacy
-import baseline
-import evidence
 import vms
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -191,21 +179,17 @@ async def unexpected_error(request: Request, exc: Exception):
 
 # In-process API calls (MCP tools -> the dashboard's own API, with its permissions and activity log)
 INTERNAL_HEADER = "x-picore-internal"
-# Two pools: long computations (baseline check, evidence package, log verification, scans, exports)
-# get two workers of their own, so they queue behind each other instead of filling the shared pool
-# that live data, logins and the activity log of every request run in.
-HEAVY_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="heavy")
 SHARED_POOL_SIZE = 32
 
 
-async def heavy(fn, *args, **kwargs):
-    """Run a long computation in the heavy pool (like asyncio.to_thread, but never crowding out the rest)."""
-    return await asyncio.get_running_loop().run_in_executor(HEAVY_POOL, functools.partial(fn, *args, **kwargs))
+
 
 
 INTERNAL_USER_HEADER = "x-picore-mcp-user"
 INTERNAL_KEY = secrets.token_hex(32)
-# Which server a request is for, and the client for remote agents: shared with backend/routes/
+# Shared with backend/routes/: which server a request is for, the client for remote agents, page and pool helpers
+HEAVY_POOL, heavy = webutil.HEAVY_POOL, webutil.heavy
+_serve_page, _md_response, _call400, _same_origin = webutil.serve_page, webutil.md_response, webutil.call400, webutil.same_origin
 HOST_HEADER, HOST_CHANGED_CLOSE, AGENT = hostctx.HOST_HEADER, hostctx.HOST_CHANGED_CLOSE, hostctx.AGENT
 _proxy, _remote_for = hostctx.proxy, hostctx.remote_for
 _host_changed, _host_changed_response = hostctx.host_changed, hostctx.host_changed_response
@@ -300,12 +284,7 @@ PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/stat
                 "/auth/oidc/start", "/auth/oidc/callback"}   # the public status page answers 404 while switched off
 
 
-def _same_origin(request: Request) -> bool:
-    """Reject cross-site form posts / fetches (CSRF) on state-changing requests."""
-    origin = request.headers.get("origin")
-    if not origin:
-        return True  # same-origin navigation / non-browser clients
-    return origin.split("://", 1)[-1] == request.headers.get("host", "")
+
 
 
 @app.middleware("http")
@@ -1021,101 +1000,7 @@ async def reset_page():
 # ---------------------------------------------------------------------------
 # Version history (documentation, wiki)
 # ---------------------------------------------------------------------------
-def _version_call(fn, *args):
-    try:
-        return fn(*args)
-    except versions.VersionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/versions")
-async def api_versions(kind: str, id: str):
-    return await asyncio.to_thread(_version_call, versions.item_versions, kind, id)
-
-
-@app.get("/api/versions/deleted")
-async def api_versions_deleted(kind: str = ""):
-    return {"items": await asyncio.to_thread(versions.deleted, kind)}
-
-
-@app.get("/api/versions/recent")
-async def api_versions_recent(limit: int = 50):
-    return {"items": await asyncio.to_thread(versions.recent, limit)}
-
-
-@app.post("/api/versions/{version_id}/restore")
-async def api_versions_restore(version_id: int, request: Request):
-    request.state.audit_detail = f"Version {version_id}"
-    return await asyncio.to_thread(_version_call, versions.restore, version_id, request.state.user or "")
-
-
-@app.get("/2fa")
-async def twofa_page():
-    return _serve_page("twofa.html")
-
-
-def _sessions_view(request: Request, username: Optional[str]) -> dict:
-    current = auth.session_id(request.cookies.get(auth.COOKIE_NAME))
-    items = auth.list_sessions(username)
-    for s in items:
-        s["current"] = s["id"] == current
-        try:
-            import geoip
-            s["country"] = geoip.lookup(s["ip"]) if s.get("ip") else ""
-        except Exception:
-            s["country"] = ""
-        s["internal"] = websec.is_internal(s.get("ip") or "")
-    return {"sessions": items, "legacy": not current}
-
-
-@app.get("/api/auth/sessions")
-async def api_auth_sessions(request: Request):
-    return await asyncio.to_thread(_sessions_view, request, request.state.user)
-
-
-@app.post("/api/auth/sessions/{sid}/revoke")
-async def api_auth_sessions_revoke(sid: str, request: Request):
-    if not auth.revoke_session(sid, request.state.user):
-        raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
-    return await asyncio.to_thread(_sessions_view, request, request.state.user)
-
-
-@app.get("/api/security")
-async def api_security(request: Request):
-    data = await asyncio.to_thread(websec.public_config)
-    data["checklist"] = await asyncio.to_thread(websec.checklist, request)
-    data["events"] = list(reversed(websec.events_since(time.time() - 30 * 86400)))[:50]
-    data["client"] = {"ip": websec.client_ip(request), "internal": websec.is_internal(websec.client_ip(request)),
-                      "peer": request.client.host if request.client else "", "scheme": websec.scheme(request)}
-    return data
-
-
-@app.post("/api/security")
-async def api_security_save(payload: dict, request: Request):
-    try:
-        await asyncio.to_thread(websec.save, payload)
-    except (websec.WebsecError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    # Never lock yourself out: the restriction must not hit the admin who sets it
-    me = websec.client_ip(request)
-    if websec.config()["restrict"] and "users.manage" in websec.config()["restrict_perms"] and not websec.is_internal(me):
-        await asyncio.to_thread(websec.save, {"restrict": False})
-        raise HTTPException(status_code=400, detail="Du bist gerade nicht im Heimnetz/VPN – die Beschränkung würde dich selbst aussperren. Aus dem Heimnetz einschalten.")
-    request.state.audit_detail = "Sicherheitseinstellungen"
-    return await api_security(request)
-
-
-@app.get("/api/security/sessions")
-async def api_security_sessions(request: Request):
-    return await asyncio.to_thread(_sessions_view, request, None)
-
-
-@app.post("/api/security/sessions/{sid}/revoke")
-async def api_security_sessions_revoke(sid: str, request: Request):
-    if not auth.revoke_session(sid):
-        raise HTTPException(status_code=404, detail="Sitzung nicht gefunden.")
-    request.state.audit_detail = sid
-    return await asyncio.to_thread(_sessions_view, request, None)
+app.include_router(versions_routes.router)   # backend/routes/versions.py
 
 
 # ---------------------------------------------------------------------------
@@ -1237,467 +1122,13 @@ async def api_settings_history_clear():
 # ---------------------------------------------------------------------------
 # Processes: search + end (own processes only)
 # ---------------------------------------------------------------------------
-class SignalRequest(BaseModel):
-    create_time: float
-    force: bool = False
-
-
-@app.get("/api/processes/search")
-async def api_process_search(q: str = ""):
-    return {"processes": await asyncio.to_thread(system_info.search_processes, q)}
-
-
-@app.post("/api/processes/{pid}/signal")
-async def api_process_signal(pid: int, req: SignalRequest, request: Request):
-    result = await asyncio.to_thread(system_info.signal_process, pid, req.create_time, req.force)
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["message"])
-    logger.info(f"{'SIGKILL' if req.force else 'SIGTERM'} pid {pid} by '{request.state.user}': {result['message']}")
-    request.state.audit_detail = f"PID {pid} · {'SIGKILL' if req.force else 'SIGTERM'} · {result['message']}"
-    return result
+app.include_router(processes_routes.router)   # backend/routes/processes.py
 
 
 # ---------------------------------------------------------------------------
 # File explorer + storage analysis (read-only, always requires login)
 # ---------------------------------------------------------------------------
-async def _files_call(fn, path: str):
-    try:
-        return await asyncio.to_thread(fn, path)
-    except files.FileAccessError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/files/list")
-async def api_files_list(path: str = "/"):
-    return await _files_call(files.list_dir, path)
-
-
-@app.get("/api/files/sizes")
-async def api_files_sizes(path: str):
-    return await _files_call(files.dir_sizes, path)
-
-
-@app.get("/api/files/largest")
-async def api_files_largest(path: str):
-    return await _files_call(files.largest_files, path)
-
-
-@app.get("/api/files/download")
-async def api_files_download(path: str, request: Request):
-    real = await _files_call(files.download_path, path)
-    logger.info(f"Download {real} by '{request.state.user}'")
-    return FileResponse(real, filename=os.path.basename(real))
-
-
-class ShareRequest(BaseModel):
-    path: str
-    hours: int = 24
-
-
-@app.get("/api/files/preview")
-async def api_files_preview(path: str):
-    return await _files_call(files.preview, path)
-
-
-@app.get("/api/files/raw")
-async def api_files_raw(path: str):
-    """Images for the preview only - served inline, sandboxed, never HTML/SVG."""
-    real = await _files_call(files.download_path, path)
-    media = files.image_type(real)
-    if not media:
-        raise HTTPException(status_code=400, detail="Keine Bilddatei.")
-    return FileResponse(real, media_type=media, headers={
-        "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-store"})
-
-
-@app.put("/api/files/upload")
-async def api_files_upload(request: Request, dir: str, name: str, overwrite: bool = False):
-    length = request.headers.get("content-length")
-    size = int(length) if length and length.isdigit() else None
-    request.state.audit_detail = f"{dir.rstrip('/')}/{name}"[:250]
-    try:
-        target = await asyncio.to_thread(files.upload_target, dir, name, overwrite, size)
-    except FileExistsError:
-        raise HTTPException(status_code=409, detail="Eine Datei mit diesem Namen gibt es dort schon.")
-    except files.FileAccessError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    # Write next to the target first, rename when complete: no half files on abort
-    tmp = os.path.join(os.path.dirname(target), f".{os.path.basename(target)}.upload-{secrets.token_hex(4)}")
-    written = 0
-    try:
-        with open(tmp, "xb") as f:
-            async for chunk in request.stream():
-                written += len(chunk)
-                if written > files.MAX_UPLOAD:
-                    raise HTTPException(status_code=413, detail="Datei zu groß (max. 4 GB).")
-                await asyncio.to_thread(f.write, chunk)
-        os.replace(tmp, target)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.remove(tmp)
-        raise
-    logger.info(f"Upload {target} ({written} bytes) by '{request.state.user}'")
-    return {"ok": True, "path": target, "size": written}
-
-
-class TextSaveRequest(BaseModel):
-    path: str
-    content: str
-    mtime: Optional[str] = None
-
-
-class NewEntryRequest(BaseModel):
-    dir: str
-    name: str
-    kind: str = "file"            # file | folder
-
-
-class PathRequest(BaseModel):
-    path: str
-
-
-@app.get("/api/files/text")
-async def api_files_text(path: str):
-    return await _files_call(files.read_text, path)
-
-
-@app.post("/api/files/text")
-async def api_files_text_save(req: TextSaveRequest, request: Request):
-    request.state.audit_detail = req.path[:250]
-    try:
-        result = await asyncio.to_thread(files.write_text, req.path, req.content, req.mtime)
-    except FileExistsError:
-        raise HTTPException(status_code=409, detail="Die Datei wurde inzwischen geändert – neu laden oder überschreiben.")
-    except (files.FileAccessError, OSError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    logger.info(f"Edited {result['path']} by '{request.state.user}'")
-    return result
-
-
-@app.post("/api/files/new")
-async def api_files_new(req: NewEntryRequest, request: Request):
-    request.state.audit_detail = f"{req.dir.rstrip('/')}/{req.name}"[:250]
-    fn = files.create_folder if req.kind == "folder" else files.create_file
-    try:
-        return await asyncio.to_thread(fn, req.dir, req.name)
-    except FileExistsError:
-        raise HTTPException(status_code=409, detail="Den Namen gibt es dort schon.")
-    except (files.FileAccessError, OSError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/files/delete")
-async def api_files_delete(req: PathRequest, request: Request):
-    request.state.audit_detail = req.path[:250]
-    result = await _files_call(lambda p: files.trash_move(p, request.state.user), req.path)
-    logger.info(f"Moved {req.path} to the recycle bin by '{request.state.user}'")
-    return result
-
-
-@app.get("/api/files/trash")
-async def api_files_trash():
-    return await asyncio.to_thread(files.trash_list)
-
-
-@app.post("/api/files/trash/{item_id}/restore")
-async def api_files_trash_restore(item_id: str, request: Request):
-    result = await _files_call(files.trash_restore, item_id)
-    request.state.audit_detail = result["path"][:250]
-    return {**result, **await asyncio.to_thread(files.trash_list)}
-
-
-@app.post("/api/files/trash/{item_id}/delete")
-async def api_files_trash_delete(item_id: str):
-    await _files_call(files.trash_delete, item_id)
-    return await asyncio.to_thread(files.trash_list)
-
-
-@app.post("/api/files/trash/empty")
-async def api_files_trash_empty(request: Request):
-    count = await asyncio.to_thread(files.trash_empty)
-    request.state.audit_detail = f"{count}"
-    return await asyncio.to_thread(files.trash_list)
-
-
-@app.get("/api/files/search")
-async def api_files_search(path: str, q: str = "", kind: str = "", min_size: int = 0, days: int = 0):
-    return await asyncio.to_thread(_files_sync, files.search, path, q, kind, min_size, days)
-
-
-def _files_sync(fn, *args):
-    try:
-        return fn(*args)
-    except FileExistsError:
-        raise HTTPException(status_code=409, detail="Den Namen gibt es dort schon.")
-    except files.FileAccessError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except OSError as e:
-        raise HTTPException(status_code=400, detail=e.strerror or str(e))
-
-
-class RenameRequest(BaseModel):
-    path: str
-    name: str
-
-
-class TransferRequest(BaseModel):
-    paths: list
-    target: str
-    mode: str                     # move | copy
-
-
-class PathsRequest(BaseModel):
-    paths: list
-
-
-class DuplicatesRequest(BaseModel):
-    path: str
-    min_size: int = files.DUPE_MIN_SIZE
-
-
-@app.post("/api/files/rename")
-async def api_files_rename(req: RenameRequest, request: Request):
-    request.state.audit_detail = f"{req.path} → {req.name}"[:250]
-    return await asyncio.to_thread(_files_sync, files.rename, req.path, req.name)
-
-
-@app.post("/api/files/transfer")
-async def api_files_transfer(req: TransferRequest, request: Request):
-    request.state.audit_detail = f"{len(req.paths)} → {req.target}"[:250]
-    return await asyncio.to_thread(_files_sync, files.transfer, [str(p) for p in req.paths], req.target, req.mode)
-
-
-@app.get("/api/files/jobs/{job_id}")
-async def api_files_job(job_id: str):
-    return _files_sync(files.get_job, job_id)
-
-
-@app.post("/api/files/jobs/{job_id}/cancel")
-async def api_files_job_cancel(job_id: str):
-    files.cancel_job(job_id)
-    return _files_sync(files.get_job, job_id)
-
-
-@app.post("/api/files/duplicates")
-async def api_files_duplicates(req: DuplicatesRequest):
-    return await asyncio.to_thread(_files_sync, files.start_duplicates, req.path, max(1, req.min_size))
-
-
-_zip_tickets: dict = {}
-
-
-@app.post("/api/files/zip")
-async def api_files_zip_ticket(req: PathsRequest, request: Request):
-    """Step 1: check the selection, hand out a short-lived ticket; step 2 (GET) streams it.
-    Lets the browser download with a normal link instead of holding the ZIP in memory."""
-    entries = await asyncio.to_thread(_files_sync, files.zip_entries, [str(p) for p in req.paths])
-    now = time.time()
-    for k in [k for k, v in _zip_tickets.items() if v["expires"] < now]:
-        _zip_tickets.pop(k, None)
-    ticket = secrets.token_urlsafe(18)
-    _zip_tickets[ticket] = {**entries, "user": request.state.user, "expires": now + 300, "paths": req.paths[:20]}
-    return {"ticket": ticket, "name": entries["name"], "count": len(entries["files"]),
-            "size": sum(os.path.getsize(f) for f, _ in entries["files"] if os.path.exists(f))}
-
-
-@app.get("/api/files/zip/{ticket}")
-async def api_files_zip(ticket: str, request: Request):
-    entry = _zip_tickets.pop(ticket, None)
-    if not entry or entry["expires"] < time.time() or entry["user"] != request.state.user:
-        raise HTTPException(status_code=404, detail="Download-Link abgelaufen.")
-    request.state.audit_detail = f"ZIP {entry['name']} ({len(entry['files'])})"
-    logger.info(f"ZIP download {entry['name']} ({len(entry['files'])} files) by '{request.state.user}'")
-    from urllib.parse import quote
-    return StreamingResponse(files.zip_stream(entry["files"]), media_type="application/zip", headers={
-        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(entry['name'])}", "Cache-Control": "no-store"})
-
-
-@app.post("/api/files/share")
-async def api_files_share(req: ShareRequest, request: Request):
-    if _remote_for(request):
-        # Share links are served by this server - they can't hand out a remote server's files
-        raise HTTPException(status_code=400, detail="Freigabe-Links gibt es nur für Dateien dieses Servers.")
-    request.state.audit_detail = f"{req.path[:200]} · {req.hours} Std."
-    return await _files_call(lambda p: files.create_share(p, req.hours, request.state.user), req.path)
-
-
-@app.get("/api/files/shares")
-async def api_files_shares():
-    return {"shares": await asyncio.to_thread(files.list_shares)}
-
-
-@app.post("/api/files/shares/{token}/delete")
-async def api_files_share_delete(token: str):
-    await asyncio.to_thread(files.delete_share, token)
-    return {"shares": await asyncio.to_thread(files.list_shares)}
-
-
-class ExchangeRequest(BaseModel):
-    folder: str
-    mode: str = "upload"
-    hours: int = 168
-    max_mb: int = 500
-    note: str = ""
-
-
-@app.get("/api/exchange")
-async def api_exchange_list():
-    return {"links": await asyncio.to_thread(exchange.list_links), "modes": exchange.MODES, "hours": exchange.HOURS}
-
-
-@app.post("/api/exchange")
-async def api_exchange_create(req: ExchangeRequest, request: Request):
-    request.state.audit_detail = f"{exchange.MODES.get(req.mode, req.mode)} · {req.folder}"[:250]
-    try:
-        link = await asyncio.to_thread(exchange.create, req.folder, req.mode, req.hours, req.max_mb, req.note,
-                                       request.state.user or "", auth.can(request.state.user, "files.write"))
-    except exchange.ExchangeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return link
-
-
-@app.post("/api/exchange/{token}/delete")
-async def api_exchange_delete(token: str, request: Request):
-    await asyncio.to_thread(exchange.delete, token)
-    return {"links": await asyncio.to_thread(exchange.list_links)}
-
-
-def _exchange_error(e: Exception, status: int = 404) -> JSONResponse:
-    return JSONResponse({"detail": str(e)}, status_code=status)
-
-
-@app.get("/x/{token}")
-async def public_exchange_page(token: str):
-    return _serve_page("exchange.html")
-
-
-@app.get("/api/x/{token}")
-async def public_exchange_info(token: str):
-    try:
-        return await asyncio.to_thread(exchange.info, token)
-    except exchange.ExchangeError as e:
-        return _exchange_error(e)
-
-
-@app.put("/api/x/{token}/upload")
-async def public_exchange_upload(token: str, name: str, request: Request):
-    """Public upload into an exchange folder: same-origin only, limit checked while streaming."""
-    if not _same_origin(request):
-        return JSONResponse({"detail": "Ungültige Herkunft der Anfrage."}, status_code=403)
-    length = request.headers.get("content-length")
-    size = int(length) if length and length.isdigit() else None
-    try:
-        t = await asyncio.to_thread(exchange.upload_target, token, name, size)
-    except exchange.ExchangeError as e:
-        return _exchange_error(e, 400)
-    target, left = t["target"], t["left"]
-    tmp = os.path.join(os.path.dirname(target), f".{os.path.basename(target)}.upload-{secrets.token_hex(4)}")
-    written = 0
-    try:
-        with open(tmp, "xb") as f:
-            async for chunk in request.stream():
-                written += len(chunk)
-                if written > left:
-                    raise HTTPException(status_code=413, detail="Das Limit dieses Links ist erreicht.")
-                await asyncio.to_thread(f.write, chunk)
-        if os.path.lexists(target):  # someone else took the name meanwhile
-            target = (await asyncio.to_thread(exchange.upload_target, token, os.path.basename(target), 0))["target"]
-        os.replace(tmp, target)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.remove(tmp)
-        raise
-    ip = websec.client_ip(request)
-    await asyncio.to_thread(exchange.record_upload, token, os.path.basename(target), written, ip)
-    request.state.audit_user = "Austausch-Link"   # the activity log middleware records this request
-    request.state.audit_detail = target
-    return {"ok": True, "name": os.path.basename(target), "size": written}
-
-
-@app.get("/api/x/{token}/file")
-async def public_exchange_download(token: str, name: str, request: Request):
-    try:
-        path = await asyncio.to_thread(exchange.download_path, token, name)
-    except exchange.ExchangeError as e:
-        return _exchange_error(e)
-    ip = websec.client_ip(request)
-    await asyncio.to_thread(audit.record, "Austausch-Link", ip, "GET", "/x/file", 200, path)
-    return FileResponse(path, filename=os.path.basename(path), headers={"X-Content-Type-Options": "nosniff"})
-
-
-@app.get("/flotte")
-async def get_fleet_page():
-    return _serve_page("fleet.html")
-
-
-@app.get("/werkzeuge")
-async def get_tools_page():
-    return _serve_page("tools.html")
-
-
-@app.get("/api/fleet")
-async def api_fleet():
-    return await fleet.overview()
-
-
-class FleetAptRequest(BaseModel):
-    ids: list
-    mode: str = "upgrade"
-
-
-class FleetPackagesRequest(BaseModel):
-    targets: dict   # {pi id ("" = this server): [package names]}
-
-
-@app.post("/api/fleet/packages")
-async def api_fleet_packages(req: FleetPackagesRequest, request: Request):
-    targets = {str(k): [str(n) for n in (v or [])] for k, v in req.targets.items()}
-    request.state.audit_detail = f"{sum(len(v) for v in targets.values())} Pakete · {len(targets)} Server"
-    return await fleet.upgrade_packages(targets, request.state.user or "")
-
-
-@app.get("/api/fleet/job")
-async def api_fleet_job(id: str = ""):
-    try:
-        return await fleet.job_log(id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Nicht erreichbar ({type(e).__name__})")
-
-
-@app.post("/api/fleet/apt")
-async def api_fleet_apt(req: FleetAptRequest, request: Request):
-    request.state.audit_detail = f"{req.mode} · {len(req.ids)} Server"
-    try:
-        return await fleet.apt([str(i) for i in req.ids][:50], req.mode, request.state.user or "")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/search")
-async def api_search(q: str = ""):
-    return await asyncio.to_thread(search.search, q)
-
-
-@app.get("/s/{token}")
-async def public_share(token: str, request: Request):
-    """Public download for a share link (no login) - expiry and file checked on every call."""
-    try:
-        share = await asyncio.to_thread(files.shared_file, token)
-    except files.FileAccessError as e:
-        return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Link ungültig</title>"
-                            f"<body style='font-family:sans-serif;padding:40px'><h2>{html_escape(str(e))}</h2>"
-                            f"<p>Bitte bei der Person nachfragen, die dir den Link geschickt hat.</p>", status_code=404)
-    ip = websec.client_ip(request)
-    await asyncio.to_thread(audit.record, "Freigabe-Link", ip, "GET", "/s/", 200, share["path"])
-    return FileResponse(share["path"], filename=share["name"])
-
-
-@app.get("/api/nvme/history")
-async def api_nvme_history(days: int = 90):
-    return await asyncio.to_thread(history.get_nvme_history, days)
+app.include_router(files_routes.router)   # backend/routes/files.py
 
 
 # ---------------------------------------------------------------------------
@@ -2425,371 +1856,49 @@ async def api_mcp_approval_decide(approval_id: str, decision: str, request: Requ
 # ---------------------------------------------------------------------------
 # E-mail notifications
 # ---------------------------------------------------------------------------
-@app.get("/api/settings/email")
-async def api_settings_email():
-    return notify.public()
-
-
-@app.post("/api/settings/email")
-async def api_settings_email_save(payload: dict, request: Request):
-    request.state.audit_detail = f"{'an' if payload.get('enabled') else 'aus'} · {payload.get('host', '')}"[:250]
-    try:
-        return await asyncio.to_thread(notify.save, payload)
-    except notify.NotifyError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/settings/email/test")
-async def api_settings_email_test(payload: dict = None):
-    kind = (payload or {}).get("kind", "test")
-    try:
-        if kind == "weekly":
-            subject, text, body = await asyncio.to_thread(notify.weekly_content)
-            await asyncio.to_thread(notify.send, subject, text, body)
-        elif kind == "daily":
-            items = await asyncio.to_thread(notify.deadlines)
-            text, body = notify._render("Tagesübersicht (Vorschau)", "So sieht die tägliche Übersicht heute aus.",
-                                        [("Fällig und bald fällig", items or [("good", "Heute ist nichts fällig.", "")])], "/")
-            await asyncio.to_thread(notify.send, "[HostCore] Tagesübersicht (Vorschau)", text, body)
-        else:
-            await asyncio.to_thread(notify.send_test)
-    except notify.NotifyError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return notify.public()
+app.include_router(email_notify_routes.router)   # backend/routes/email_notify.py
 
 
 # ---------------------------------------------------------------------------
 # Data retention
 # ---------------------------------------------------------------------------
-@app.get("/api/settings/retention")
-async def api_settings_retention():
-    return await asyncio.to_thread(retention.overview)
-
-
-@app.post("/api/settings/retention")
-async def api_settings_retention_save(payload: dict, request: Request):
-    request.state.audit_detail = ", ".join(f"{k}={v}" for k, v in payload.items())[:250]
-    try:
-        return await asyncio.to_thread(retention.save, payload)
-    except retention.RetentionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/settings/retention/cleanup")
-async def api_settings_retention_cleanup():
-    return await asyncio.to_thread(retention.cleanup_now)
+app.include_router(retention_routes.router)   # backend/routes/retention.py
 
 
 # ---------------------------------------------------------------------------
 # Alarms: acknowledgement and escalation (per server)
 # ---------------------------------------------------------------------------
-def _alert_call(fn, *args):
-    try:
-        return fn(*args)
-    except alerting.AlertError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except notify.NotifyError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-
-class AlertAck(BaseModel):
-    note: str = ""
-
-
-class AlertTokenAck(BaseModel):
-    token: str
-    note: str = ""
-
-
-@app.get("/api/alerts")
-async def api_alerts():
-    return await asyncio.to_thread(alerting.overview)
-
-
-@app.post("/api/alerts/resolve-all")
-async def api_alerts_resolve_all(request: Request):
-    n = await asyncio.to_thread(alerting.resolve_all, request.state.user or "")
-    request.state.audit_detail = f"{n} Alarme"
-    return {**await asyncio.to_thread(alerting.overview), "resolved": n}
-
-
-@app.post("/api/alerts/{alert_id}/ack")
-async def api_alert_ack(alert_id: str, req: AlertAck, request: Request):
-    request.state.audit_detail = alert_id
-    await asyncio.to_thread(_alert_call, alerting.acknowledge, alert_id, request.state.user or "", req.note)
-    return await asyncio.to_thread(alerting.overview)
-
-
-@app.post("/api/alerts/{alert_id}/resolve")
-async def api_alert_resolve(alert_id: str, request: Request):
-    request.state.audit_detail = alert_id
-    await asyncio.to_thread(_alert_call, alerting.resolve, alert_id, request.state.user or "")
-    return await asyncio.to_thread(alerting.overview)
-
-
-@app.get("/api/settings/alerting")
-async def api_alerting_settings():
-    return await asyncio.to_thread(alerting.public)
-
-
-@app.post("/api/settings/alerting")
-async def api_alerting_save(payload: dict):
-    return await asyncio.to_thread(_alert_call, alerting.save, payload)
-
-
-@app.post("/api/settings/alerting/test")
-async def api_alerting_test():
-    return await asyncio.to_thread(_alert_call, alerting.send_test)
-
-
-@app.get("/alarm")
-async def alarm_page():
-    return _serve_page("alarm.html")
-
-
-@app.get("/api/alarm")
-async def api_alarm_info(token: str = ""):
-    return await asyncio.to_thread(alerting.token_info, token)
-
-
-@app.post("/api/alarm")
-async def api_alarm_ack(req: AlertTokenAck, request: Request):
-    """Acknowledge with the link from the alarm mail (no login: the link is the permission)."""
-    if not _same_origin(request):
-        raise HTTPException(status_code=403, detail="Ungültige Herkunft der Anfrage.")
-    a = await asyncio.to_thread(_alert_call, alerting.acknowledge_token, req.token, req.note)
-    request.state.audit_user = a.get("acked_by", "")
-    request.state.audit_detail = a["id"]
-    return {"ok": True, "acked_by": a.get("acked_by", ""), "acked_at": a.get("acked_at", 0)}
+app.include_router(alarms_routes.router)   # backend/routes/alarms.py
 
 
 # ---------------------------------------------------------------------------
 # Tasks: long-running work with its own log (per server)
 # ---------------------------------------------------------------------------
-def _task_call(fn, *args):
-    try:
-        return fn(*args)
-    except tasks.TaskError as e:
-        raise HTTPException(status_code=404 if "nicht gefunden" in str(e) else 400, detail=str(e))
-
-
-@app.get("/api/tasks")
-async def api_tasks(limit: int = 100, kind: str = ""):
-    return await asyncio.to_thread(tasks.overview, max(1, min(limit, 300)), kind)
-
-
-@app.get("/api/tasks/{task_id}")
-async def api_task(task_id: str):
-    return await asyncio.to_thread(_task_call, tasks.get, task_id)
-
-
-@app.get("/api/tasks/{task_id}/log")
-async def api_task_log(task_id: str, offset: int = 0):
-    return await asyncio.to_thread(_task_call, tasks.log, task_id, max(0, offset))
-
-
-@app.post("/api/tasks/{task_id}/cancel")
-async def api_task_cancel(task_id: str, request: Request):
-    request.state.audit_detail = task_id
-    return await asyncio.to_thread(_task_call, tasks.cancel, task_id, request.state.user or "")
+app.include_router(tasks_routes.router)   # backend/routes/tasks.py
 
 
 # ---------------------------------------------------------------------------
 # Compose security check (per server)
 # ---------------------------------------------------------------------------
-def _stackcheck_call(fn, *args):
-    try:
-        return fn(*args)
-    except stackcheck.StackCheckError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/containers/stack-check")
-async def api_stack_check():
-    return await asyncio.to_thread(stackcheck.overview)
-
-
-@app.post("/api/containers/stack-check/run")
-async def api_stack_check_run():
-    return await heavy(stackcheck.run)
-
-
-@app.post("/api/containers/stack-check/ignore")
-async def api_stack_check_ignore(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('stack', '')} · {payload.get('finding', '')}"[:120]
-    return await asyncio.to_thread(_stackcheck_call, stackcheck.set_ignored, str(payload.get("stack", "")),
-                                   str(payload.get("finding", "")), bool(payload.get("ignore", True)))
+app.include_router(stackcheck_routes.router)   # backend/routes/stackcheck.py
 
 
 # ---------------------------------------------------------------------------
 # Database monitor (per server)
 # ---------------------------------------------------------------------------
-def _db_call(fn, *args):
-    try:
-        return fn(*args)
-    except dbmonitor.DbError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/containers/databases")
-async def api_databases():
-    return await asyncio.to_thread(dbmonitor.overview)
-
-
-@app.post("/api/containers/databases/refresh")
-async def api_databases_refresh():
-    return await asyncio.to_thread(dbmonitor.refresh)
-
-
-@app.get("/api/containers/databases/job/{job_id}")
-async def api_databases_job(job_id: str):
-    return await asyncio.to_thread(_db_call, dbmonitor.get_job, job_id)
-
-
-@app.post("/api/containers/databases/{name}/dump")
-async def api_databases_dump(name: str, request: Request):
-    request.state.audit_detail = name
-    return await asyncio.to_thread(_db_call, dbmonitor.start_dump, name, request.state.user or "")
-
-
-@app.post("/api/containers/databases/{name}/settings")
-async def api_databases_settings(name: str, payload: dict, request: Request):
-    request.state.audit_detail = name
-    return await asyncio.to_thread(_db_call, dbmonitor.save_settings, name, payload)
+app.include_router(dbmonitor_routes.router)   # backend/routes/dbmonitor.py
 
 
 # ---------------------------------------------------------------------------
 # Backup check (per server)
 # ---------------------------------------------------------------------------
-def _backup_call(fn, *args):
-    try:
-        return fn(*args)
-    except backups.BackupError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/backups")
-async def api_backups():
-    return await asyncio.to_thread(backups.overview)
-
-
-@app.post("/api/backups")
-async def api_backups_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_backup_call, backups.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/backups/{job_id}")
-async def api_backups_update(job_id: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_backup_call, backups.save, job_id, payload, request.state.user or "")
-
-
-@app.post("/api/backups/{job_id}/check")
-async def api_backups_check(job_id: str):
-    return await asyncio.to_thread(backups.start_check, job_id)
-
-
-@app.post("/api/backups/{job_id}/delete")
-async def api_backups_delete(job_id: str):
-    return await asyncio.to_thread(backups.delete, job_id)
+app.include_router(backup_check_routes.router)   # backend/routes/backup_check.py
 
 
 # ---------------------------------------------------------------------------
 # Off-site backup with restic (per server)
 # ---------------------------------------------------------------------------
-def _offsite(fn, *args):
-    try:
-        return fn(*args)
-    except offsite.OffsiteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/offsite")
-async def api_offsite():
-    return await asyncio.to_thread(offsite.overview)
-
-
-@app.post("/api/offsite/install")
-async def api_offsite_install():
-    return await asyncio.to_thread(_offsite, offsite.install)
-
-
-@app.post("/api/offsite/auth/start")
-async def api_offsite_auth_start(payload: dict):
-    return await asyncio.to_thread(_offsite, offsite.auth_start, str(payload.get("kind", "")), str(payload.get("client_id", "")),
-                                   str(payload.get("client_secret", "")), str(payload.get("job", "")))
-
-
-@app.post("/api/offsite/auth/finish")
-async def api_offsite_auth_finish(payload: dict):
-    return await asyncio.to_thread(_offsite, offsite.auth_finish, str(payload.get("address", "")))
-
-
-@app.get("/api/offsite/fleet")
-async def api_offsite_fleet():
-    return await offsite.fleet()
-
-
-@app.post("/api/offsite/copy")
-async def api_offsite_copy(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('job', '')} -> {', '.join(map(str, payload.get('servers') or []))}"[:200]
-    try:
-        return await offsite.copy_to(str(payload.get("job", "")), [str(x) for x in payload.get("servers") or []], request.state.user or "")
-    except offsite.OffsiteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/offsite/fleet/{server_id}/{job_id}/{action}")
-async def api_offsite_fleet_action(server_id: str, job_id: str, action: str, request: Request):
-    try:
-        return await offsite.remote_action(server_id, job_id, action, request.state.user or "")
-    except offsite.OffsiteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/offsite")
-async def api_offsite_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_offsite, offsite.save, None, payload, request.state.user or "")
-
-
-@app.get("/api/offsite/{job_id}/snapshots")
-async def api_offsite_snapshots(job_id: str):
-    return await heavy(_offsite, offsite.snapshots, job_id)
-
-
-@app.post("/api/offsite/{job_id}/run")
-async def api_offsite_run(job_id: str, request: Request):
-    return await asyncio.to_thread(_offsite, offsite.run, job_id, request.state.user or "")
-
-
-@app.post("/api/offsite/{job_id}/check")
-async def api_offsite_check(job_id: str, request: Request):
-    return await asyncio.to_thread(_offsite, offsite.check, job_id, request.state.user or "")
-
-
-@app.post("/api/offsite/{job_id}/restore")
-async def api_offsite_restore(job_id: str, payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('snapshot', '')} {payload.get('path', '')}".strip()[:200]
-    return await asyncio.to_thread(_offsite, offsite.restore, job_id, str(payload.get("snapshot", "")), str(payload.get("path", "")),
-                                   request.state.user or "")
-
-
-@app.post("/api/offsite/{job_id}/password")
-async def api_offsite_password(job_id: str):
-    return await asyncio.to_thread(_offsite, offsite.password, job_id)
-
-
-@app.post("/api/offsite/{job_id}/delete")
-async def api_offsite_delete(job_id: str):
-    return await asyncio.to_thread(_offsite, offsite.delete, job_id)
-
-
-@app.post("/api/offsite/{job_id}")
-async def api_offsite_update(job_id: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_offsite, offsite.save, job_id, payload, request.state.user or "")
+app.include_router(offsite_routes.router)   # backend/routes/offsite.py
 
 
 # ---------------------------------------------------------------------------
@@ -3608,22 +2717,7 @@ async def _vnc_bridge(websocket: WebSocket, name: str) -> None:
 # ---------------------------------------------------------------------------
 # systemd service control (tiles in the "Server-Dienste" widget)
 # ---------------------------------------------------------------------------
-@app.post("/api/services/{service_id}/{action}")
-async def api_service_action(service_id: str, action: str, request: Request):
-    result = await asyncio.to_thread(services_manager.service_action, service_id, action)
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["message"])
-    logger.info(f"systemctl {action} {result['unit']} by '{request.state.user}'")
-    request.state.audit_detail = f"{action} {result['unit']}"
-    return result
-
-
-@app.get("/api/services/{service_id}/journal")
-async def api_service_journal(service_id: str, lines: int = 150):
-    result = await asyncio.to_thread(services_manager.service_journal, service_id, lines)
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["message"])
-    return result
+app.include_router(services_routes.router)   # backend/routes/services.py
 
 
 # ---------------------------------------------------------------------------
@@ -3716,21 +2810,7 @@ def interpret_wmo_code(code: int) -> tuple[str, str]:
     return mapping.get(code, ("Heiter", "cloud-sun"))
 
 
-def _serve_page(name: str) -> HTMLResponse:
-    """Serve an HTML page with each asset's mtime appended as ?v=..., so browsers never
-    mix a new page with a cached old style.css / *.js after an auto-update."""
-    with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
-        html = f.read()
-    def versioned(m: "re.Match") -> str:
-        path = os.path.join(STATIC_DIR, m.group(1))
-        return f"/static/{m.group(1)}?v={int(os.path.getmtime(path))}\"" if os.path.exists(path) else m.group(0)
-    html = re.sub(r'/static/([\w.-]+\.(?:js|css))"', versioned, html)
-    # Behind Cloudflare: Rocket Loader would turn every script into one loaded by an inline
-    # script, which the CSP blocks (blank page) - data-cfasync="false" makes it skip them.
-    # The manifest is fetched without cookies unless asked, so Cloudflare Access redirects it.
-    html = html.replace("<script src=", '<script data-cfasync="false" src=')
-    html = html.replace('<link rel="manifest" ', '<link rel="manifest" crossorigin="use-credentials" ')
-    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
 
 
 @app.get("/")
@@ -3905,79 +2985,7 @@ def _os_name() -> str:
     return f"{platform.system()} {platform.release()}"
 
 
-class RemoteRequest(BaseModel):
-    name: str = ""
-    url: str = ""
-    token: str = ""
-
-
-class SelectRemoteRequest(BaseModel):
-    id: str = ""
-
-
-def _remote_call(fn, *args):
-    try:
-        return fn(*args)
-    except remotes.RemoteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/remotes")
-async def api_remotes():
-    return {"remotes": await remotes.refresh_status(), "local": platform.node()}
-
-
-@app.get("/api/remotes/current")
-async def api_remotes_current(request: Request):
-    """For the host switcher (every logged-in user)."""
-    items = await remotes.refresh_status(max_age=30)
-    cur = request.cookies.get(remotes.COOKIE, "")
-    current = next((r for r in items if r["id"] == cur), None)
-    return {"local": platform.node(), "current": current,
-            "hosts": [{k: r[k] for k in ("id", "name", "online", "info")} for r in items]}
-
-
-@app.post("/api/remotes/select")
-async def api_remotes_select(req: SelectRemoteRequest, request: Request):
-    resp = JSONResponse({"ok": True, "id": req.id})
-    if req.id and remotes.get(req.id):
-        resp.set_cookie(remotes.COOKIE, req.id, max_age=90 * 86400, httponly=True, samesite="lax")
-        request.state.audit_detail = remotes.get(req.id)["name"]
-    else:
-        resp.delete_cookie(remotes.COOKIE)
-    return resp
-
-
-@app.post("/api/remotes")
-async def api_remotes_add(req: RemoteRequest, request: Request):
-    request.state.audit_detail = f"{req.name} ({req.url})"[:250]
-    try:
-        return await remotes.add(req.name, req.url, req.token)
-    except remotes.RemoteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/remotes/test")
-async def api_remotes_test(req: RemoteRequest):
-    try:
-        url = remotes.normalize_url(req.url)
-        info = await remotes.probe(url, req.token.strip())
-        return {**info, "insecure": await asyncio.to_thread(remotes.transport_risk, url)}
-    except remotes.RemoteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/remotes/{remote_id}/update")
-async def api_remotes_update(remote_id: str, req: RemoteRequest):
-    return _remote_call(remotes.update, remote_id, req.name or None, req.token or None)
-
-
-@app.post("/api/remotes/{remote_id}/delete")
-async def api_remotes_delete(remote_id: str, request: Request):
-    r = remotes.get(remote_id)
-    request.state.audit_detail = r["name"] if r else remote_id
-    remotes.remove(remote_id)
-    return {"remotes": await remotes.refresh_status()}
+app.include_router(remote_servers_routes.router)   # backend/routes/remote_servers.py
 
 
 class BoardsRequest(BaseModel):
@@ -4169,857 +3177,55 @@ async def get_containers_page():
 # ---------------------------------------------------------------------------
 # Containers page: Kubernetes, Docker, compose stacks, image updates
 # ---------------------------------------------------------------------------
-def _container_call(fn, *args):
-    try:
-        return fn(*args)
-    except containers.ContainerError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Zeitüberschreitung.")
-
-
-@app.get("/api/containers/overview")
-async def api_containers_overview():
-    def collect():
-        return {"kube": containers.kube_overview(), "docker": containers.docker_list(), "stacks": containers.stacks(),
-                "jobs": containers.running_jobs(), "images": imagecheck.status(), "scaled": containers.kube_scaled(),
-                "autoupdate": autoupdate.overview()}
-    return await asyncio.to_thread(collect)
-
-
-@app.get("/api/containers/stats")
-async def api_containers_stats():
-    return await asyncio.to_thread(containers.stats_summary)
-
-
-@app.get("/api/containers/stats/history")
-async def api_containers_stats_history(kind: str, name: str, hours: int = 24):
-    return await asyncio.to_thread(_container_call, containers.stats_history, kind, name, hours)
-
-
-class AutoUpdateRequest(BaseModel):
-    enabled: bool = True
-    time: str = "04:00"
-    days: str = "daily"
-    weekday: int = 6
-
-
-@app.post("/api/containers/autoupdate/{stack}")
-async def api_autoupdate_save(stack: str, req: AutoUpdateRequest, request: Request):
-    request.state.audit_detail = f"{stack}: {'an, ' + req.time if req.enabled else 'aus'}"
-    try:
-        return await asyncio.to_thread(autoupdate.save, stack, req.enabled, req.time, req.days, req.weekday)
-    except autoupdate.AutoUpdateError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/containers/autoupdate/{stack}/run")
-async def api_autoupdate_run(stack: str, request: Request):
-    request.state.audit_detail = stack
-    autoupdate.run_in_background(stack)
-    return {"message": f"{stack} wird aktualisiert."}
-
-
-class LimitsRequest(BaseModel):
-    service: str
-    cpus: Optional[float] = None
-    mem_mb: Optional[int] = None
-
-
-@app.post("/api/containers/stacks/{name}/limits")
-async def api_stack_limits(name: str, req: LimitsRequest, request: Request):
-    request.state.audit_detail = f"{name}/{req.service}: CPU {req.cpus or '–'}, RAM {req.mem_mb or '–'} MB"
-    try:
-        return await asyncio.to_thread(containers.set_limits, name, req.service, req.cpus, req.mem_mb)
-    except containers.ContainerError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Override-Datei: {e.strerror or e}")
-
-
-@app.get("/api/containers/logs/multi")
-async def api_container_multi_logs(names: str, since: float = 0, tail: int = 200):
-    return await asyncio.to_thread(containers.multi_logs, [n for n in names.split(",") if n], since, tail)
-
-
-@app.get("/api/containers/kube/logs")
-async def api_kube_logs(namespace: str, name: str, container: str = "", lines: int = 300, previous: bool = False):
-    return await asyncio.to_thread(_container_call, containers.kube_logs, namespace, name, container, lines, previous)
-
-
-class ScaleRequest(BaseModel):
-    replicas: int
-
-
-@app.post("/api/containers/kube/{kind}/{namespace}/{name}/restart")
-async def api_kube_restart(kind: str, namespace: str, name: str, request: Request):
-    request.state.audit_detail = f"{kind} {namespace}/{name}"
-    return {"message": await asyncio.to_thread(_container_call, containers.kube_restart, kind, namespace, name)}
-
-
-@app.post("/api/containers/kube/{kind}/{namespace}/{name}/scale")
-async def api_kube_scale(kind: str, namespace: str, name: str, req: ScaleRequest, request: Request):
-    request.state.audit_detail = f"{kind} {namespace}/{name} → {req.replicas}"
-    return {"message": await asyncio.to_thread(_container_call, containers.kube_scale, kind, namespace, name, req.replicas)}
-
-
-@app.post("/api/containers/kube/pod/{namespace}/{name}/delete")
-async def api_kube_delete_pod(namespace: str, name: str, request: Request):
-    request.state.audit_detail = f"{namespace}/{name}"
-    return {"message": await asyncio.to_thread(_container_call, containers.kube_delete_pod, namespace, name)}
-
-
-@app.post("/api/containers/stacks/{name}/{action}")
-async def api_stack_action(name: str, action: str, request: Request):
-    request.state.audit_detail = f"{name}: {action}"
-    job = await asyncio.to_thread(_container_call, containers.stack_action, name, action, request.state.user)
-    logger.info(f"Stack {name} {action} by '{request.state.user}'")
-    return job
-
-
-@app.get("/api/containers/jobs/{job_id}")
-async def api_container_job(job_id: str):
-    return _container_call(containers.get_job, job_id)
-
-
-@app.get("/api/containers/docker/disk")
-async def api_docker_disk():
-    return await asyncio.to_thread(_container_call, containers.disk_usage)
-
-
-class DockerCleanupRequest(BaseModel):
-    kinds: list = []
-    volumes: list = []
-
-
-@app.post("/api/containers/docker/cleanup")
-async def api_docker_cleanup(req: DockerCleanupRequest, request: Request):
-    request.state.audit_detail = f"{', '.join(str(k) for k in req.kinds)} {' '.join(str(v) for v in req.volumes)}"[:250]
-    return await asyncio.to_thread(_container_call, containers.cleanup, [str(k) for k in req.kinds],
-                                   [str(v) for v in req.volumes][:100], request.state.user or "")
-
-
-@app.get("/api/containers/docker/volumes")
-async def api_docker_volumes():
-    return await asyncio.to_thread(_container_call, containers.volumes_and_networks)
-
-
-class StackCreateRequest(BaseModel):
-    name: str
-    compose: str
-    env: str = ""
-
-
-@app.post("/api/containers/stacks/create")
-async def api_stack_create(req: StackCreateRequest, request: Request):
-    request.state.audit_detail = req.name[:60]
-    return await asyncio.to_thread(_container_call, containers.create_stack, req.name, req.compose, req.env, request.state.user or "")
-
-
-@app.get("/api/containers/stacks/{name}/compose")
-async def api_stack_compose(name: str):
-    return await asyncio.to_thread(_container_call, containers.stack_compose, name)
-
-
-def _template_call(fn, *args):
-    try:
-        return fn(*args)
-    except stacktemplates.TemplateError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/stack-templates")
-async def api_stack_templates():
-    return await asyncio.to_thread(stacktemplates.overview)
-
-
-@app.post("/api/stack-templates")
-async def api_stack_templates_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:80]
-    return await asyncio.to_thread(_template_call, stacktemplates.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/stack-templates/{template_id}")
-async def api_stack_templates_update(template_id: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:80]
-    return await asyncio.to_thread(_template_call, stacktemplates.save, template_id, payload, request.state.user or "")
-
-
-@app.post("/api/stack-templates/{template_id}/delete")
-async def api_stack_templates_delete(template_id: str):
-    return await asyncio.to_thread(stacktemplates.delete, template_id)
-
-
-@app.post("/api/stack-templates/{template_id}/deploy")
-async def api_stack_templates_deploy(template_id: str, payload: dict, request: Request):
-    targets = [str(t) for t in (payload.get("targets") or [])][:20]
-    request.state.audit_detail = f"{payload.get('name', '')} · {len(targets)} Server"
-    try:
-        return await stacktemplates.deploy(template_id, targets, str(payload.get("name") or ""), str(payload.get("env") or ""),
-                                           request.state.user or "")
-    except stacktemplates.TemplateError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+app.include_router(containers_page_routes.router)   # backend/routes/containers_page.py
 
 
 # ---------------------------------------------------------------------------
 # Secret scan (secretscan.py)
 # ---------------------------------------------------------------------------
-def _secretscan_call(fn, *args):
-    try:
-        return fn(*args)
-    except secretscan.SecretScanError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/secret-scan")
-async def api_secret_scan():
-    return await asyncio.to_thread(secretscan.overview)
-
-
-@app.post("/api/secret-scan/run")
-async def api_secret_scan_run():
-    return await heavy(_secretscan_call, secretscan.run)
-
-
-@app.post("/api/secret-scan/ignore")
-async def api_secret_scan_ignore(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('fingerprint', '')} · {'akzeptiert' if payload.get('ignore', True) else 'wieder beachtet'}"
-    return await asyncio.to_thread(_secretscan_call, secretscan.set_ignored, str(payload.get("fingerprint", "")), bool(payload.get("ignore", True)))
-
-
-@app.post("/api/secret-scan/settings")
-async def api_secret_scan_settings(payload: dict):
-    return await asyncio.to_thread(_secretscan_call, secretscan.save_settings, payload)
+app.include_router(secretscan_routes.router)   # backend/routes/secretscan.py
 
 
 # ---------------------------------------------------------------------------
 # Image policies (imagepolicy.py)
 # ---------------------------------------------------------------------------
-@app.get("/api/containers/image-policy")
-async def api_image_policy():
-    return await asyncio.to_thread(imagepolicy.audit)
-
-
-@app.post("/api/containers/image-policy")
-async def api_image_policy_save(payload: dict, request: Request):
-    try:
-        await asyncio.to_thread(imagepolicy.save, payload)
-    except imagepolicy.PolicyError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    request.state.audit_detail = f"Modus {payload.get('mode', '')}"
-    return await asyncio.to_thread(imagepolicy.audit)
+app.include_router(imagepolicy_routes.router)   # backend/routes/imagepolicy.py
 
 
 # ---------------------------------------------------------------------------
 # GitOps: compose stacks from a Git repository (gitops.py)
 # ---------------------------------------------------------------------------
-def _gitops_call(fn, *args, **kwargs):
-    try:
-        return fn(*args, **kwargs)
-    except gitops.GitOpsError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/gitops")
-async def api_gitops():
-    return await asyncio.to_thread(gitops.overview)
-
-
-@app.post("/api/gitops")
-async def api_gitops_create(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('name', '')} · {payload.get('url', '')}"[:200]
-    return await asyncio.to_thread(_gitops_call, gitops.create, payload, request.state.user or "")
-
-
-@app.get("/api/gitops/{name}/diff")
-async def api_gitops_diff(name: str):
-    return await asyncio.to_thread(_gitops_call, gitops.diff, name)
-
-
-@app.get("/api/gitops/{name}/env")
-async def api_gitops_env(name: str):
-    return {"env": await asyncio.to_thread(_gitops_call, gitops.env_text, name)}
-
-
-@app.post("/api/gitops/{name}/check")
-async def api_gitops_check(name: str):
-    return await asyncio.to_thread(_gitops_call, gitops.check, name, False)
-
-
-@app.post("/api/gitops/{name}/deploy")
-async def api_gitops_deploy(name: str, payload: dict, request: Request):
-    request.state.audit_detail = f"{name} @ {str(payload.get('commit') or 'neueste')[:12]}"
-    return await asyncio.to_thread(_gitops_call, gitops.deploy, name, request.state.user or "", str(payload.get("commit") or ""))
-
-
-@app.post("/api/gitops/{name}/update")
-async def api_gitops_update(name: str, payload: dict, request: Request):
-    request.state.audit_detail = name
-    return await asyncio.to_thread(_gitops_call, gitops.edit, name, payload)
-
-
-@app.post("/api/gitops/{name}/hook")
-async def api_gitops_new_hook(name: str, request: Request):
-    request.state.audit_detail = name
-    return await asyncio.to_thread(_gitops_call, gitops.new_hook, name)
-
-
-@app.post("/api/gitops/{name}/delete")
-async def api_gitops_delete(name: str, payload: dict, request: Request):
-    request.state.audit_detail = name + (" · gestoppt" if payload.get("stop") else "") + (" · Ordner gelöscht" if payload.get("delete_files") else "")
-    return await asyncio.to_thread(_gitops_call, gitops.remove, name, bool(payload.get("delete_files")), bool(payload.get("stop")),
-                                   request.state.user or "")
-
-
-@app.post("/hook/gitops/{token}")
-async def public_gitops_hook(token: str):
-    """Deploy webhook (GitHub, Gitea, GitLab ...): the token in the path names the stack; only a check
-    runs - deploying follows the stack's own setting."""
-    if len(token) > 100 or not await asyncio.to_thread(gitops.hook, token):
-        return JSONResponse({"detail": "Unbekannt."}, status_code=404)
-    return {"ok": True}
-
-
-@app.get("/api/containers/images")
-async def api_container_images():
-    return imagecheck.status()
-
-
-@app.post("/api/containers/images/check")
-async def api_container_images_check():
-    return imagecheck.start_check()
-
-
-@app.get("/api/containers/images/releases")
-async def api_container_image_releases(ref: str, refresh: bool = False):
-    try:
-        return await asyncio.to_thread(imagecheck.releases, ref, refresh)
-    except (ValueError, httpx.HTTPError) as e:
-        raise HTTPException(status_code=400, detail=str(e) or "GitHub nicht erreichbar.")
-
-
-@app.post("/api/containers/images/source")
-async def api_container_image_source(payload: dict):
-    try:
-        return await asyncio.to_thread(imagecheck.set_source, str(payload.get("repo", "")), str(payload.get("github", "")))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-def _appstore_call(fn, *args):
-    try:
-        return fn(*args)
-    except (appstore.AppStoreError, containers.ContainerError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Ordner/Datei: {e.strerror or e}")
-
-
-class AppInstallRequest(BaseModel):
-    name: str
-    ports: dict = {}
-    folders: dict = {}
-    env: dict = {}
-
-    def values(self) -> dict:
-        return {"name": self.name, "ports": self.ports, "folders": self.folders, "env": self.env}
-
-
-@app.get("/api/appstore")
-async def api_appstore():
-    try:
-        return await asyncio.to_thread(appstore.catalog)
-    except Exception as e:
-        logger.exception("App store catalog failed")
-        raise HTTPException(status_code=500, detail=f"App-Store: {type(e).__name__}: {e}"[:300])
-
-
-@app.post("/api/appstore/refresh")
-async def api_appstore_refresh():
-    await asyncio.to_thread(appstore.refresh)
-    return await asyncio.to_thread(appstore.catalog)
-
-
-@app.get("/api/appstore/logo/{app_id}")
-async def api_appstore_logo(app_id: str):
-    found = await asyncio.to_thread(appstore.logo, app_id)
-    if not found:
-        raise HTTPException(status_code=404, detail="Kein Logo.")
-    body, ctype = found
-    # SVGs may carry scripts: never run them in the dashboard's origin
-    return Response(body, media_type=ctype, headers={"Cache-Control": "public, max-age=604800",
-                                                     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-                                                     "X-Content-Type-Options": "nosniff"})
-
-
-@app.get("/api/appstore/{app_id}/form")
-async def api_appstore_form(app_id: str):
-    return await asyncio.to_thread(_appstore_call, appstore.form, app_id)
-
-
-@app.post("/api/appstore/{app_id}/preview")
-async def api_appstore_preview(app_id: str, req: AppInstallRequest):
-    return await asyncio.to_thread(_appstore_call, appstore.preview, app_id, req.values())
-
-
-@app.post("/api/appstore/{app_id}/install")
-async def api_appstore_install(app_id: str, req: AppInstallRequest, request: Request):
-    request.state.audit_detail = f"{app_id} als {req.name[:40]}"
-    job = await asyncio.to_thread(_appstore_call, appstore.install, app_id, req.values(), request.state.user or "")
-    logger.info(f"App {app_id} installed as {req.name} by '{request.state.user}'")
-    return job
-
-
-@app.get("/api/capabilities")
-async def api_capabilities():
-    """Hardware features of this server (or of the selected remote server, via the proxy)."""
-    return await asyncio.to_thread(system_info.get_capabilities)
-
-
-@app.get("/api/system")
-async def api_system():
-    """Return full system snapshot."""
-    return await asyncio.to_thread(system_info.get_system_snapshot)
-
-
-@app.get("/api/processes")
-async def api_processes(limit: int = 8):
-    """Return top active processes."""
-    return {"processes": await asyncio.to_thread(system_info.get_top_processes, limit=limit)}
-
-
-@app.get("/api/history")
-async def api_history(range: str = "24h", iface: str = ""):
-    """Downsampled metrics history: range=24h or 7d; iface = network values of one interface."""
-    return await asyncio.to_thread(history.get_history, range, iface[:32])
-
-
-@app.get("/api/replay")
-async def api_replay(start: int, end: int = 0):
-    """Every minute sample of a time window (max. 2 days) for the day replay."""
-    return await asyncio.to_thread(history.get_raw, start, end or start + 86400)
-
-
-class KanbanCardRequest(BaseModel):
-    title: Optional[str] = None
-    desc: Optional[str] = None
-    labels: Optional[list] = None
-    due: Optional[str] = None
-    column: Optional[str] = None
-    index: Optional[int] = None
-    top: bool = False
-
-    def fields(self) -> dict:
-        return {k: v for k, v in {"title": self.title, "desc": self.desc, "labels": self.labels, "due": self.due,
-                                  "column": self.column, "index": self.index, "top": self.top}.items() if v is not None}
-
-
-def _kanban_call(fn, *args):
-    try:
-        return fn(*args)
-    except kanban.KanbanError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/kanban")
-async def api_kanban():
-    return kanban.board()
-
-
-@app.post("/api/kanban/cards")
-async def api_kanban_create(req: KanbanCardRequest, request: Request):
-    return await asyncio.to_thread(_kanban_call, kanban.create, req.fields(), request.state.user or "")
-
-
-@app.post("/api/kanban/cards/{card_id}")
-async def api_kanban_update(card_id: str, req: KanbanCardRequest, request: Request):
-    return await asyncio.to_thread(_kanban_call, kanban.update, card_id, req.fields(), request.state.user or "")
-
-
-@app.post("/api/kanban/cards/{card_id}/delete")
-async def api_kanban_delete(card_id: str):
-    return await asyncio.to_thread(_kanban_call, kanban.delete, card_id)
-
-
-@app.post("/api/kanban/clear-done")
-async def api_kanban_clear_done():
-    return await asyncio.to_thread(_kanban_call, kanban.clear_done)
-
-
-class ReminderRequest(BaseModel):
-    title: str
-    due: str
-    repeat: str = "none"
-    every: int = 1
-
-
-def _reminder_call(fn, *args):
-    try:
-        return fn(*args)
-    except reminders.ReminderError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/reminders")
-async def api_reminders():
-    return reminders.overview()
-
-
-@app.post("/api/reminders")
-async def api_reminders_create(req: ReminderRequest, request: Request):
-    return await asyncio.to_thread(_reminder_call, reminders.create, {"title": req.title, "due": req.due, "repeat": req.repeat,
-                                                                      "every": req.every}, request.state.user or "")
-
-
-@app.post("/api/reminders/{item_id}")
-async def api_reminders_update(item_id: str, req: ReminderRequest):
-    return await asyncio.to_thread(_reminder_call, reminders.update, item_id, {"title": req.title, "due": req.due,
-                                                                               "repeat": req.repeat, "every": req.every})
-
-
-@app.post("/api/reminders/{item_id}/done")
-async def api_reminders_done(item_id: str, request: Request):
-    return await asyncio.to_thread(_reminder_call, reminders.done, item_id, request.state.user or "")
-
-
-@app.post("/api/reminders/{item_id}/snooze")
-async def api_reminders_snooze(item_id: str, days: int = 1):
-    return await asyncio.to_thread(_reminder_call, reminders.snooze, item_id, days)
-
-
-@app.post("/api/reminders/{item_id}/delete")
-async def api_reminders_delete(item_id: str):
-    return await asyncio.to_thread(_reminder_call, reminders.delete, item_id)
+app.include_router(gitops_routes.router)   # backend/routes/gitops.py
 
 
 # ---------------------------------------------------------------------------
 # Maintenance windows
 # ---------------------------------------------------------------------------
-class MaintenanceRequest(BaseModel):
-    title: str
-    start: int
-    end: int
-    scope: Any = "all"
-    note: str = ""
-
-
-def _maintenance_call(fn, *args):
-    try:
-        return fn(*args)
-    except maintenance.MaintenanceError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/maintenance")
-async def api_maintenance():
-    return await asyncio.to_thread(maintenance.overview)
-
-
-@app.post("/api/maintenance")
-async def api_maintenance_create(req: MaintenanceRequest, request: Request):
-    request.state.audit_detail = f"{req.title[:60]} · {time.strftime('%d.%m. %H:%M', time.localtime(req.start))}–{time.strftime('%d.%m. %H:%M', time.localtime(req.end))}"
-    return await asyncio.to_thread(_maintenance_call, maintenance.create, req.title, req.start, req.end, req.scope, req.note,
-                                   request.state.user or "")
-
-
-@app.post("/api/maintenance/{window_id}/end")
-async def api_maintenance_end(window_id: str):
-    return await asyncio.to_thread(_maintenance_call, maintenance.end_now, window_id)
-
-
-@app.post("/api/maintenance/{window_id}/delete")
-async def api_maintenance_delete(window_id: str):
-    return await asyncio.to_thread(_maintenance_call, maintenance.delete, window_id)
+app.include_router(maintenance_routes.router)   # backend/routes/maintenance.py
 
 
 # ---------------------------------------------------------------------------
 # Documentation: inventory, journal, runbooks, service docs
 # ---------------------------------------------------------------------------
-def _docs_call(fn, *args, **kwargs):
-    try:
-        return fn(*args, **kwargs)
-    except docs.DocsError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/doku")
-async def get_docs_page():
-    return _serve_page("docs.html")
-
-
-def _domain_call(fn, *args):
-    try:
-        return fn(*args)
-    except domains.DomainError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/docs/domains")
-async def api_docs_domains():
-    return await asyncio.to_thread(domains.overview)
-
-
-@app.post("/api/docs/domains")
-async def api_docs_domains_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_domain_call, domains.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/docs/domains/check")
-async def api_docs_domains_check():
-    return await asyncio.to_thread(domains.start_check)
-
-
-@app.post("/api/docs/domains/{domain_id}")
-async def api_docs_domains_update(domain_id: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_domain_call, domains.save, domain_id, payload, request.state.user or "")
-
-
-@app.post("/api/docs/domains/{domain_id}/delete")
-async def api_docs_domains_delete(domain_id: str):
-    return await asyncio.to_thread(domains.delete, domain_id)
-
-
-@app.get("/api/docs/inventory")
-async def api_docs_inventory():
-    return await asyncio.to_thread(docs.inventory)
-
-
-@app.post("/api/docs/inventory")
-async def api_docs_inventory_create(payload: dict):
-    return await asyncio.to_thread(_docs_call, docs.inventory_save, None, payload)
-
-
-@app.post("/api/docs/inventory/{item_id}")
-async def api_docs_inventory_update(item_id: str, payload: dict):
-    return await asyncio.to_thread(_docs_call, docs.inventory_save, item_id, payload)
-
-
-@app.post("/api/docs/inventory/{item_id}/delete")
-async def api_docs_inventory_delete(item_id: str):
-    result = await asyncio.to_thread(_docs_call, docs.inventory_delete, item_id)
-    await asyncio.to_thread(attachments.delete_all, "inventory", item_id)
-    return result
-
-
-@app.get("/api/docs/attachments/{kind}")
-async def api_attachment_counts(kind: str):
-    return {"counts": await asyncio.to_thread(attachments.counts, kind)}
-
-
-@app.get("/api/docs/attachments/{kind}/{item_id}")
-async def api_attachments(kind: str, item_id: str):
-    try:
-        return {"files": await asyncio.to_thread(attachments.list_files, kind, item_id)}
-    except attachments.AttachmentError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.put("/api/docs/attachments/{kind}/{item_id}")
-async def api_attachment_upload(kind: str, item_id: str, name: str, request: Request):
-    length = request.headers.get("content-length")
-    try:
-        target = await asyncio.to_thread(attachments.target, kind, item_id, name, int(length) if length and length.isdigit() else None)
-    except attachments.AttachmentError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    request.state.audit_detail = f"{kind}/{item_id}: {os.path.basename(target)}"[:250]
-    tmp = f"{target}.upload-{secrets.token_hex(4)}"
-    written = 0
-    try:
-        with open(tmp, "xb") as f:
-            async for chunk in request.stream():
-                written += len(chunk)
-                if written > attachments.MAX_FILE:
-                    raise HTTPException(status_code=413, detail="Datei zu groß (höchstens 25 MB).")
-                await asyncio.to_thread(f.write, chunk)
-        os.replace(tmp, target)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.remove(tmp)
-        raise
-    return {"files": await asyncio.to_thread(attachments.list_files, kind, item_id)}
-
-
-@app.get("/api/docs/attachments/{kind}/{item_id}/file")
-async def api_attachment_file(kind: str, item_id: str, name: str, download: bool = False):
-    try:
-        f = await asyncio.to_thread(attachments.file_path, kind, item_id, name)
-    except attachments.AttachmentError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    inline = f["inline"] and not download
-    return FileResponse(f["path"], media_type=f["media"], filename=name, content_disposition_type="inline" if inline else "attachment",
-                        headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
-                                 "Cache-Control": "private, max-age=300"})
-
-
-@app.post("/api/docs/attachments/{kind}/{item_id}/delete")
-async def api_attachment_delete(kind: str, item_id: str, name: str, request: Request):
-    request.state.audit_detail = f"{kind}/{item_id}: {name}"[:250]
-    try:
-        return {"files": await asyncio.to_thread(attachments.delete, kind, item_id, name)}
-    except attachments.AttachmentError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/api/costs")
-async def api_costs():
-    return await asyncio.to_thread(costs.overview)
+app.include_router(docs_routes.router)   # backend/routes/docs.py
 
 
 # ---------------------------------------------------------------------------
 # Latency between the servers, dashboard versions and capacity of the fleet
 # ---------------------------------------------------------------------------
-@app.get("/api/tools/ping-peers")
-async def api_ping_peers(targets: str = ""):
-    """Called by the main dashboard on every server: ping the other servers."""
-    return await asyncio.to_thread(latency.ping_many, [t.strip() for t in targets.split(",") if t.strip()][:20])
-
-
-@app.get("/api/fleet/latency")
-async def api_fleet_latency(hours: int = 24):
-    return await asyncio.to_thread(latency.matrix, max(1, min(hours, 24 * 30)))
-
-
-@app.post("/api/fleet/latency/measure")
-async def api_fleet_latency_measure():
-    await asyncio.to_thread(latency.measure)
-    return await asyncio.to_thread(latency.matrix, 24)
-
-
-@app.post("/api/updates/run-now")
-async def api_updates_run_now():
-    return await asyncio.to_thread(updater.run_update_now)
-
-
-class FleetIdsRequest(BaseModel):
-    ids: list
-
-
-@app.post("/api/fleet/dashboard-update")
-async def api_fleet_dashboard_update(req: FleetIdsRequest, request: Request):
-    request.state.audit_detail = f"{len(req.ids)} Server"
-    return await fleet.dashboard_update([str(i) for i in req.ids][:50], request.state.user or "")
-
-
-@app.get("/api/fleet/capacity")
-async def api_fleet_capacity():
-    return await fleet.capacity()
-
-
-@app.get("/api/capacity")
-async def api_capacity():
-    return await heavy(capacity.overview)
-
-
-@app.get("/api/capacity/summary")
-async def api_capacity_summary():
-    return await asyncio.to_thread(capacity.summary)
+app.include_router(fleet_latency_routes.router)   # backend/routes/fleet_latency.py
 
 
 # ---------------------------------------------------------------------------
 # Anomalies, DNS monitoring
 # ---------------------------------------------------------------------------
-@app.get("/api/anomalies")
-async def api_anomalies():
-    return await asyncio.to_thread(anomalies.overview)
-
-
-@app.post("/api/anomalies/settings")
-async def api_anomalies_settings(payload: dict):
-    try:
-        return await asyncio.to_thread(anomalies.save, payload)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-def _dns_call(fn, *args):
-    try:
-        return fn(*args)
-    except dnswatch.DnsWatchError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/dns-watch")
-async def api_dns_watch():
-    return await asyncio.to_thread(dnswatch.overview)
-
-
-@app.post("/api/dns-watch")
-async def api_dns_watch_create(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('type', '')} {payload.get('name', '')}"[:120]
-    return await asyncio.to_thread(_dns_call, dnswatch.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/dns-watch/check")
-async def api_dns_watch_check():
-    return await asyncio.to_thread(dnswatch.check_all)
-
-
-@app.post("/api/dns-watch/{item_id}")
-async def api_dns_watch_update(item_id: str, payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('type', '')} {payload.get('name', '')}"[:120]
-    return await asyncio.to_thread(_dns_call, dnswatch.save, item_id, payload, request.state.user or "")
-
-
-@app.post("/api/dns-watch/{item_id}/delete")
-async def api_dns_watch_delete(item_id: str):
-    return await asyncio.to_thread(dnswatch.delete, item_id)
+app.include_router(anomalies_routes.router)   # backend/routes/anomalies.py
 
 
 # ---------------------------------------------------------------------------
 # Incidents
 # ---------------------------------------------------------------------------
-def _incident_call(fn, *args):
-    try:
-        return fn(*args)
-    except incidents.IncidentError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/incidents")
-async def api_incidents(state: str = ""):
-    return await asyncio.to_thread(incidents.overview, state)
-
-
-@app.post("/api/incidents")
-async def api_incidents_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:120]
-    return await asyncio.to_thread(_incident_call, incidents.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/incidents/{incident_id}")
-async def api_incidents_update(incident_id: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:120]
-    return await asyncio.to_thread(_incident_call, incidents.save, incident_id, payload, request.state.user or "")
-
-
-@app.post("/api/incidents/{incident_id}/update")
-async def api_incidents_add_update(incident_id: str, payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('status', '')}: {str(payload.get('text', ''))[:100]}"
-    return await asyncio.to_thread(_incident_call, incidents.add_update, incident_id, str(payload.get("status", "")),
-                                   str(payload.get("text", "")), request.state.user or "")
-
-
-@app.post("/api/incidents/{incident_id}/delete")
-async def api_incidents_delete(incident_id: str):
-    return await asyncio.to_thread(incidents.delete, incident_id)
-
-
-@app.post("/api/incidents/{incident_id}/postmortem")
-async def api_incidents_postmortem(incident_id: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_incident_call, incidents.save_postmortem, incident_id, payload, request.state.user or "")
-
-
-@app.post("/api/incidents/{incident_id}/postmortem/tasks")
-async def api_incidents_postmortem_tasks(incident_id: str, request: Request):
-    return await asyncio.to_thread(_incident_call, incidents.create_tasks, incident_id, request.state.user or "")
-
-
-@app.get("/api/incidents/{incident_id}/postmortem.md")
-async def api_incidents_postmortem_md(incident_id: str):
-    text = await asyncio.to_thread(_incident_call, incidents.markdown, incident_id)
-    return Response(text, media_type="text/markdown; charset=utf-8")
+app.include_router(incidents_routes.router)   # backend/routes/incidents.py
 
 
 # ---------------------------------------------------------------------------
@@ -5194,733 +3400,46 @@ async def api_docs_services_delete(payload: dict):
 # ---------------------------------------------------------------------------
 # Emergency handbook (drhandbook.py)
 # ---------------------------------------------------------------------------
-def _handbook_call(fn, *args):
-    try:
-        return fn(*args)
-    except drhandbook.HandbookError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/docs/handbook")
-async def api_docs_handbook(refresh: int = 0):
-    return await asyncio.to_thread(drhandbook.build, bool(refresh))
-
-
-@app.post("/api/docs/handbook/general")
-async def api_docs_handbook_general(payload: dict, request: Request):
-    return await asyncio.to_thread(_handbook_call, drhandbook.save_general, payload, request.state.user or "")
-
-
-@app.post("/api/docs/handbook/service")
-async def api_docs_handbook_service(payload: dict, request: Request):
-    return await asyncio.to_thread(_handbook_call, drhandbook.save_service, str(payload.get("target", "")), payload,
-                                   request.state.user or "")
-
-
-@app.post("/api/docs/handbook/exported")
-async def api_docs_handbook_exported(request: Request):
-    return await asyncio.to_thread(drhandbook.mark_exported, request.state.user or "")
-
-
-@app.get("/api/docs/handbook.md")
-async def api_docs_handbook_markdown(request: Request):
-    text = await asyncio.to_thread(drhandbook.markdown)
-    if auth.can(request.state.user, "notes.edit"):
-        await asyncio.to_thread(drhandbook.mark_exported, request.state.user or "")
-    name = f"notfallhandbuch-{platform.node()}-{time.strftime('%Y-%m-%d')}.md"
-    return Response(text, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
-
-
-@app.get("/notfallhandbuch")
-async def get_handbook_page():
-    return _serve_page("handbook.html")
+app.include_router(drhandbook_routes.router)   # backend/routes/drhandbook.py
 
 
 # ---------------------------------------------------------------------------
 # Change management (changes.py)
 # ---------------------------------------------------------------------------
-def _change_call(fn, *args):
-    try:
-        return fn(*args)
-    except changes.ChangeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/changes")
-async def api_changes(request: Request):
-    return await asyncio.to_thread(changes.overview, request.state.user or "")
-
-
-@app.post("/api/changes")
-async def api_changes_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:100]
-    return await asyncio.to_thread(_change_call, changes.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/changes/{change_id}")
-async def api_changes_update(change_id: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:100]
-    return await asyncio.to_thread(_change_call, changes.save, change_id, payload, request.state.user or "")
-
-
-@app.post("/api/changes/{change_id}/action")
-async def api_changes_action(change_id: str, payload: dict, request: Request):
-    act = str(payload.get("action", ""))
-    request.state.audit_detail = f"{change_id} · {act}"
-    return await asyncio.to_thread(_change_call, changes.action, change_id, act, request.state.user or "",
-                                   str(payload.get("note", "")), str(payload.get("result", "")))
-
-
-@app.post("/api/changes/{change_id}/delete")
-async def api_changes_delete(change_id: str, request: Request):
-    return await asyncio.to_thread(_change_call, changes.delete, change_id, request.state.user or "")
-
-
-@app.get("/api/changes/{change_id}/markdown")
-async def api_changes_markdown(change_id: str):
-    text = await asyncio.to_thread(_change_call, changes.markdown, change_id)
-    return Response(text, media_type="text/markdown; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="aenderung-{change_id}.md"'})
+app.include_router(changes_routes.router)   # backend/routes/changes.py
 
 
 # ---------------------------------------------------------------------------
 # Access review (accessreview.py)
 # ---------------------------------------------------------------------------
-def _review_call(fn, *args):
-    try:
-        return fn(*args)
-    except accessreview.ReviewError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/access-review")
-async def api_access_review():
-    return await asyncio.to_thread(accessreview.overview)
-
-
-@app.post("/api/access-review/settings")
-async def api_access_review_settings(payload: dict):
-    return await asyncio.to_thread(_review_call, accessreview.save_settings, payload)
-
-
-@app.post("/api/access-review/sign-off")
-async def api_access_review_sign_off(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("note", ""))[:200]
-    return await asyncio.to_thread(_review_call, accessreview.sign_off, str(payload.get("note", "")), request.state.user or "")
-
-
-@app.get("/api/access-review/export.csv")
-async def api_access_review_csv():
-    text = await asyncio.to_thread(accessreview.csv_export)
-    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="rechte-{time.strftime("%Y-%m-%d")}.csv"'})
-
-
-@app.get("/api/access-review/{review_id}/markdown")
-async def api_access_review_markdown(review_id: str):
-    text = await heavy(_review_call, accessreview.review_markdown, review_id)
-    return Response(text, media_type="text/markdown; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="rechte-review-{review_id}.md"'})
+app.include_router(accessreview_routes.router)   # backend/routes/accessreview.py
 
 
 # ---------------------------------------------------------------------------
 # Patch deadlines, problems, baseline check, data protection, evidence package
 # ---------------------------------------------------------------------------
-def _md_response(text: str, name: str) -> Response:
-    return Response(text, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 
-def _call400(errors: tuple, fn, *args):
-    try:
-        return fn(*args)
-    except errors as e:
-        raise HTTPException(status_code=400, detail=str(e))
+
+
 
 
 # ---------------------------------------------------------------------------
 # Security watchers: file integrity, sudo log, malware scan, Falco
 # ---------------------------------------------------------------------------
-def _ids(payload: dict) -> list:
-    return [i for i in payload.get("ids") or [] if isinstance(i, int)]
-
-
-@app.get("/api/fim")
-async def api_fim():
-    return await asyncio.to_thread(fim.overview)
-
-
-@app.post("/api/fim/settings")
-async def api_fim_settings(payload: dict):
-    return await asyncio.to_thread(_call400, (fim.FimError, ValueError, TypeError), fim.save_config, payload)
-
-
-@app.post("/api/fim/scan")
-async def api_fim_scan(request: Request):
-    return await asyncio.to_thread(_call400, (fim.FimError,), fim.start_scan, request.state.user or "")
-
-
-@app.post("/api/fim/close")
-async def api_fim_close(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("note", ""))[:200]
-    return await asyncio.to_thread(_call400, (fim.FimError,), fim.close, _ids(payload), str(payload.get("note", "")), request.state.user or "")
-
-
-@app.get("/api/sudo-log")
-async def api_sudo_log():
-    return await asyncio.to_thread(sudolog.overview)
-
-
-@app.get("/api/sudo-log/entries")
-async def api_sudo_log_entries(days: int = 7, user: str = "", q: str = "", flagged: int = 0, own: int = 0):
-    return await asyncio.to_thread(sudolog.entries, days, user, q, bool(flagged), bool(own))
-
-
-@app.get("/api/sudo-log/fleet")
-async def api_sudo_log_fleet(days: int = 7, user: str = "", q: str = "", flagged: int = 0):
-    return await sudolog.fleet_entries(days, user, q, bool(flagged))
-
-
-@app.post("/api/sudo-log/rules")
-async def api_sudo_log_rules(payload: dict):
-    return await asyncio.to_thread(_call400, (sudolog.SudoLogError,), sudolog.save_rules, payload.get("rules") or [])
-
-
-@app.post("/api/sudo-log/reviewed")
-async def api_sudo_log_reviewed(request: Request):
-    return await asyncio.to_thread(sudolog.mark_reviewed, request.state.user or "")
-
-
-@app.get("/api/malware")
-async def api_malware():
-    return await asyncio.to_thread(malware.overview)
-
-
-@app.post("/api/malware/settings")
-async def api_malware_settings(payload: dict):
-    return await asyncio.to_thread(_call400, (malware.MalwareError, ValueError, TypeError), malware.save_config, payload)
-
-
-@app.post("/api/malware/scan")
-async def api_malware_scan(request: Request):
-    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.start_scan, request.state.user or "")
-
-
-@app.post("/api/malware/baseline")
-async def api_malware_baseline(request: Request):
-    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.rkhunter_baseline, request.state.user or "")
-
-
-@app.post("/api/malware/install/{scanner}")
-async def api_malware_install(scanner: str):
-    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.install, scanner)
-
-
-@app.post("/api/malware/close")
-async def api_malware_close(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("note", ""))[:200]
-    return await asyncio.to_thread(_call400, (malware.MalwareError,), malware.close, _ids(payload), str(payload.get("note", "")), request.state.user or "")
-
-
-@app.get("/api/falco")
-async def api_falco():
-    return await asyncio.to_thread(falco.overview)
-
-
-@app.post("/api/falco/setup")
-async def api_falco_setup(request: Request):
-    return await asyncio.to_thread(_call400, (falco.FalcoError,), falco.setup, request.state.user or "")
-
-
-@app.post("/api/falco/close")
-async def api_falco_close(payload: dict, request: Request):
-    return await asyncio.to_thread(falco.close, _ids(payload), request.state.user or "")
-
-
-@app.post("/api/falco/mute")
-async def api_falco_mute(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("rule", ""))[:200]
-    return await asyncio.to_thread(_call400, (falco.FalcoError,), falco.mute, str(payload.get("rule", "")), str(payload.get("container", "")), bool(payload.get("undo")))
+app.include_router(secwatch_routes.router)   # backend/routes/secwatch.py
 
 
 # ---------------------------------------------------------------------------
 # Service catalog
 # ---------------------------------------------------------------------------
-CATALOG_ERRORS = (servicecatalog.CatalogError,)
-
-
-@app.get("/api/service-catalog")
-async def api_catalog(request: Request):
-    return await asyncio.to_thread(servicecatalog.overview, request.state.user or "")
-
-
-@app.post("/api/service-catalog/items")
-async def api_catalog_item_create(payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.save_item, None, payload, request.state.user or "")
-
-
-@app.post("/api/service-catalog/items/{iid}")
-async def api_catalog_item_update(iid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.save_item, iid, payload, request.state.user or "")
-
-
-@app.post("/api/service-catalog/items/{iid}/delete")
-async def api_catalog_item_delete(iid: str, request: Request):
-    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.delete_item, iid, request.state.user or "")
-
-
-@app.post("/api/service-catalog/items/{iid}/request")
-async def api_catalog_submit(iid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.submit, iid, payload.get("values") or {}, str(payload.get("note", "")), request.state.user or "")
-
-
-@app.post("/api/service-catalog/requests/{rid}/{act}")
-async def api_catalog_decide(rid: str, act: str, payload: dict, request: Request):
-    request.state.audit_detail = f"{rid} · {act}"
-    return await asyncio.to_thread(_call400, CATALOG_ERRORS, servicecatalog.decide, rid, act, str(payload.get("note", "")), request.state.user or "")
+app.include_router(servicecatalog_routes.router)   # backend/routes/servicecatalog.py
 
 
 # ---------------------------------------------------------------------------
 # NIS-2 deadlines, policies, suppliers, internal audits
 # ---------------------------------------------------------------------------
-@app.get("/api/nis2")
-async def api_nis2():
-    return await asyncio.to_thread(nis2.overview)
-
-
-@app.get("/api/nis2/markdown")
-async def api_nis2_markdown():
-    return _md_response(await asyncio.to_thread(nis2.markdown), "nis2-meldefristen.md")
-
-
-@app.get("/api/nis2/{cid}/draft/{stage}")
-async def api_nis2_draft(cid: str, stage: str):
-    return _md_response(await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.draft, cid, stage), f"nis2-{stage}.md")
-
-
-@app.post("/api/nis2/profile")
-async def api_nis2_profile(payload: dict):
-    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.save_profile, payload)
-
-
-@app.post("/api/nis2")
-async def api_nis2_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:160]
-    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/nis2/{cid}")
-async def api_nis2_update(cid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.save, cid, payload, request.state.user or "")
-
-
-@app.post("/api/nis2/{cid}/report")
-async def api_nis2_report(cid: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("stage", ""))
-    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.report, cid, str(payload.get("stage", "")), payload.get("submitted"),
-                                   str(payload.get("reference", "")), str(payload.get("note", "")), request.state.user or "")
-
-
-@app.post("/api/nis2/{cid}/close")
-async def api_nis2_close(cid: str, request: Request):
-    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.close, cid, request.state.user or "")
-
-
-@app.post("/api/nis2/{cid}/delete")
-async def api_nis2_delete(cid: str):
-    return await asyncio.to_thread(_call400, (nis2.Nis2Error,), nis2.delete, cid)
-
-
-@app.get("/api/policies")
-async def api_policies(request: Request):
-    return await asyncio.to_thread(policies.overview, request.state.user or "")
-
-
-@app.get("/api/policies/markdown")
-async def api_policies_markdown():
-    return _md_response(await asyncio.to_thread(policies.markdown), "richtlinien.md")
-
-
-@app.get("/api/policies/export.csv")
-async def api_policies_csv():
-    text = await asyncio.to_thread(policies.csv_export)
-    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="richtlinien-kenntnisnahme.csv"'})
-
-
-@app.get("/api/policies/{pid}")
-async def api_policy(pid: str, request: Request):
-    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.detail, pid, request.state.user or "")
-
-
-@app.get("/api/policies/{pid}/version/{version}")
-async def api_policy_version(pid: str, version: int):
-    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.version_text, pid, version)
-
-
-@app.post("/api/policies")
-async def api_policy_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:120]
-    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/policies/{pid}")
-async def api_policy_update(pid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, (policies.PolicyError,), policies.save, pid, payload, request.state.user or "")
-
-
-@app.post("/api/policies/{pid}/{act}")
-async def api_policy_action(pid: str, act: str, payload: dict, request: Request):
-    user = request.state.user or ""
-    fns = {"submit": (policies.submit, pid, user), "release": (policies.release, pid, user), "review": (policies.confirm_review, pid, user),
-           "retire": (policies.retire, pid, bool(payload.get("on", True)), user), "acknowledge": (policies.acknowledge, pid, user), "delete": (policies.delete, pid, user)}
-    if act not in fns:
-        raise HTTPException(status_code=404, detail="Unbekannte Aktion.")
-    return await asyncio.to_thread(_call400, (policies.PolicyError,), *fns[act])
-
-
-@app.get("/api/suppliers")
-async def api_suppliers():
-    return await asyncio.to_thread(suppliers.overview)
-
-
-@app.get("/api/suppliers/markdown")
-async def api_suppliers_markdown():
-    return _md_response(await asyncio.to_thread(suppliers.markdown), "dienstleister.md")
-
-
-@app.post("/api/suppliers")
-async def api_supplier_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:120]
-    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/suppliers/{sid}")
-async def api_supplier_update(sid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.save, sid, payload, request.state.user or "")
-
-
-@app.post("/api/suppliers/{sid}/review")
-async def api_supplier_review(sid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.review, sid, str(payload.get("date", "")), str(payload.get("result", "")),
-                                   str(payload.get("note", "")), request.state.user or "")
-
-
-@app.post("/api/suppliers/{sid}/delete")
-async def api_supplier_delete(sid: str):
-    return await asyncio.to_thread(_call400, (suppliers.SupplierError,), suppliers.delete, sid)
-
-
-AUDIT_ERRORS = (auditplan.AuditPlanError,)
-
-
-@app.get("/api/internal-audits")
-async def api_audits():
-    return await asyncio.to_thread(auditplan.overview)
-
-
-@app.get("/api/internal-audits/markdown")
-async def api_audits_markdown(id: str = ""):
-    return _md_response(await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.markdown, id), "interne-audits.md")
-
-
-@app.post("/api/internal-audits")
-async def api_audit_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:140]
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/internal-audits/{aid}")
-async def api_audit_update(aid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.save, aid, payload, request.state.user or "")
-
-
-@app.post("/api/internal-audits/{aid}/checks")
-async def api_audit_checks(aid: str, payload: dict):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.add_checks, aid, payload.get("texts") or [], bool(payload.get("baseline")))
-
-
-@app.post("/api/internal-audits/{aid}/checks/{cid}")
-async def api_audit_rate(aid: str, cid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.rate, aid, cid, str(payload.get("result", "")), str(payload.get("note", "")), request.state.user or "")
-
-
-@app.post("/api/internal-audits/{aid}/findings/{fid}")
-async def api_audit_finding(aid: str, fid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.update_finding, aid, fid, payload, request.state.user or "")
-
-
-@app.post("/api/internal-audits/{aid}/findings/{fid}/close")
-async def api_audit_finding_close(aid: str, fid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.close_finding, aid, fid, str(payload.get("note", "")), request.state.user or "")
-
-
-@app.post("/api/internal-audits/{aid}/finish")
-async def api_audit_finish(aid: str, payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.finish, aid, str(payload.get("summary", "")), request.state.user or "")
-
-
-@app.post("/api/internal-audits/{aid}/delete")
-async def api_audit_delete(aid: str):
-    return await asyncio.to_thread(_call400, AUDIT_ERRORS, auditplan.delete, aid)
-
-
-@app.get("/api/patch-sla")
-async def api_patch_sla():
-    return await asyncio.to_thread(patchsla.overview)
-
-
-@app.get("/api/patch-sla/markdown")
-async def api_patch_sla_markdown():
-    return _md_response(await asyncio.to_thread(patchsla.markdown), "patch-fristen.md")
-
-
-@app.post("/api/patch-sla/settings")
-async def api_patch_sla_settings(payload: dict):
-    return await asyncio.to_thread(_call400, (patchsla.PatchSlaError,), patchsla.save_settings, payload)
-
-
-@app.post("/api/patch-sla/exception")
-async def api_patch_sla_exception(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('id', '')} · {'entfernt' if payload.get('remove') else payload.get('until', '')}"
-    return await asyncio.to_thread(_call400, (patchsla.PatchSlaError,), patchsla.set_exception, str(payload.get("id", "")),
-                                   str(payload.get("reason", "")), str(payload.get("until", "")), request.state.user or "", bool(payload.get("remove")))
-
-
-@app.get("/api/problems")
-async def api_problems():
-    return await asyncio.to_thread(problems.overview)
-
-
-@app.get("/api/problems/markdown")
-async def api_problems_markdown():
-    return _md_response(await asyncio.to_thread(problems.markdown), "probleme.md")
-
-
-@app.post("/api/problems")
-async def api_problems_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:100]
-    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.save, None, payload, request.state.user or "")
-
-
-@app.post("/api/problems/{pid}")
-async def api_problems_update(pid: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("title", ""))[:100]
-    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.save, pid, payload, request.state.user or "")
-
-
-@app.post("/api/problems/{pid}/status")
-async def api_problems_status(pid: str, payload: dict, request: Request):
-    request.state.audit_detail = f"{pid} · {payload.get('status', '')}"
-    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.set_status, pid, str(payload.get("status", "")),
-                                   str(payload.get("note", "")), request.state.user or "")
-
-
-@app.post("/api/problems/{pid}/change")
-async def api_problems_change(pid: str, request: Request):
-    return await asyncio.to_thread(_call400, (problems.ProblemError, changes.ChangeError), problems.create_change, pid, request.state.user or "")
-
-
-@app.post("/api/problems/{pid}/delete")
-async def api_problems_delete(pid: str):
-    return await asyncio.to_thread(_call400, (problems.ProblemError,), problems.delete, pid)
-
-
-@app.get("/api/compliance/baseline")
-async def api_baseline(refresh: int = 0):
-    return await heavy(baseline.overview, bool(refresh))
-
-
-@app.get("/api/compliance/baseline/markdown")
-async def api_baseline_markdown():
-    return _md_response(await heavy(baseline.markdown), "grundschutz-check.md")
-
-
-@app.post("/api/compliance/baseline/assess")
-async def api_baseline_assess(payload: dict, request: Request):
-    request.state.audit_detail = f"{payload.get('id', '')} · {payload.get('state', '') or 'zurückgesetzt'}"
-    return await asyncio.to_thread(_call400, (baseline.BaselineError,), baseline.assess, str(payload.get("id", "")), str(payload.get("state", "")),
-                                   str(payload.get("note", "")), str(payload.get("evidence", "")), request.state.user or "")
-
-
-@app.get("/api/compliance/privacy")
-async def api_privacy():
-    return await asyncio.to_thread(privacy.overview)
-
-
-@app.get("/api/compliance/privacy/markdown")
-async def api_privacy_markdown(part: str = "all"):
-    part = part if part in ("all", "vvt", "tom") else "all"
-    return _md_response(await heavy(privacy.markdown, part), f"datenschutz-{part}.md")
-
-
-@app.post("/api/compliance/privacy/controller")
-async def api_privacy_controller(payload: dict, request: Request):
-    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_controller, payload, request.state.user or "")
-
-
-@app.post("/api/compliance/privacy/activities")
-async def api_privacy_activity_create(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:100]
-    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_activity, None, payload, request.state.user or "")
-
-
-@app.post("/api/compliance/privacy/activities/{aid}")
-async def api_privacy_activity_update(aid: str, payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("name", ""))[:100]
-    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_activity, aid, payload, request.state.user or "")
-
-
-@app.post("/api/compliance/privacy/activities/{aid}/delete")
-async def api_privacy_activity_delete(aid: str):
-    return await asyncio.to_thread(privacy.delete_activity, aid)
-
-
-@app.post("/api/compliance/privacy/tom")
-async def api_privacy_tom(payload: dict, request: Request):
-    request.state.audit_detail = str(payload.get("area", ""))
-    return await asyncio.to_thread(_call400, (privacy.PrivacyError,), privacy.save_tom, str(payload.get("area", "")), str(payload.get("text", "")),
-                                   request.state.user or "")
-
-
-@app.get("/api/compliance/evidence")
-async def api_evidence_history():
-    return await asyncio.to_thread(evidence.history)
-
-
-@app.post("/api/compliance/evidence")
-async def api_evidence_build(payload: dict, request: Request):
-    try:
-        since, until = int(payload.get("since") or 0), int(payload.get("until") or 0)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Ungültiger Zeitraum.")
-    content, name = await heavy(_call400, (evidence.EvidenceError,), evidence.build, since, until, request.state.user or "")
-    request.state.audit_detail = f"{name} · {len(content) // 1024} KB"
-    return Response(content, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
-
-
-@app.get("/nachweise")
-async def get_compliance_page():
-    return _serve_page("compliance.html")
-
-
-@app.get("/druck")
-async def get_print_page():
-    return _serve_page("print.html")
-
-
-@app.get("/api/history/interfaces")
-async def api_history_interfaces():
-    return {"interfaces": await asyncio.to_thread(monitor.interfaces)}
-
-
-@app.get("/api/monitor/hogs")
-async def api_monitor_hogs(hours: int = 24):
-    return await heavy(monitor.resource_hogs, 168 if hours > 24 else 24)
-
-
-@app.get("/api/sensors")
-async def api_sensors():
-    return await asyncio.to_thread(sensors.read_all)
-
-
-@app.get("/api/sensors/history")
-async def api_sensors_history(hours: int = 24):
-    return await asyncio.to_thread(monitor.sensor_history, 168 if hours > 24 else 24)
-
-
-@app.get("/api/monitor/usage")
-async def api_monitor_usage(iface: str = ""):
-    return await asyncio.to_thread(monitor.data_usage, iface[:32])
-
-
-@app.get("/api/events")
-async def api_events(days: int = 7):
-    return await asyncio.to_thread(insights.events, max(1, min(days, 30)))
-
-
-@app.get("/api/status-summary")
-async def api_status_summary():
-    return await asyncio.to_thread(insights.status_summary)
-
-
-@app.post("/api/status-summary/ack")
-async def api_status_ack(payload: dict, request: Request):
-    request.state.audit_detail = "alle" if payload.get("all") else str(payload.get("text", ""))[:150]
-    try:
-        return await asyncio.to_thread(insights.acknowledge_status, str(payload.get("key", "")), str(payload.get("mode", "change")),
-                                       request.state.user or "", bool(payload.get("all")))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/status-summary/unack")
-async def api_status_unack(payload: dict):
-    return await asyncio.to_thread(insights.unacknowledge_status, str(payload.get("key", "")))
-
-
-@app.get("/api/disk-forecast")
-async def api_disk_forecast():
-    return await asyncio.to_thread(insights.disk_forecast)
-
-
-@app.get("/api/report")
-async def api_report():
-    return await heavy(insights.weekly_report)
-
-
-@app.get("/api/monitor/throttle")
-async def api_monitor_throttle(days: int = 30):
-    return await asyncio.to_thread(monitor.throttle_log, max(1, min(days, monitor.RETENTION_DAYS)))
-
-
-@app.get("/api/monitor/uptime")
-async def api_monitor_uptime(days: int = 7):
-    return await asyncio.to_thread(monitor.service_uptime, max(1, min(days, monitor.RETENTION_DAYS)))
-
-
-@app.get("/api/homelab")
-async def api_homelab():
-    """Apt updates, NVMe health, Docker containers and Kubernetes pods."""
-    return await asyncio.to_thread(homelab.get_all)
-
-
-class AptRunRequest(BaseModel):
-    mode: str  # "update" or "upgrade"
-
-
-@app.get("/api/updates/apt")
-async def api_apt_status():
-    """Status and log of the running / last apt update or upgrade."""
-    return await asyncio.to_thread(homelab.get_apt_run)
-
-
-@app.post("/api/updates/apt")
-async def api_apt_start(req: AptRunRequest, request: Request):
-    request.state.audit_detail = req.mode
-    """Start apt update or update+full-upgrade via its systemd unit."""
-    result = await asyncio.to_thread(homelab.start_apt_run, req.mode, request.state.user or "")
-    if not result["ok"]:
-        raise HTTPException(status_code=409, detail=result["message"])
-    return result
-
-
-@app.get("/api/services")
-async def api_services():
-    """Return status of homelab services."""
-    return {"services": await asyncio.to_thread(services_manager.get_services_status)}
-
-
-@app.get("/api/drives")
-async def api_drives(refresh: bool = False):
-    """Mounted partitions (legacy list) and the lsblk-style storage overview."""
-    if refresh:
-        storage._cache["data"] = None
-    return {"drives": await asyncio.to_thread(services_manager.get_mounted_drives), "storage": await asyncio.to_thread(storage.overview)}
-
-
-@app.get("/api/logs")
-async def api_logs(lines: int = 30):
-    """Return recent system journal logs."""
-    return {"logs": await asyncio.to_thread(services_manager.get_recent_logs, lines=lines)}
+app.include_router(compliance_routes.router)   # backend/routes/compliance.py
 
 
 # ---------------------------------------------------------------------------

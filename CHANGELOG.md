@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Changed
+- **Internals:** `app.py` shrank from 6,500 to 3,800 lines – 28 features (incidents, GitOps, files, compliance, off-site backup, security watchers, documentation, containers page and more) now have their routes in `backend/routes/`, shared helpers in `backend/webutil.py`. Behaviour unchanged: the route manifest is identical before and after.
+
 ## v1.9.4 – 2026-11-26
 
 ### Changed
