@@ -175,7 +175,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.5.2", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.5.3", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 
