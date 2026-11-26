@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.6.0 – 2026-11-26
+
 ### New
 - **Off-site backup for several servers:** the main dashboard lists the backups of all connected servers, one group per server, with state, progress, *Jetzt sichern* and *Prüfen*, and a link to open the server. *Auf andere Server übertragen* sets up a backup of this server on the chosen others – same target, sign-in (and Google client ID), selection, schedule and password, each server in its own folder `HostCore/<server name>`; copying again updates the backup of the same name instead of adding another. Servers without the feature yet or without restic/rclone say so. The guide has a new section *Mehrere Pis*.
 
