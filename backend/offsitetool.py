@@ -235,14 +235,30 @@ def explain(stderr: str) -> str:
     cause = next((ln for ln in reversed(lines[:-1]) if RCLONE_HINT.search(ln) and ln != last), "")
     low = (cause + " " + last).lower()
     if "ratelimit" in low or "quota" in low or "429" in low:
-        return ("Google Drive drosselt die Anfragen (Kontingent). Abhilfe: in der Sicherung eine eigene Google-Client-ID eintragen "
-                "und neu verbinden. – " + (cause or last)[:250])
+        return throttled(stderr)
     if "invalid_grant" in low or "token has been expired or revoked" in low:
         return "Die Anmeldung beim Anbieter ist abgelaufen oder wurde widerrufen – in der Sicherung neu verbinden."
     if "error talking http to rclone" in low or ("context deadline exceeded" in low and "rclone" in low):
         return ("rclone hat nicht rechtzeitig geantwortet – meist wartet es auf den Anbieter, der drosselt (bei Google Drive: "
                 "eigene Google-Client-ID eintragen und neu verbinden) oder nicht erreichbar ist." + (f" rclone: {cause[:250]}" if cause else ""))
     return (f"{last[:300]} – rclone: {cause[:250]}" if cause else last[:400])
+
+
+RCLONE_PROJECT = "202264815644"     # Google project of rclone's built-in client, shared by every rclone user
+
+
+def throttled(stderr: str) -> str:
+    """Google's 403/429 'quota exceeded' in plain words - and whose quota: rclone's shared one or the own project."""
+    text = stderr or ""
+    project = (re.search(r"project_number:(\d+)", text) or [None, ""])[1]
+    metric = re.search(r"quota metric '([^']+)' and limit '([^']+)'", text)
+    what = f" ({metric.group(2)})" if metric else ""
+    if project == RCLONE_PROJECT or not project:
+        return ("Google Drive drosselt die Anfragen: Die Sicherung nutzt noch die Kennung von rclone, die sich alle rclone-Nutzer teilen und "
+                f"deren Kontingent{what} meist erschöpft ist. Abhilfe: eine eigene Google-Client-ID anlegen, in der Sicherung eintragen und "
+                "neu mit Google Drive verbinden.")
+    return (f"Google Drive drosselt die Anfragen deines eigenen Google-Projekts{what} – das legt sich meist nach ein paar Minuten. "
+            "Später noch einmal starten.")
 
 
 class Restic:
@@ -275,21 +291,31 @@ class Restic:
             die(f"restic {args[0]}: {explain(res.stderr) if res.stderr else 'fehlgeschlagen'}")
         return res
 
-    def preflight(self) -> None:
+    def preflight(self, attempts: int = 3) -> None:
         """rclone targets: one quick listing first, so a throttled or expired sign-in says so in plain words
-        instead of restic's 'context deadline exceeded' after a minute."""
+        instead of restic's 'context deadline exceeded' after a minute. A short throttling of an own Google
+        project is waited out (a minute, a few times); rclone's shared client is reported right away."""
         if not self.repo.startswith("rclone:"):
             return
         say("▶ Verbindung prüfen")
-        try:
-            res = subprocess.run(["rclone", "lsjson", "--dirs-only", "--max-depth", "1", "--retries", "1", "--low-level-retries", "3",
-                                  "--contimeout", "30s", "--timeout", "90s", "hc:"], env=self.env, capture_output=True, text=True,
-                                 timeout=180, errors="replace")
-        except subprocess.TimeoutExpired:
-            die("Das Ziel antwortet nicht innerhalb von 3 Minuten. Bei Google Drive ist das meist die Drosselung der gemeinsamen "
-                "rclone-Kennung – in der Sicherung eine eigene Google-Client-ID eintragen und neu verbinden.")
-        if res.returncode != 0:
-            die(f"Ziel nicht erreichbar: {explain(res.stderr)}")
+        for attempt in range(1, attempts + 1):
+            try:
+                res = subprocess.run(["rclone", "lsjson", "--dirs-only", "--max-depth", "1", "--retries", "1", "--low-level-retries", "3",
+                                      "--contimeout", "30s", "--timeout", "90s", "hc:"], env=self.env, capture_output=True, text=True,
+                                     timeout=180, errors="replace")
+            except subprocess.TimeoutExpired:
+                die("Das Ziel antwortet nicht innerhalb von 3 Minuten. Bei Google Drive ist das meist die Drosselung der gemeinsamen "
+                    "rclone-Kennung – eine eigene Google-Client-ID anlegen, in der Sicherung eintragen und neu verbinden.")
+            if res.returncode == 0:
+                return
+            err = res.stderr or ""
+            own = re.search(r"project_number:(\d+)", err)
+            limited = re.search(r"ratelimit|quota|\b429\b", err, re.I)
+            if limited and own and own.group(1) != RCLONE_PROJECT and attempt < attempts:
+                say(f"   Google drosselt gerade – neuer Versuch in 60 s ({attempt}/{attempts - 1})")
+                time.sleep(60)
+                continue
+            die(f"Ziel nicht erreichbar: {explain(err)}")
 
     def ensure_repo(self) -> None:
         self.preflight()
@@ -306,7 +332,7 @@ class Restic:
         die(f"Ziel nicht erreichbar: {explain(err)}")
 
     def snapshots(self):
-        self.preflight()
+        self.preflight(attempts=1)          # the page waits for this one: no waiting out
         res = self.run("snapshots", "--json", "--host", self.host, "--tag", TAG, check=False, timeout=300)
         if res.returncode != 0:
             err = res.stderr or ""

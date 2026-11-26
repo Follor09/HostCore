@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Fixed
+- **Clearer Google Drive throttling message:** it now tells from Google's answer whose quota ran out – rclone's shared client (then: set up an own client ID) or the own Google project (then: try again later) – instead of quoting a link from Google's error text. A short throttling of an own project no longer fails the backup at once: the check waits a minute and tries again, up to three times.
+
 ## v1.5.3 – 2026-11-26
 
 ### Fixed
