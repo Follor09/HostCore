@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.5.7 – 2026-11-26
+
 ### New
 - **Guide for the off-site backup** ([docs/EXTERNE-SICHERUNG.md](docs/EXTERNE-SICHERUNG.md), German): how it works, setting up each target, an own Google client ID step by step (including the greyed-out *Publish* button and "Fehler 403: access_denied"), everyday use, restoring, getting the data back without HostCore when the server is gone, a table of error messages, and how to remove everything again – the backup, the data in the target, the access granted to Google/Dropbox/Nextcloud, the Google project, leftovers on the server and the packages. Linked from the section, the client ID form and the READMEs.
 
