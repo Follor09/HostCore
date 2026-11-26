@@ -96,7 +96,8 @@ def _client(app_module, user):
     orig = c.request
 
     def request(*a, **k):
-        app_module._proxy_client = None
+        import hostctx
+        hostctx.reset_proxy()
         return orig(*a, **k)
     c.request = request
     return c

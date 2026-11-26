@@ -40,6 +40,9 @@ import homelab
 import auth
 import settings_store
 import wol
+import hostctx
+from routes import wol as wol_routes
+from routes.wol import _wol_public, _lan_mark_wol
 import files
 import terminal
 import systools
@@ -200,47 +203,13 @@ async def heavy(fn, *args, **kwargs):
     return await asyncio.get_running_loop().run_in_executor(HEAVY_POOL, functools.partial(fn, *args, **kwargs))
 
 
-HOST_HEADER = "x-picore-host"   # which server the page in the browser shows ("local" or a remote id)
 INTERNAL_USER_HEADER = "x-picore-mcp-user"
 INTERNAL_KEY = secrets.token_hex(32)
-AGENT = agent.enabled()
+# Which server a request is for, and the client for remote agents: shared with backend/routes/
+HOST_HEADER, HOST_CHANGED_CLOSE, AGENT = hostctx.HOST_HEADER, hostctx.HOST_CHANGED_CLOSE, hostctx.AGENT
+_proxy, _remote_for = hostctx.proxy, hostctx.remote_for
+_host_changed, _host_changed_response = hostctx.host_changed, hostctx.host_changed_response
 auth.AGENT_MODE = AGENT
-_proxy_client: Optional[httpx.AsyncClient] = None
-
-
-def _proxy() -> httpx.AsyncClient:
-    global _proxy_client
-    if _proxy_client is None:
-        _proxy_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=600.0, write=600.0, pool=10.0),
-                                          follow_redirects=False)
-    return _proxy_client
-
-
-def _remote_for(request_or_ws) -> Optional[dict]:
-    """The remote server this browser has switched to (cookie), if any - never in agent mode."""
-    if AGENT:
-        return None
-    return remotes.selected(request_or_ws.cookies.get(remotes.COOKIE))
-
-
-HOST_CHANGED_CLOSE = 4409   # WebSocket close code: the page shows another server than the one selected now
-
-
-def _host_changed(request_or_ws, want: Optional[str]) -> Optional[str]:
-    """The selection is one cookie for the whole browser, so a tab opened for server A still talks after
-    another tab switched to B. Pages say which server they show ("local" or a remote id); returns the
-    name of the server selected now if that is a different one, else None."""
-    if want is None or AGENT:
-        return None
-    remote = _remote_for(request_or_ws)
-    if want == (remote["id"] if remote else "local"):
-        return None
-    return remote["name"] if remote else "dieser Server"
-
-
-def _host_changed_response(now: str) -> JSONResponse:
-    return JSONResponse({"detail": f"Inzwischen ist ein anderer Server ausgewählt ({now}). Die Seite wird neu geladen – "
-                                   "danach bitte noch einmal versuchen.", "host_changed": True}, status_code=409)
 
 
 @app.middleware("http")
@@ -1907,10 +1876,6 @@ class LanRenameRequest(BaseModel):
     alias: str = ""
 
 
-class LanWolRequest(BaseModel):
-    name: str
-
-
 class PortTestRequest(BaseModel):
     host: str
     ports: str
@@ -1948,38 +1913,6 @@ async def api_tools_lan_forget(mac: str, request: Request):
         return await asyncio.to_thread(netscan.forget, mac)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-def _lan_mark_wol(data: dict) -> dict:
-    """A remote's LAN scan: is the device in this dashboard's (global) Wake-on-LAN list?"""
-    macs = {d["mac"].lower() for d in wol.list_devices()}
-    for d in data.get("devices") or []:
-        if isinstance(d, dict):
-            d["in_wol"] = str(d.get("mac", "")).lower() in macs
-    return data
-
-
-@app.post("/api/tools/lan/{mac}/wol")
-async def api_tools_lan_wol(mac: str, req: LanWolRequest, request: Request):
-    # Not forwarded (one list for all servers): a device found by a remote's scan is woken from there
-    now = _host_changed(request, request.headers.get(HOST_HEADER))
-    if now:
-        return _host_changed_response(now)
-    remote = _remote_for(request)
-    request.state.audit_detail = f"{req.name[:40]} ({mac[:20]})" + (f" @{remote['name']}" if remote else "")
-    try:
-        await asyncio.to_thread(wol.add_device, req.name, mac, "", remote["id"] if remote else "")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if not remote:
-        return await asyncio.to_thread(netscan.devices)
-    try:
-        res = await _proxy().get(f"{remote['url']}/api/tools/lan", headers={"Authorization": f"Bearer {remote['token']}",
-                                                                            "X-PiCore-User": request.state.user or ""})
-        res.raise_for_status()
-        return _lan_mark_wol(res.json())
-    except (httpx.HTTPError, ValueError) as e:
-        raise HTTPException(status_code=502, detail=f"Hinzugefügt, aber {remote['name']} nicht erreichbar ({type(e).__name__}).")
 
 
 class NotesRequest(BaseModel):
@@ -3696,154 +3629,7 @@ async def api_service_journal(service_id: str, lines: int = 150):
 # ---------------------------------------------------------------------------
 # Wake-on-LAN
 # ---------------------------------------------------------------------------
-class WolDeviceRequest(BaseModel):
-    name: str
-    mac: str
-    broadcast: str = ""
-    via: str = ""          # "" = this dashboard sends the packet, else a remote id
-
-
-class WolUpdateRequest(BaseModel):
-    via: Optional[str] = None
-    broadcast: Optional[str] = None
-
-
-class WolWakeRequest(BaseModel):
-    via: Optional[str] = None    # send from this server this once instead of the device's own
-
-
-class AgentWolRequest(BaseModel):
-    mac: str
-    broadcast: str = ""
-
-
-def _wol_via_ok(via: str) -> str:
-    via = (via or "").strip()
-    if via and not remotes.get(via):
-        raise HTTPException(status_code=400, detail="Diesen Server gibt es nicht (mehr).")
-    return via
-
-
-def _wol_hosts() -> list:
-    return [{"id": "", "name": f"{platform.node()} (Dashboard)"}] + [{"id": r["id"], "name": r["name"]} for r in remotes._all()]
-
-
-def _wol_public(d: dict) -> dict:
-    via = d.get("via", "")
-    r = remotes.get(via) if via else None
-    return {**d, "via": via, "via_name": r["name"] if r else ("" if not via else "Server entfernt"), "via_missing": bool(via and not r)}
-
-
-async def _wol_import_remote_lists() -> None:
-    """Before 1.9.1 every server kept its own list: take each remote's over once (sent from there)."""
-    done = set(settings_store.get("wol_imported_remotes", []) or [])
-    todo = [r for r in remotes._all() if r["id"] not in done and remotes._status.get(r["id"], {}).get("online") is not False]
-    if not todo:
-        return
-
-    async def one(r):
-        try:
-            res = await _proxy().get(f"{r['url']}/api/wol", headers={"Authorization": f"Bearer {r['token']}"}, timeout=4.0)
-        except httpx.HTTPError:
-            return None
-        if res.status_code != 200:
-            return None
-        try:
-            items = res.json().get("devices") or []
-        except ValueError:
-            return None
-        n = await asyncio.to_thread(wol.import_devices, [i for i in items if isinstance(i, dict) and not i.get("via")], r["id"])
-        if n:
-            logger.info(f"Wake-on-LAN: {n} device(s) taken over from {r['name']}")
-        return r["id"]
-
-    ok = [x for x in await asyncio.gather(*(one(r) for r in todo)) if x]
-    if ok:
-        settings_store.set("wol_imported_remotes", sorted(done | set(ok)))
-
-
-@app.get("/api/wol")
-async def api_wol_devices():
-    if not AGENT:
-        await _wol_import_remote_lists()
-    return {"devices": [_wol_public(d) for d in wol.list_devices()], "hosts": [] if AGENT else _wol_hosts()}
-
-
-@app.post("/api/wol/{device_id}/wake")
-async def api_wol_wake(device_id: str, request: Request, req: Optional[WolWakeRequest] = None):
-    try:
-        device = wol.get_device(device_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    via = device.get("via", "") if req is None or req.via is None else req.via
-    via = "" if AGENT else via
-    remote = remotes.get(via) if via else None
-    if via and not remote:
-        raise HTTPException(status_code=400, detail=f"Der Server, über den {device['name']} geweckt wird, existiert nicht mehr – "
-                                                    "in den Einstellungen unter Wake-on-LAN einen anderen wählen.")
-    request.state.audit_detail = f"{device['name']} ({device['mac']})" + (f" über {remote['name']}" if remote else "")
-    if remote:
-        try:
-            res = await _proxy().post(f"{remote['url']}/api/agent/wol", json={"mac": device["mac"], "broadcast": device["broadcast"]},
-                                      headers={"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""},
-                                      timeout=10.0)
-        except httpx.HTTPError as e:
-            remotes.mark_offline(remote["id"], f"Nicht erreichbar ({type(e).__name__})")
-            raise HTTPException(status_code=502, detail=f"{remote['name']} nicht erreichbar ({type(e).__name__}) – Weckruf nicht gesendet.")
-        if res.status_code == 404:
-            raise HTTPException(status_code=502, detail=f"Der Agent auf {remote['name']} ist zu alt für Wake-on-LAN über ihn – bitte dort aktualisieren.")
-        if res.status_code != 200:
-            detail = res.json().get("detail", "") if res.headers.get("content-type", "").startswith("application/json") else ""
-            raise HTTPException(status_code=502, detail=f"{remote['name']}: {detail or f'Antwort {res.status_code}'}")
-    else:
-        try:
-            await asyncio.to_thread(wol.send, device["mac"], device["broadcast"])
-        except (ValueError, OSError) as e:
-            raise HTTPException(status_code=400, detail=str(e))
-    logger.info(f"Wake-on-LAN sent to {device['name']} ({device['mac']})" + (f" via {remote['name']}" if remote else ""))
-    return {"ok": True, "message": f"Weckruf an {device['name']} gesendet" + (f" (über {remote['name']})." if remote else ".")}
-
-
-@app.post("/api/agent/wol")
-async def api_agent_wol(req: AgentWolRequest, request: Request):
-    """Agent: the main dashboard asks this server to send a magic packet into its own network."""
-    if not AGENT:
-        raise HTTPException(status_code=404, detail="Kein Agent.")
-    try:
-        await asyncio.to_thread(wol.send, req.mac, req.broadcast)
-    except (ValueError, OSError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    request.state.audit_detail = f"{req.mac[:20]} (vom Haupt-Dashboard)"
-    logger.info(f"Wake-on-LAN sent to {req.mac} for the main dashboard")
-    return {"ok": True}
-
-
-@app.post("/api/settings/wol")
-async def api_settings_wol_add(req: WolDeviceRequest, request: Request):
-    via = _wol_via_ok(req.via)
-    try:
-        device = wol.add_device(req.name, req.mac, req.broadcast, via)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"ok": True, "device": _wol_public(device)}
-
-
-@app.post("/api/settings/wol/{device_id}/update")
-async def api_settings_wol_update(device_id: str, req: WolUpdateRequest, request: Request):
-    via = _wol_via_ok(req.via) if req.via is not None else None
-    try:
-        device = wol.update_device(device_id, via=via, broadcast=req.broadcast)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    out = _wol_public(device)
-    request.state.audit_detail = f"{device['name']}: über {out['via_name'] or platform.node()}"
-    return {"ok": True, "device": out}
-
-
-@app.post("/api/settings/wol/{device_id}/delete")
-async def api_settings_wol_delete(device_id: str):
-    wol.remove_device(device_id)
-    return {"ok": True}
+app.include_router(wol_routes.router)   # backend/routes/wol.py
 
 
 # ---------------------------------------------------------------------------

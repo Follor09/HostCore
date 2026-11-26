@@ -14,8 +14,11 @@ HostCore aims to be a productive, professional tool for running a Linux server, 
 ## Project layout
 
 ```
-app.py            entry point: the FastAPI app and its routes
+app.py            entry point: the FastAPI app, middleware and most routes
 backend/          one Python module per feature (auth, containers, gitops, compliance …)
+backend/routes/   routes split out of app.py as FastAPI routers (wol.py so far) – new features go here
+backend/hostctx.py  which server a request is for (local or remote) and the client for remote agents
+tests/            pytest suite; tests/routes.txt is the generated route manifest
 static/           pages, scripts and styles (no build step)
 docs/             guides and screenshots
 *.sh              install, update and helper scripts (root parts run from a root-owned copy)
@@ -27,7 +30,7 @@ Data files (`settings.json`, `auth.json`, `history.db`, `tasks/` …) are create
 ## Pull requests
 
 - Keep the style of the surrounding code: plain FastAPI + Python modules (one module per feature), vanilla JavaScript without a build step, no inline scripts (strict CSP), CSS in `static/style.css`.
-- Every new changing endpoint needs an entry in `backend/access.py` (otherwise it is admin-only) and, if it should appear in the activity log, a label in `backend/audit.py`.
+- Every new changing endpoint needs an entry in `backend/access.py` and a label in `backend/audit.py`; if it must never go to a remote server, add it to `LOCAL_ONLY` in `backend/remotes.py`. The test `tests/test_routes.py` fails for a changing route without a permission rule, and shows every change to permissions, forwarding or labels as a diff of `tests/routes.txt` – refresh it with `UPDATE_ROUTES=1 venv/bin/python -m pytest tests/test_routes.py` and commit it.
 - UI texts are German; add the English translation to `static/i18n.js`.
 - Avoid class names starting with `ad-` – ad blockers hide them.
 - New dependencies only if really needed (it also runs on a Pi); `cryptography` and `httpx` are already there.

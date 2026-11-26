@@ -36,6 +36,16 @@ def _all() -> List[Dict[str, Any]]:
     return list(settings_store.get("remotes", []) or [])
 
 
+def all_remotes() -> List[Dict[str, Any]]:
+    """All configured remote servers (with tokens - for server-side use only)."""
+    return _all()
+
+
+def status_of(remote_id: str) -> Dict[str, Any]:
+    """Last known status: {"online": bool|None, "info": ..., "error": ..., "checked": ts}."""
+    return dict(_status.get(remote_id, {}))
+
+
 def get(remote_id: str) -> Optional[Dict[str, Any]]:
     return next((r for r in _all() if r["id"] == remote_id), None)
 

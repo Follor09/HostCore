@@ -2,13 +2,15 @@
 
 import pytest
 
+from helpers import iter_routes
+
 # Routes that reach out to the internet or run long jobs - not part of a quick smoke test
 SKIP = set()
 
 
 def _get_routes(app):
     out = []
-    for r in app.routes:
+    for r in iter_routes(app.routes):
         path = getattr(r, "path", "")
         if "GET" in (getattr(r, "methods", None) or set()) and path.startswith("/api/") and "{" not in path and path not in SKIP:
             out.append(path)

@@ -4,6 +4,10 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Changed
+- **Activity log:** 20 more actions have a readable label instead of "Aktion /api/…" (self-test, vulnerability scan and ignore, hardening check, image update check, EOL check, ZIP, duplicate search, remote server test and change, NetBox test, power settings, postmortems, VM migration and more).
+- **Internals:** a route manifest (`tests/routes.txt`) records permission, forwarding and activity-log label of every API route, and a test keeps it current – no changing route can end up without a permission rule. First step of splitting `app.py`: shared host selection in `backend/hostctx.py`, Wake-on-LAN routes as a router in `backend/routes/wol.py` (behaviour unchanged).
+
 ## v1.9.3 – 2026-11-26
 
 ### Changed
