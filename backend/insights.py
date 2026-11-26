@@ -420,7 +420,7 @@ def status_summary() -> Dict[str, Any]:
                           ("privacy", "alerts", "/nachweise#datenschutz-vvt")):
         try:
             for a in getattr(__import__(mod), fn)():
-                add(a.get("level", "warning"), a["text"], link)
+                add(a.get("level", "warning"), a["text"], a.get("link") or link)
         except Exception as e:
             logger.warning(f"Status ({mod}): {e}")
     try:

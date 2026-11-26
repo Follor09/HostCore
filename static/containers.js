@@ -419,6 +419,20 @@
   // ---------------------------------------------------------------------------
   // Docker containers
   // ---------------------------------------------------------------------------
+  // ?c=<name>: a link from a hint ("Datenbank X läuft nicht") - mark that container once it is listed
+  let focusName = new URLSearchParams(location.search).get('c');
+
+  function focusContainer(table) {
+    if (!focusName) return;
+    const row = [...table.querySelectorAll('tr[data-name]')].find(r => r.dataset.name === focusName);
+    if (!row) return;
+    focusName = null;
+    history.replaceState(null, '', location.pathname + location.hash);
+    row.classList.add('ctr-focus');
+    setTimeout(() => row.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+    setTimeout(() => row.classList.remove('ctr-focus'), 8000);
+  }
+
   function renderDocker() {
     const dk = state.data.docker;
     const table = $('dk-table'), hint = $('dk-hint');
@@ -426,9 +440,11 @@
     if (!dk.available) { table.innerHTML = ''; hint.textContent = t('Docker ist nicht installiert.'); return; }
     if (dk.error) { table.innerHTML = ''; hint.textContent = `${dk.error}${dk.hint ? ' – ' + dk.hint : ''}`; return; }
     const body = head(table, ['Container', 'Status', 'CPU', 'RAM', 'Ports', '']);
+    if (focusName && !$('dk-stopped').checked && dk.containers.some(c => c.name === focusName && c.state !== 'running')) $('dk-stopped').checked = true;
     const items = dk.containers.filter(c => $('dk-stopped').checked || c.state === 'running');
     items.forEach(c => {
       const row = body.insertRow();
+      row.dataset.name = c.name;
       nameCell(row, c.name, `${shortImage(c.image)}${c.stack ? ` · Stack ${c.stack}` : ''}`);
       const st = row.insertCell();
       st.appendChild(tag(c.level, c.state === 'running' ? (c.health === 'unhealthy' ? t('Ungesund') : t('Läuft')) : c.state === 'exited' ? t('Beendet') : c.state, c.status));
@@ -456,6 +472,7 @@
       }
     });
     if (!items.length) emptyRow(table, 6, t('Keine Container.'));
+    focusContainer(table);
   }
 
   async function dockerAction(btn, path, action) {

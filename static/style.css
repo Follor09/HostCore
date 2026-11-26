@@ -12766,3 +12766,7 @@ h3.os-server-head { margin: 6px 0 2px; }
 .task-dock.hints-mode .task-dock-log { display: none; }
 .task-dock-item.hint-acked-toggle { color: var(--text-dim); font-size: 0.78rem; }
 .task-dock-actions .task-dock-fact-k { align-self: center; margin-left: 6px; }
+
+/* Containers: the container a hint pointed to */
+tr.ctr-focus > td { background: rgba(var(--accent-rgb), 0.12); transition: background 0.6s; }
+tr.ctr-focus > td:first-child { box-shadow: inset 3px 0 0 var(--accent-cyan); }

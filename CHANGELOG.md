@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Changed
+- **"Datenbank … läuft nicht" leads to the container:** the hint in the status bar and the task bar, the event and the alarm open the Docker page with that container marked and scrolled into view (stopped containers shown), where it can be started. The other database hints still lead to the database overview. Modules can now give each hint its own link.
+
 ## v1.7.0 – 2026-11-26
 
 ### New

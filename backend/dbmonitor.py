@@ -256,12 +256,19 @@ def _query_my(name: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Checks
 # ---------------------------------------------------------------------------
+def container_link(name: str) -> str:
+    """The container on the Docker page (marked there), e.g. to start a database that stopped."""
+    from urllib.parse import quote
+    return f"/containers?c={quote(name, safe='')}#docker"
+
+
 def _problems(db: Dict[str, Any], st: Dict[str, Any], dumps: Dict[str, Any], cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     """[{key, level, text}] - the key decides whether a problem is new (event) or still the same one."""
     out = []
     name = db["name"]
     if db["state"] != "running":
-        out.append({"key": "down", "level": "critical" if db["level"] == "error" else "warning", "text": f"Datenbank {name} läuft nicht"})
+        out.append({"key": "down", "level": "critical" if db["level"] == "error" else "warning", "text": f"Datenbank {name} läuft nicht",
+                    "link": container_link(name)})
         return out
     if st.get("error"):
         out.append({"key": "error", "level": "warning", "text": f"Datenbank {name} nicht abfragbar – {st['error']}"})
@@ -331,7 +338,7 @@ def _event(name: str, key: str, level: str, title: str, detail: str = "") -> Non
     with _lock:
         events = (settings_store.get(EVENTS_KEY, []) or [])[-199:]
         events.append({"ts": int(time.time()), "level": level, "title": title, "detail": detail, "container": name,
-                       "key": f"db:{name}:{key}"})
+                       "key": f"db:{name}:{key}", **({"link": container_link(name)} if key == "down" else {})})
         settings_store.set(EVENTS_KEY, events)
 
 
@@ -602,5 +609,6 @@ def refresh() -> Dict[str, Any]:
 
 
 def alerts() -> List[Dict[str, Any]]:
-    return [{"level": p["level"], "text": p["text"]} for st in _status.values() for p in st.get("problems", [])]
+    return [{"level": p["level"], "text": p["text"], **({"link": p["link"]} if p.get("link") else {})}
+            for st in _status.values() for p in st.get("problems", [])]
 
