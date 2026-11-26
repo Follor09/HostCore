@@ -7,6 +7,7 @@ import asyncio
 import functools
 import logging
 import os
+import platform
 import re
 from concurrent.futures import ThreadPoolExecutor
 
@@ -79,3 +80,15 @@ def same_origin(request: Request) -> bool:
     if not origin:
         return True  # same-origin navigation / non-browser clients
     return origin.split("://", 1)[-1] == request.headers.get("host", "")
+
+
+def _os_name() -> str:
+    """PRETTY_NAME from /etc/os-release, e.g. "Debian GNU/Linux 13 (trixie)"."""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("PRETTY_NAME="):
+                    return line.split("=", 1)[1].strip().strip('"')[:80]
+    except OSError:
+        pass
+    return f"{platform.system()} {platform.release()}"

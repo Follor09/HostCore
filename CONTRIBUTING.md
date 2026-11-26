@@ -14,11 +14,12 @@ HostCore aims to be a productive, professional tool for running a Linux server, 
 ## Project layout
 
 ```
-app.py            entry point: the FastAPI app, middleware, login/sessions, terminal and the remaining routes
+app.py            entry point: the FastAPI app, its middleware (login, permissions, security, remote forwarding) and the API docs
 backend/          one Python module per feature (auth, containers, gitops, compliance …)
 backend/routes/   the API routes of one feature each, as FastAPI routers – new features go here
 backend/hostctx.py  which server a request is for (local or remote) and the client for remote agents
 backend/webutil.py  shared helpers for routes: serve_page, heavy (long computations), call400
+backend/authweb.py  session cookie, re-confirmation and profile helpers for routes
 tests/            pytest suite; tests/routes.txt is the generated route manifest
 static/           pages, scripts and styles (no build step)
 docs/             guides and screenshots
