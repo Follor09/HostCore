@@ -132,7 +132,7 @@
       }, 'users.manage'),
       button('Bearbeiten', 'text-btn', () => openForm(j), 'users.manage'),
       confirmButton('Entfernen', 'text-btn danger', async () => {
-        const r = await run(() => api(`/api/offsite/${j.id}/delete`, {}), 'Entfernt – die Daten im Ziel bleiben erhalten.');
+        const r = await run(() => api(`/api/offsite/${j.id}/delete`, {}), 'Entfernt – die Daten im Ziel bleiben erhalten. Wie man auch sie und den Zugriff entfernt: Anleitung, Abschnitt Rückbau.');
         if (r) { data = r; render(); }
       }, 'users.manage'));
     c.appendChild(act);
@@ -260,7 +260,11 @@
           a.href = 'https://rclone.org/drive/#making-your-own-client-id';
           a.target = '_blank';
           a.rel = 'noopener noreferrer';
-          help.append(a, t('. Danach hier eintragen und neu verbinden.'));
+          const b = el('a', '', t('Schritt für Schritt'));
+          b.href = 'https://github.com/Follor09/HostCore/blob/main/docs/EXTERNE-SICHERUNG.md#google-drive-eigene-client-id';
+          b.target = '_blank';
+          b.rel = 'noopener noreferrer';
+          help.append(a, ' · ', b, t('. Danach hier eintragen und neu verbinden.'));
           own.appendChild(help);
           const g = el('div', 'inline-grid');
           cid = input('text', val('client_id'), { placeholder: '123456789-abc….apps.googleusercontent.com' });
