@@ -12,6 +12,7 @@
   const LOCALE = (window.I18N && window.I18N.locale) || 'de-DE';
   const can = p => !window.PiAuth || window.PiAuth.can(p);
   let data = null;
+  let found = null;   // content search: {q, byId: {id: {count, hits}}} or null
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -48,6 +49,20 @@
     return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
   }
 
+  // Snippet with the search term highlighted (text only, no HTML from the recording)
+  function mark(text, q) {
+    const span = raw('span', 'rec-hit-text');
+    const low = text.toLowerCase(), needle = q.toLowerCase();
+    let at = 0, i;
+    while ((i = low.indexOf(needle, at)) >= 0) {
+      span.appendChild(document.createTextNode(text.slice(at, i)));
+      span.appendChild(raw('mark', '', text.slice(i, i + q.length)));
+      at = i + q.length;
+    }
+    span.appendChild(document.createTextNode(text.slice(at)));
+    return span;
+  }
+
   function render() {
     $('rec-enabled').checked = data.config.enabled;
     $('rec-days').value = data.config.days;
@@ -59,10 +74,25 @@
       tbl.appendChild(el('caption', 'field-hint rec-empty', t('Noch keine Mitschnitte.')));
       return;
     }
+    // Typing filters by user, target, address and date; "Im Inhalt suchen" asks the server
+    const words = $('rec-q').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const list = data.recordings.filter(r => {
+      if (found) return !!found.byId[r.id];
+      const hay = `${r.user} ${r.client || ''} ${r.container ? `container ${r.container}` : 'server'} ${fmtTs(r.started)}`.toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+    $('rec-q-clear').hidden = !found && !words.length;
+    const info = $('rec-search-info');
+    info.hidden = !found && !words.length;
+    info.textContent = found
+      ? (list.length ? `${t('Treffer für')} „${found.q}“: ${list.length} ${t(list.length === 1 ? 'Mitschnitt' : 'Mitschnitte')}` : `${t('Kein Mitschnitt enthält')} „${found.q}“.`)
+      : `${list.length} ${t('von')} ${data.recordings.length}`;
+    if (!list.length) return;
     const head = tbl.createTHead().insertRow();
     ['Beginn', 'Benutzer', 'Ziel', 'Dauer', 'Größe', ''].forEach(h => head.appendChild(el('th', '', t(h))));
     const body = tbl.createTBody();
-    data.recordings.forEach(r => {
+    list.forEach(r => {
+      const hit = found && found.byId[r.id];
       const row = body.insertRow();
       row.insertCell().textContent = fmtTs(r.started);
       const who = row.insertCell();
@@ -77,8 +107,24 @@
       act.className = 'row-action';
       const play = el('button', 'btn-secondary', t('Abspielen'));
       play.type = 'button';
-      play.addEventListener('click', () => openPlayer(r));
+      play.addEventListener('click', () => openPlayer(r, hit ? hit.hits[0].at : null));
       act.appendChild(play);
+      if (hit) {
+        const sub = body.insertRow();
+        sub.className = 'rec-hit-row';
+        const cell = sub.insertCell();
+        cell.colSpan = 6;
+        hit.hits.forEach(h => {
+          const b = el('button', 'rec-hit', '');
+          b.type = 'button';
+          b.title = t('Ab dieser Stelle abspielen');
+          b.appendChild(el('span', 'rec-hit-time', fmtClock(h.at)));
+          b.appendChild(mark(h.text, found.q));
+          b.addEventListener('click', () => openPlayer(r, h.at));
+          cell.appendChild(b);
+        });
+        if (hit.count > hit.hits.length) cell.appendChild(el('span', 'field-hint', `+ ${hit.count - hit.hits.length} ${t('weitere Treffer')}`));
+      }
       if (!r.running) {
         const del = el('button', 'text-btn', t('Löschen'));
         del.type = 'button';
@@ -204,7 +250,14 @@
   }
   const toggle = () => (player.playing ? pause() : play());
 
-  async function openPlayer(r) {
+  // Timeline position of a time in the recording (pauses may be shortened); a little earlier
+  // so the command leading up to a search hit is visible too
+  function posOf(rawAt) {
+    const ev = player.events.find(e => e.raw >= rawAt);
+    return Math.max(0, (ev ? ev.t : player.duration) - 3);
+  }
+
+  async function openPlayer(r, startAt = null) {
     try { await loadXterm(); } catch (err) { toast(err.message, 'error'); return; }
     if (!player) buildPlayer();
     pause();
@@ -237,11 +290,26 @@
     });
     player.term.open(q('rec-screen'));
     timeline();
-    seek(0);
+    seek(startAt == null ? 0 : posOf(startAt));
     play();
   }
 
   // ---------------------------------------------------------------------------
+  $('rec-q').addEventListener('input', () => { found = null; if (data) render(); });
+  $('rec-q-clear').addEventListener('click', () => { $('rec-q').value = ''; found = null; render(); });
+  $('rec-search').addEventListener('submit', async e => {
+    e.preventDefault();
+    const q = $('rec-q').value.trim();
+    if (q.length < 2) { toast(t('Mindestens 2 Zeichen eingeben.'), 'error'); return; }
+    const btn = e.submitter || $('rec-search').querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const res = await api(`/api/terminal/recordings/search?q=${encodeURIComponent(q)}`);
+      found = { q: res.q, byId: Object.fromEntries(res.results.map(x => [x.id, x])) };
+      render();
+    } catch (err) { toast(err.message, 'error'); } finally { btn.disabled = false; }
+  });
+
   $('rec-form').addEventListener('submit', async e => {
     e.preventDefault();
     try { data = await api('/api/settings/terminal-recording', { enabled: $('rec-enabled').checked, days: Number($('rec-days').value) }); render(); toast(t('Gespeichert.'), 'success'); } catch (err) { toast(err.message, 'error'); }

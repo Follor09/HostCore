@@ -361,6 +361,12 @@
           <div class="inline-form"><button type="submit" class="btn-primary">Speichern</button></div>
         </form>
         <p class="field-hint warn" id="rec-unavailable" hidden>tmux ist nicht installiert – ohne dauerhafte Sitzungen gibt es keine Mitschnitte.</p>
+        <form class="rec-search" id="rec-search" role="search">
+          <input type="search" id="rec-q" placeholder="Filtern oder im Inhalt suchen, z. B. rm -rf, apt, docker…" autocomplete="off" spellcheck="false" aria-label="Mitschnitte durchsuchen">
+          <button type="submit" class="btn-secondary">Im Inhalt suchen</button>
+          <button type="button" class="text-btn" id="rec-q-clear" hidden>Zurücksetzen</button>
+        </form>
+        <p class="field-hint" id="rec-search-info" hidden></p>
         <div class="table-scroll"><table class="data-table" id="rec-table"></table></div>
       </section>
 

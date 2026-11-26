@@ -70,7 +70,7 @@
     'sec:/settings#wetter': 'settings.manage', 'sec:/settings#dienste': 'settings.manage', 'sec:/settings#wake-on-lan': 'settings.manage',
     'sec:/settings#web-dienste': 'settings.manage', 'sec:/settings#statusseite': 'settings.manage', 'sec:/settings#wartung': 'settings.manage', 'sec:/settings#links': 'settings.manage', 'sec:/settings#auto-update': 'settings.manage',
     'sec:/settings#verlauf': 'settings.manage', 'sec:/settings#freigaben': 'files.share',
-    'sec:/settings#benutzer': 'users.manage', 'sec:/settings#berechtigungen': 'users.manage',
+    'sec:/settings#benutzer': 'users.manage', 'sec:/settings#terminal-mitschnitte': 'users.manage', 'sec:/settings#berechtigungen': 'users.manage',
     'dash:files': 'files.read', 'dash:diagnostics': 'system.view', 'dash:weather': 'settings.manage',
     'dash:customize': 'board.edit', 'dash:boardAdd': 'board.edit'
   };
@@ -142,7 +142,7 @@
       ['berechtigungen', 'Berechtigungen', 'rechte gruppen permissions roles rollen admin'], ['sprache', 'Sprache', 'language english deutsch'],
       ['darstellung', 'Darstellung', 'theme hell dunkel light dark design'], ['wetter', 'Wetter', 'ort stadt'],
       ['dienste', 'Dienste', 'services ausblenden'], ['wake-on-lan', 'Wake-on-LAN', 'wol geräte mac'], ['netbox', 'NetBox verbinden', 'netbox ipam api token'], ['web-dienste', 'Web-Dienste', 'health check url erreichbar'], ['statusseite', 'Öffentliche Statusseite', 'status page öffentlich familie freunde'], ['wartung', 'Wartungsfenster', 'wartung maintenance geplant downtime'], ['links', 'Eigene Links', 'links lesezeichen bookmarks'], ['freigaben', 'Freigabe-Links', 'share teilen download link'], ['auto-update', 'Auto-Update', 'github token git'],
-      ['verlauf', 'Verlauf', 'history löschen datenbank'], ['system', 'System', 'info version']
+      ['verlauf', 'Verlauf', 'history löschen datenbank'], ['terminal-mitschnitte', 'Terminal-Mitschnitte', 'aufzeichnung recording mitschnitt abspielen sitzung shell protokoll'], ['system', 'System', 'info version']
     ]);
 
     Object.entries(DASH_ACTIONS).forEach(([id, [label, keywords]]) => cmds.push(dashboardCommand(id, label, 'Aktionen', keywords)));

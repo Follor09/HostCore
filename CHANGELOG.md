@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Terminal recordings easier to find and searchable:** a *Mitschnitte* button in the terminal header and an entry in the search (Ctrl+K) lead to the recordings (admins only). The list filters by user, target and date as you type; *Im Inhalt suchen* searches what all recordings showed – commands and output, without colour codes – and lists the matching places with their time; clicking one plays the recording from just before it. Searches are recorded in the activity log. Works for the selected server, also on agents.
+
 ## v1.8.0 – 2026-11-26
 
 ### New

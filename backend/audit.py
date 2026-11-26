@@ -156,6 +156,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/terminal/sessions/[^/]+/close$", "security", "Terminal-Sitzung beendet"),
     ("POST", r"^/api/terminal/sessions/[^/]+/share$", "security", "Terminal-Sitzung geteilt"),
     ("POST", r"^/api/terminal/sessions/[^/]+/unshare$", "security", "Terminal-Freigabe beendet"),
+    ("GET", r"^/api/terminal/recordings/search$", "security", "Terminal-Mitschnitte durchsucht"),
     ("GET", r"^/api/terminal/recordings/[^/]+$", "security", "Terminal-Mitschnitt angesehen"),
     ("POST", r"^/api/terminal/recordings/[^/]+/delete$", "security", "Terminal-Mitschnitt gelöscht"),
     ("POST", r"^/api/settings/terminal-recording$", "security", "Terminal-Mitschnitte eingestellt"),

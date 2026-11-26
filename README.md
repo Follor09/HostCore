@@ -46,7 +46,7 @@ git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 - **Off-site backup:** Docker volumes and stacks, Kubernetes (k3s) volumes, the dashboard's data with its database dumps, system settings, logs or own folders – to Google Drive, Dropbox, Nextcloud/WebDAV, S3-compatible storage or a USB drive, on a schedule; restic encrypts on the server, transfers only changes and prunes old states; browse states and restore from the dashboard ([guide in German](docs/EXTERNE-SICHERUNG.md): setup, own Google client ID, restore without the server, removal)
 - Docker & k3s: containers, compose stacks, live logs, database monitor with dumps, image update checks, app store, stack templates
 - **GitOps:** compose stacks from a Git repository – diff of new commits, deploy as a task (databases dumped first, health check last), automatic mode, drift detection, deploy webhook
-- Persistent web terminal (tmux) with sharing and recordings, file browser, task log like Proxmox, fleet of servers via agents – a Raspberry Pi, a Debian or Ubuntu machine or VM each run the agent (`./install.sh --agent --from <main-dashboard-ip>`)
+- Persistent web terminal (tmux) with sharing and recordings (playback and full-text search of what was typed and shown, under Settings → Terminal recordings or *Recordings* in the terminal), file browser, task log like Proxmox, fleet of servers via agents – a Raspberry Pi, a Debian or Ubuntu machine or VM each run the agent (`./install.sh --agent --from <main-dashboard-ip>`)
 
 **Secure it**
 - Users, groups and 24 fine-grained permissions; 2FA (TOTP), passkeys, **single sign-on via OpenID Connect** (Pocket ID, Authentik, Keycloak …)

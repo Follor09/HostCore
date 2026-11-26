@@ -110,6 +110,64 @@ def read(sid: str) -> str:
         raise RecordingError("Mitschnitt nicht gefunden.")
 
 
+ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-9A-Za-z]|[=>78DEHMNOPZc\\])|[\x00-\x08\x0b-\x1f\x7f]")
+MAX_HITS = 5
+
+
+def _text(cast: str):
+    """The recording's visible output without escape codes, with (offset, seconds) marks
+    so a hit can be mapped back to the time it appeared."""
+    parts: List[str] = []
+    marks: List[tuple] = []
+    size = 0
+    with open(cast, errors="replace") as f:
+        f.readline()  # header
+        for line in f:
+            try:
+                at, kind, data = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if kind != "o":
+                continue
+            chunk = ANSI_RE.sub("", data.replace("\r\n", "\n"))
+            if chunk:
+                marks.append((size, float(at)))
+                parts.append(chunk)
+                size += len(chunk)
+    return "".join(parts), marks
+
+
+def search(query: str) -> Dict[str, Any]:
+    """Full-text search through what the recorded sessions showed (commands typed and their
+    output): for each recording with a hit the time of the first hit and a few snippets."""
+    import bisect
+    q = (query or "").strip()
+    if not 2 <= len(q) <= 200:
+        raise RecordingError("Suchbegriff: 2 bis 200 Zeichen.")
+    needle = q.lower()
+    hits = []
+    for m in overview()["recordings"]:
+        cast, _ = _paths(m["id"])
+        try:
+            if os.path.getsize(cast) > MAX_SEND:
+                continue
+            text, marks = _text(cast)
+        except OSError:
+            continue
+        low = text.lower()
+        starts = [o for o, _ in marks]
+        found, pos = [], low.find(needle)
+        while pos >= 0 and len(found) < MAX_HITS:
+            i = max(0, bisect.bisect_right(starts, pos) - 1)
+            a, b = max(0, pos - 60), min(len(text), pos + len(q) + 60)
+            snip = " ".join(text[a:b].split())
+            found.append({"at": marks[i][1] if marks else 0, "text": ("…" if a else "") + snip + ("…" if b < len(text) else "")})
+            pos = low.find(needle, pos + len(needle))
+        if found:
+            hits.append({"id": m["id"], "count": low.count(needle), "hits": found})
+    return {"q": q, "results": hits}
+
+
 def delete(sid: str) -> Dict[str, Any]:
     import terminal
     if terminal.session(sid):

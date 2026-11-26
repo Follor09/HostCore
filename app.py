@@ -3042,6 +3042,13 @@ async def api_recordings():
     return await asyncio.to_thread(recordings.overview)
 
 
+@app.get("/api/terminal/recordings/search")
+async def api_recordings_search(q: str, request: Request):
+    res = await asyncio.to_thread(_rec_call, recordings.search, q)
+    await asyncio.to_thread(audit.record, request.state.user or "", websec.client_ip(request), "GET", "/api/terminal/recordings/search", 200, q[:200])
+    return res
+
+
 @app.get("/api/terminal/recordings/{sid}")
 async def api_recording(sid: str, request: Request):
     text = await asyncio.to_thread(_rec_call, recordings.read, sid)
