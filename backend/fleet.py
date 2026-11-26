@@ -62,9 +62,8 @@ async def _remote(client: httpx.AsyncClient, r: Dict[str, Any]) -> Dict[str, Any
 
 
 async def overview() -> Dict[str, Any]:
-    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
-        local_task = asyncio.to_thread(_local)
-        rows = await asyncio.gather(local_task, *(_remote(client, r) for r in remotes._all()))
+    local_task = asyncio.to_thread(_local)
+    rows = await asyncio.gather(local_task, *(remotes.with_client(_remote, r, 20.0) for r in remotes._all()))
     rows[0]["name"] = platform.node() or "Dieser Server"
     return {"pis": rows, "checked": int(time.time())}
 
@@ -82,7 +81,7 @@ async def _call(pid: str, method: str, path: str, body: Any = None, user: str = 
     r = next((x for x in remotes._all() if x["id"] == pid), None)
     if not r:
         raise ValueError("Unbekannter Server.")
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+    async with remotes.http_client(r, 30.0) as client:
         res = await client.request(method, f"{r['url']}{path}", json=body,
                                    headers={"Authorization": f"Bearer {r['token']}", "X-PiCore-User": user})
     data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
@@ -189,7 +188,7 @@ async def apt(ids: List[str], mode: str, user: str = "") -> Dict[str, Any]:
         if not r:
             return {"id": pid, "ok": False, "message": "Unbekannter Server."}
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
+            async with remotes.http_client(r, 20.0) as client:
                 res = await client.post(f"{r['url']}/api/updates/apt", json={"mode": mode},
                                         headers={"Authorization": f"Bearer {r['token']}", "X-PiCore-User": user})
             data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
@@ -216,7 +215,6 @@ async def sbom_search(q: str, kind: str = "") -> Dict[str, Any]:
         except (httpx.HTTPError, ValueError) as e:
             return {"pi": r["name"], "id": r["id"], "items": [], "total": 0, "error": f"Nicht erreichbar ({type(e).__name__})"}
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
-        local, *rows = await asyncio.gather(asyncio.to_thread(sbom.search, q, kind), *(remote(client, r) for r in remotes._all()))
+    local, *rows = await asyncio.gather(asyncio.to_thread(sbom.search, q, kind), *(remotes.with_client(remote, r, 60.0) for r in remotes._all()))
     first = {"pi": platform.node() or "Dieser Server", "id": "", "items": local["items"], "total": local["total"], "error": ""}
     return {"pis": [first, *rows], "q": q}

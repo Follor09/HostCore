@@ -300,6 +300,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/power/settings$", "settings", "Energie-Einstellungen geändert"),
     ("POST", r"^/api/remotes/test$", "settings", "Remote-Server-Verbindung getestet"),
     ("POST", r"^/api/remotes/[^/]+/update$", "settings", "Remote-Server geändert"),
+    ("POST", r"^/api/remotes/[^/]+/address$", "security", "Remote-Server: Adresse/Zertifikat geändert"),
     ("POST", r"^/api/selftest/repair$", "settings", "Selbsttest-Reparatur ausgeführt"),
     ("POST", r"^/api/selftest/run$", "settings", "Selbsttest ausgeführt"),
     ("POST", r"^/api/settings/netbox/test$", "settings", "NetBox-Verbindung getestet"),

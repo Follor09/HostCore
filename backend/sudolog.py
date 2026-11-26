@@ -194,8 +194,7 @@ async def fleet_entries(days: int, user: str, q: str, flagged: bool) -> Dict[str
         except (httpx.HTTPError, ValueError) as e:
             return {"name": r["name"], "entries": [], "error": f"Nicht erreichbar ({type(e).__name__})"}
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
-        local, *others = await asyncio.gather(asyncio.to_thread(entries, days, user, q, flagged), *(one(client, r) for r in remotes._all()))
+    local, *others = await asyncio.gather(asyncio.to_thread(entries, days, user, q, flagged), *(remotes.with_client(one, r, 20.0) for r in remotes._all()))
     rows = [{**e, "server": platform.node() or "Dieser Server"} for e in local["entries"]]
     for o in others:
         rows += [{**e, "server": o["name"]} for e in o["entries"]]

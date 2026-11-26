@@ -4,6 +4,16 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **https for agents with certificate pinning:** `./agent.sh tls on` gives an agent its own certificate and switches it to https; it shows the SHA-256 fingerprint. In the main dashboard *Remote servers → Address* takes the `https://` address – the fingerprint is shown to compare, and only after confirming is exactly this certificate stored. From then on token, API calls, live data, terminal and Wake-on-LAN go encrypted, and no other certificate is accepted for this agent (a renewed one is confirmed the same way). The list shows *https · certificate pinned*.
+- **Signed releases:** releases are signed with the HostCore release key. On a server `install.sh` stores this key once (root-owned); from then on the stable channel installs only releases with a valid signature – a release pushed with stolen GitHub access alone does not reach the servers. The release workflow refuses to publish an unsigned release.
+- **Translation check:** a test finds German UI texts without English translation (pages, scripts, backend error messages); new untranslated texts fail CI.
+
+### Fixed
+- `settings.json` can no longer be wiped: an unreadable file (power loss, full disk) is kept as `settings.json.broken-…` and the last good copy (`settings.json.bak`) is used instead of starting a write with empty settings; writes are flushed to disk (fsync). Wake-on-LAN changes are atomic (two at once no longer lose one).
+- `start.sh` no longer starts with auto-reload (only with `DEV=1`).
+- The English README now covers updates, signed releases, remote servers and their encryption.
+
 ### Changed
 - **Internals:** `app.py` shrank from 6,500 to 3,800 lines – 28 features (incidents, GitOps, files, compliance, off-site backup, security watchers, documentation, containers page and more) now have their routes in `backend/routes/`, shared helpers in `backend/webutil.py`. Behaviour unchanged: the route manifest is identical before and after.
 

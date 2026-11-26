@@ -94,6 +94,22 @@ Plus: Homarr-style boards, command palette (Ctrl+K), alerting with escalation, e
 
 HostCore is meant for the home network or behind a VPN / Cloudflare Access – it includes a web terminal and service control. The app runs as a normal user; root actions come only from a root-owned copy of the repo with sudo limited to exactly those scripts. Every request is checked against one permission table. Details and how to report a vulnerability: [SECURITY.md](SECURITY.md).
 
+**Running it on the internet** (*Settings → Security*, with a checklist): choose "Cloudflare" or "own reverse proxy" so login limits and the activity log see the real visitor, require two-factor login (TOTP or passkeys) for administrators, and keep the terminal and user management reachable only from the home network / VPN. Optional: single sign-on via OpenID Connect (Pocket ID, Authentik, Keycloak …), re-confirmation before critical changes, an access review every 90 days.
+
+## Updates
+
+*Settings → Auto-update* picks the channel: **stable** (default for new installs) follows releases only – tags `vX.Y.Z`, never back to an older one; **main** takes every commit. A timer checks GitHub every minute, installs changed dependencies before switching the code (a failed `pip` keeps the old version running) and restarts the service. Log: `journalctl -u pi-dashboard-update -f`.
+
+- **Root never runs code from the dashboard folder:** scripts and unit files that run as root come from a separate, root-owned clone in `/var/lib/pi-dashboard/src`.
+- **Signed releases:** releases are signed with the HostCore release key (`.github/allowed_signers`). `install.sh` stores that key once as a trust anchor in `/var/lib/pi-dashboard/allowed_signers`; from then on the stable channel installs only releases signed with it, so a release pushed with stolen GitHub access alone is not installed. Off: create `/var/lib/pi-dashboard/allowed_signers.off` before installing, or delete the anchor. The *main* channel follows unsigned commits – use *stable* where that matters.
+- **Tested dependency versions:** `requirements.txt` has upper bounds; Dependabot proposes newer versions, CI tests them on Python 3.10–3.13, and a release is only published when all checks pass.
+
+## Remote servers (agents)
+
+Further servers run the agent (`./install.sh --agent --from <main-dashboard-ip>`, or `setup.sh … --agent --from …`) and are added under *Settings → Remote servers*; the switch at the top right then shows and controls the selected server with all features. The agent only answers the main dashboard (token, optionally limited to its address).
+
+**Encryption:** main dashboard and agent talk plain http – fine in the LAN or through a VPN (WireGuard, NetBird, Tailscale). Over the internet (e.g. a VPS controlling a Pi at home) token, terminal and files could be read on the way: connect such agents through a VPN, or switch the agent to https with `./agent.sh tls on` – the main dashboard then pins the agent's certificate when it is added. Remote servers reached with plain http at a public address are marked *Unverschlüsselt* in the settings and the self-test.
+
 ## Project layout
 
 `app.py` is the entry point, the feature modules live in `backend/`, the web interface in `static/`, guides and screenshots in `docs/`. Install, update and helper scripts stay in the top folder.

@@ -111,6 +111,69 @@ def _write(cfg: Dict[str, Any]) -> None:
     os.replace(tmp, CONFIG)
 
 
+# --- https for the agent (./agent.sh tls on) -------------------------------------------
+# A self-signed certificate: the main dashboard pins exactly this certificate when the agent is
+# added (after the fingerprint was compared), so no certificate authority is involved and a
+# man in the middle cannot present another one. uvicorn picks it up from agent-tls.env, which
+# the systemd unit reads (EnvironmentFile).
+TLS_KEY = os.path.join(BASE_DIR, "tls.key")
+TLS_CERT = os.path.join(BASE_DIR, "tls.crt")
+TLS_ENV = os.path.join(BASE_DIR, "agent-tls.env")
+
+
+def tls_fingerprint() -> str:
+    """SHA-256 of the certificate as AB:CD:… (empty if https is off)."""
+    if not (os.path.exists(TLS_ENV) and os.path.exists(TLS_CERT)):
+        return ""
+    import hashlib
+    import ssl
+    with open(TLS_CERT) as f:
+        der = ssl.PEM_cert_to_DER_cert(f.read())
+    h = hashlib.sha256(der).hexdigest().upper()
+    return ":".join(h[i:i + 2] for i in range(0, len(h), 2))
+
+
+def tls_enable(renew: bool = False) -> str:
+    """Create key and certificate (kept when they exist, unless renew) and switch uvicorn to https."""
+    if renew or not (os.path.exists(TLS_KEY) and os.path.exists(TLS_CERT)):
+        import datetime
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+        key = ec.generate_private_key(ec.SECP256R1())
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"HostCore Agent {socket.gethostname()}"[:64])])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now - datetime.timedelta(days=1)).not_valid_after(now + datetime.timedelta(days=3650))
+                .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+                .add_extension(x509.SubjectAlternativeName([x509.DNSName(socket.gethostname() or "hostcore-agent")]), critical=False)
+                .sign(key, hashes.SHA256()))
+        _write_file(TLS_KEY, key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                               serialization.NoEncryption()).decode(), 0o600)
+        _write_file(TLS_CERT, cert.public_bytes(serialization.Encoding.PEM).decode(), 0o644)
+    _write_file(TLS_ENV, f"UVICORN_SSL_KEYFILE={TLS_KEY}\nUVICORN_SSL_CERTFILE={TLS_CERT}\n", 0o644)
+    return tls_fingerprint()
+
+
+def tls_disable() -> None:
+    """Back to http (key and certificate stay, so switching on again keeps the fingerprint)."""
+    try:
+        os.remove(TLS_ENV)
+    except OSError:
+        pass
+
+
+def _write_file(path: str, text: str, mode: int) -> None:
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
 def landing_html() -> str:
     host = socket.gethostname()
     return f"""<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -146,11 +209,17 @@ if __name__ == "__main__":
     elif cmd == "allowed":
         cfg = _load()
         print(", ".join((cfg or {}).get("allow") or []) or "any", end="")
+    elif cmd == "tls-on":
+        print(tls_enable(renew=len(sys.argv) > 2 and sys.argv[2] == "renew"), end="")
+    elif cmd == "tls-off":
+        tls_disable()
+    elif cmd == "tls-fingerprint":
+        print(tls_fingerprint(), end="")
     elif cmd == "disable":
         try:
             os.remove(CONFIG)
         except OSError:
             pass
     else:
-        print("usage: agent.py enable|token|rotate|allow <ips>|allowed|disable")
+        print("usage: agent.py enable|token|rotate|allow <ips>|allowed|tls-on [renew]|tls-off|tls-fingerprint|disable")
         sys.exit(2)

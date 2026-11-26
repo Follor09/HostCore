@@ -45,24 +45,34 @@ def add_device(name: str, mac: str, broadcast: str = "", via: str = "") -> Dict[
         raise ValueError("Bitte einen Namen angeben.")
     device = {"id": secrets.token_hex(4), "name": name, "mac": normalize_mac(mac),
               "broadcast": normalize_broadcast(broadcast), "via": (via or "").strip()[:32]}
-    devices = list_devices()
-    if len(devices) >= 30:
-        raise ValueError("Maximal 30 Geräte.")
-    settings_store.set("wol_devices", devices + [device])
+
+    def add(devices):
+        devices = devices or []
+        if len(devices) >= 30:
+            raise ValueError("Maximal 30 Geräte.")
+        return devices + [device]
+    settings_store.update("wol_devices", add, [])
     return device
 
 
 def update_device(device_id: str, via: Optional[str] = None, broadcast: Optional[str] = None) -> Dict[str, Any]:
-    devices = list_devices()
-    device = next((d for d in devices if d["id"] == device_id), None)
-    if not device:
-        raise ValueError("Gerät nicht gefunden.")
-    if via is not None:
-        device["via"] = via.strip()[:32]
     if broadcast is not None:
-        device["broadcast"] = normalize_broadcast(broadcast)
-    settings_store.set("wol_devices", devices)
-    return device
+        broadcast = normalize_broadcast(broadcast)
+    found = {}
+
+    def change(devices):
+        devices = devices or []
+        device = next((d for d in devices if d["id"] == device_id), None)
+        if not device:
+            raise ValueError("Gerät nicht gefunden.")
+        if via is not None:
+            device["via"] = via.strip()[:32]
+        if broadcast is not None:
+            device["broadcast"] = broadcast
+        found["device"] = device
+        return devices
+    settings_store.update("wol_devices", change, [])
+    return found["device"]
 
 
 def get_device(device_id: str) -> Dict[str, Any]:
@@ -95,7 +105,7 @@ def import_devices(items: List[Dict[str, Any]], via: str) -> int:
 
 
 def remove_device(device_id: str) -> None:
-    settings_store.set("wol_devices", [d for d in list_devices() if d["id"] != device_id])
+    settings_store.update("wol_devices", lambda devices: [d for d in devices or [] if d["id"] != device_id], [])
 
 
 def send(mac: str, broadcast: str = "") -> None:

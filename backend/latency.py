@@ -74,7 +74,8 @@ def _nodes() -> List[Dict[str, str]]:
     own = net.get("primary_ip", "") if isinstance(net, dict) else str(net)
     nodes = [{"id": "", "name": platform.node() or "Dieser Server", "host": own}]
     for r in remotes._all():
-        nodes.append({"id": r["id"], "name": r["name"], "host": urlparse(r["url"]).hostname or "", "url": r["url"], "token": r["token"]})
+        nodes.append({"id": r["id"], "name": r["name"], "host": urlparse(r["url"]).hostname or "", "url": r["url"], "token": r["token"],
+                      "verify": remotes.verify_for(r)})
     return [n for n in nodes if n["host"]]
 
 
@@ -93,7 +94,7 @@ def measure() -> None:
         else:
             try:
                 res = httpx.get(f"{n['url']}/api/tools/ping-peers", params={"targets": ",".join(hosts)},
-                                headers={"Authorization": f"Bearer {n['token']}"}, timeout=30)
+                                headers={"Authorization": f"Bearer {n['token']}"}, timeout=30, verify=n["verify"])
                 if res.status_code != 200:
                     return []   # offline or an older agent without this endpoint
                 results = res.json().get("results", [])

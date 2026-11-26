@@ -1,0 +1,302 @@
+# German UI texts still without English translation (tests/test_i18n.py) - may only shrink
+# Der Stack hat eine .env – Variablen hier notieren (ohne Werte)
+# Überschrift Text mit **fett**, *kursiv*, `Code` und [Links](https://…) - Liste - [ ] Aufgabe
+# Überschrift Text mit **fett**, *kursiv*, `Code`, [Link](https://…) und [[Andere Seite]]. | Gerät | IP | |---|---| | Router | 192.168.178.1 |
+(für „Passwort vergessen“)
+). Zugangsdaten gehören nicht in die Vorlage: sie kommen beim Anlegen in eine
+, Gesundheitsprüfung). Abweichungen auf dem Server – geänderte Dateien, fehlende oder gestoppte Dienste, andere Images – werden gemeldet. Zugangsdaten gehören in die lokalen Variablen, die nur auf dem Server liegen.
+, die nur auf dem Ziel-Server gespeichert wird.
+-Dateien sind der richtige Ort – bei ihnen und bei Schlüsseldateien wird nur geprüft, ob andere sie lesen können. Gespeichert werden nur maskierte Auszüge, nie das Geheimnis selbst. Läuft einmal täglich.
+. Danach hier eintragen und neu verbinden.
+Absender: keine gültige E-Mail-Adresse.
+Adresse nach der Anmeldung
+Alle Schnittstellen des Dashboards – für eigene Skripte, Home-Automation oder zum Nachsehen, was eine Seite abfragt. Erzeugt aus dem Dashboard selbst, also immer aktuell. Jede Anfrage braucht eine Anmeldung und die angegebene Berechtigung; „wird weitergeleitet“ heißt: ist oben ein Remote-Server gewählt, antwortet dieser.
+Alle auf grün
+Am Ende stehen Adresse und Token im Terminal – beides hier eintragen. Später zeigt
+Anbieter-Adresse: nur über https.
+Anbieter-Adresse: ungültige Adresse.
+Anfrage gehört zu einem anderen Benutzer.
+Anfrage nicht gefunden (abgelaufen?).
+Anmelden gibt es nur für Google Drive und Dropbox.
+Anmelden und das Sitzungs-Cookie speichern:
+Anmeldung abgelaufen oder schon benutzt – bitte erneut versuchen.
+Anmeldung passt nicht zu dieser Anfrage (nonce).
+Anmeldung per SSO ist nicht eingerichtet.
+Anmeldung von Hand einfügen
+Anmeldung über einen OpenID-Connect-Anbieter wie Pocket ID, Authentik oder Keycloak. Beim ersten Mal wird das Konto beim Anbieter mit einem Dashboard-Benutzer verknüpft – über eine Gruppen-Zuordnung, den gleichen Benutzernamen oder die gleiche E-Mail-Adresse. Gruppen des Anbieters können die Dashboard-Gruppe bestimmen. Lokale Konten bleiben als Notzugang erhalten;
+Auf dem anderen Server das Repository klonen (wie beim ersten Server) und im Ordner
+Auf grün gesetzt.
+Auf grün setzen
+Auf grün setzen:
+Aufbewahrung nach dem Generationenprinzip: Jeder Lauf überträgt nur Änderungen, trotzdem ist jeder Stand vollständig wiederherstellbar – ein wöchentliches Vollbackup ist darum nicht nötig. Behalten wird der jeweils letzte Stand jedes Tages (Söhne), jeder Woche (Väter), jedes Monats (Großväter) und jedes Jahres (Urgroßväter). 7 / 4 / 6 / 2 heißt: eine Woche tageweise, einen Monat wochenweise, ein halbes Jahr monatsweise und zwei Jahre jahresweise. 0 = diese Generation nicht.
+Aufbewahrung: mindestens eine Generation mit 1 bis 1000 Ständen (täglich, wöchentlich, monatlich oder jährlich).
+Ausnahme: Ablaufdatum in der Zukunft, höchstens ein Jahr.
+Automatisch nach Zeitplan sichern
+Automatisch nicht ermittelbar
+Backup nicht gefunden.
+Bei Pocket ID: unter dem Client die erlaubten Benutzergruppen setzen und „PKCE“ aktivieren. Gruppen kommen mit dem Scope
+Bei der Registry nicht gefunden (nicht registriert?)
+Beim Anbieter einen OIDC-Client (vertraulich, mit Secret) anlegen. Als Callback-URL die oben angezeigte Adresse eintragen – für jede Adresse, unter der das Dashboard geöffnet wird (z.B. Cloudflare-Domain und Heimnetz-IP), eine eigene.
+Benutzer ist nicht per SSO verknüpft.
+Benutzer und Passwort (bei Nextcloud ein App-Passwort) angeben.
+Bitte Zahlen eintragen.
+Bitte auswählen, was gesichert werden soll.
+Bitte begründen, warum die Anforderung entbehrlich ist.
+Bitte begründen, warum die Frist nicht eingehalten werden kann.
+Bitte begründen, warum die Änderung abgelehnt wird.
+Bitte das Ergebnis wählen.
+Bitte die Anbieter-Adresse eintragen.
+Bitte ein Ablaufdatum angeben.
+Bitte ein Ziel wählen.
+Bitte kurz beschreiben, was nicht geklappt hat.
+Bitte mindestens eine Rechtsgrundlage wählen.
+Bitte mindestens einen Server wählen.
+Bitte mindestens einen anderen Server wählen.
+Bitte zuerst die Lösung eintragen.
+Bitte zuerst die Ursache eintragen.
+Borg ist auf diesem Server nicht installiert (sudo apt install borgbackup)
+CBOR: Länge ohne Angabe wird nicht unterstützt.
+Checkliste angelehnt an Bausteine des BSI IT-Grundschutz-Kompendiums (ORP.4, OPS.1.1.3, CON.3, DER.4, SYS.1.6 …) und die CIS Controls – keine Zertifizierung, aber ein ehrlicher Blick auf die Grundlagen. Die meisten Anforderungen bewertet das Dashboard selbst aus seinen Prüfungen; jede lässt sich zusätzlich von Hand bewerten, mit Notiz und Nachweis. Die Handbewertung gilt; widerspricht ihr die automatische Prüfung, wird das angezeigt.
+Client-ID und Secret hier eintragen, „Anbieter testen“, dann einschalten und speichern.
+Compose-Datei fehlt oder ist zu groß.
+Compose-Datei zu groß (höchstens 200 KB).
+Compose-Stacks direkt aus einem Git-Repository: das Repository ist maßgeblich. Neue Commits, die den Ordner des Stacks betreffen, erscheinen hier mit Diff und lassen sich ausrollen – auf Wunsch automatisch. Ausrollen läuft als Aufgabe wie das sichere Stack-Update (Datenbanken sichern,
+DNS-Server: system, cloudflare, google, quad9 oder eine IP-Adresse.
+Das Dashboard-Konto ist deaktiviert oder abgelaufen.
+Das Passwort der Sicherung braucht mindestens 12 Zeichen.
+Das Passwort einer Sicherung mit gespeicherten Ständen lässt sich nicht ändern – dafür eine neue Sicherung anlegen.
+Das Update läuft noch oder hat nichts geändert – Details unter Einstellungen → Auto-Update.
+Das Ziel antwortet nicht (5 Minuten).
+Das Ziel ist erreichbar, aber noch leer – die erste Sicherung legt das Repository an.
+Das geplante Ende muss nach dem Beginn liegen.
+Dashboard-Adresse: mit http:// oder https:// angeben.
+Dein Konto beim Anbieter gehört zu keiner freigegebenen Gruppe.
+Der Agent hat keine eigene Oberfläche und kein Login, aktualisiert sich aber wie dieses Dashboard automatisch von GitHub.
+Der Anbieter hat nicht erneut nach der Anmeldung gefragt.
+Der Anbieter meldet eine andere Adresse (issuer) als eingetragen.
+Der Browser hat keinen Schlüssel geliefert.
+Der Scan läuft schon.
+Der Server prüft jede Minute GitHub und installiert neue Versionen automatisch – je nach Kanal jeden neuen Commit oder nur veröffentlichte Releases (Tags vX.Y.Z). Auf dem stabilen Kanal geht es nie auf ein älteres Release zurück.
+Der Token wird im Klartext übertragen: Remote-Server am besten nur im Heimnetz oder über das VPN (NetBird) ansprechen. Neuer Token:
+Die Anmeldung hat nicht geklappt
+Die Anmeldung ist abgelaufen – bitte noch einmal „Verbinden“.
+Die Client-ID sieht aus wie 123456789-abc….apps.googleusercontent.com.
+Die Datei wurde inzwischen geändert.
+Die Google-Client-ID wurde geändert – bitte danach neu mit Google Drive verbinden.
+Die Ordner-ID ist der letzte Teil der Drive-Adresse des Ordners (Buchstaben, Ziffern, - und _).
+Die TOM nach Art. 32 DSGVO, gegliedert nach den üblichen Kontrollbereichen. Pro Bereich eine eigene Beschreibung; darunter steht, was das Dashboard selbst festgestellt hat (Zwei-Faktor-Regel, Rechte-Review, Protokollierung, Sicherungen, Verschlüsselung, Patch-Fristen …) – so bleibt das Dokument nah an der Wirklichkeit.
+Die Umsetzung läuft nicht.
+Die Ursache hinter wiederkehrenden Störungen: Störungen bündeln, Ursache analysieren, als bekannten Fehler mit Workaround festhalten und über einen Änderungsantrag lösen. Dienste mit mehreren Störungen in 90 Tagen werden vorgeschlagen; offene Störungen auf einem Dienst mit bekanntem Fehler zeigen den Workaround.
+Die VM hat kein CD-Laufwerk – zum Hinzufügen erst ausschalten.
+Die ausgewählten Server holen sich sofort die neueste Dashboard-Version
+Die Änderung ist schon beendet.
+Diese Anfrage ist nicht mehr offen.
+Diese App nutzt das Netzwerk des Servers direkt (network_mode: host) – ihre Ports lassen sich nicht umlegen.
+Diese Sicherung ist unvollständig (teilweise gelöscht) und lässt sich nicht wiederherstellen.
+Diese Änderung wartet nicht auf eine Freigabe.
+Diesen Hinweis gibt es nicht mehr.
+Dieser Ordner ist nicht lesbar.
+Dieses SSO-Konto ist schon mit einem anderen Benutzer verknüpft.
+Domain nicht gefunden.
+Du bist gerade nicht im Heimnetz/VPN – die Beschränkung würde dich selbst aussperren. Aus dem Heimnetz einschalten.
+Eigene Compose-Dateien als Vorlage – auf einem oder mehreren Servern als neuer Stack anlegen (in
+Eigene Dienste und Geräte im Heimnetz oder VPN, deren Erreichbarkeit der Server regelmäßig prüft – Webseiten, Text auf einer Seite, JSON-Werte, TCP-Ports, Ping und DNS-Server. Antwortzeiten und Vorfälle zeigt ein Klick auf den Dienst in der Web-Dienste-Karte des Dashboards.
+Ein Schritt hat höchstens 300 Zeichen.
+Ein Token nur über https – sonst ginge er unverschlüsselt durchs Netz.
+Ein ZIP für Prüfer oder Kunden: Grundschutz-Check, Patch-Fristen, Rechte-Reviews, Änderungsanträge, Störungen mit Nachbetrachtungen und Probleme, das Aktivitätsprotokoll des Zeitraums samt Integritätsprüfung der ganzen Kette, Datensicherung, technische Prüfungen, Notfallhandbuch, Verarbeitungsverzeichnis und TOM. Jede Datei mit SHA-256-Prüfsumme im Manifest. Keine Passwörter oder Tokens; Fundstellen des Geheimnis-Scans sind maskiert.
+Eine schlichte Seite ohne Anmeldung für Familie und Freunde: „Jellyfin läuft, NAS kurz weg“. Du wählst, was erscheint und unter welchem Namen – Adressen, IPs und Fehlermeldungen bleiben auf dem Server.
+Einen Hinweis wählen: öffnen, wo er herkommt, oder auf grün setzen, wenn er gesehen und in Ordnung ist. Auf grün gesetzt zählt er nicht mehr – ändert sich etwas, erscheint er wieder.
+Empfohlene Apps und der Katalog von
+Erst nach der Freigabe umsetzen.
+Erst nachdem die SSO-Anmeldung funktioniert, die lokale Anmeldung auf „Nur Administratoren“ stellen. Administratoren behalten Passwort und Passkey als Notzugang.
+Es gibt kritische Befunde – bitte in der Notiz festhalten, warum trotzdem abgezeichnet wird.
+Es ist schon ein Änderungsantrag verknüpft.
+Freigaben nur im Dashboard, nicht über den MCP.
+Für Skripte am besten einen eigenen Benutzer mit nur den nötigen Rechten anlegen (Einstellungen → Benutzer). Für Claude gibt es den MCP-Server.
+Für den Zeitplan mindestens einen Wochentag wählen.
+Für diesen Stack läuft schon ein Ausrollen.
+Für einen bekannten Fehler bitte zuerst den Workaround eintragen.
+Genehmigte Änderungen lassen sich nicht mehr bearbeiten – abbrechen und neu beantragen.
+Geplante Änderungen mit Risiko, betroffenen Diensten, Ablauf, Rückfallplan und Prüfung – freigegeben von einer zweiten Person, bevor sie umgesetzt werden (Recht „Änderungen freigeben“). Bei der Freigabe kann direkt das Wartungsfenster entstehen; das Ergebnis landet im Betriebstagebuch. Standardänderungen mit geringem Risiko sind vorab genehmigt.
+Gerade läuft ein Ausrollen – erst danach entfernen.
+Git antwortet nicht (Zeitüberschreitung).
+GitHub-Repository als owner/name oder https://github.com/owner/name angeben.
+Größe: 1 bis 16384 GB.
+Gültigkeit: 1 Std., 24 Std., 7 Tage oder 30 Tage.
+Höchstalter: 0 (aus) bis 3650 Tage.
+Höchstalter: 1 Stunde bis 90 Tage.
+Höchstalter: Anzahl Stunden.
+Höchstalter: Anzahl Tage.
+Höchstens 10 Empfänger.
+Höchstens 100 Ausnahmen mit je 300 Zeichen.
+Höchstens 100 Runbooks.
+Höchstens 20 SSH-Schlüssel.
+Höchstens 200 Verarbeitungstätigkeiten.
+Höchstens 30 Gruppen-Zuordnungen.
+Höchstens 300 Dienste.
+Höchstens 300 Steckbriefe.
+Höchstens 300 Verträge.
+Höchstens 50 Zuordnungen.
+Höchstens 50 eigene Ordner.
+Höchstens 500 Befehle.
+Höchstens drei Jahre auf einmal.
+ID-Token abgelaufen – Uhrzeit von Server und Anbieter prüfen.
+ID-Token aus der Zukunft – Uhrzeit von Server und Anbieter prüfen.
+ID-Token ist nicht für dieses Dashboard ausgestellt.
+Icon nicht gefunden.
+Im neuen Tab anmelden, dann die Adresse hier einfügen.
+Inzwischen ist ein anderer Server ausgewählt. Die Seite wird neu geladen.
+JSON-Pfad z. B. status oder data.0.state
+Jede bekannte Lücke mit verfügbarem Fix bekommt eine Frist nach Schwere – gezählt ab dem Tag, an dem der Fix hier zum ersten Mal auftauchte. Pakete von debsecan (hohe Dringlichkeit + aus dem Netz ausnutzbar gilt als kritisch) und Container-Images von Trivy. Überfällige Lücken werden zu Ereignissen; Ausnahmen brauchen eine Begründung und ein Ablaufdatum. Behobene Lücken bleiben ein Jahr als Nachweis: Dauer bis zur Behebung und Einhaltung der Frist.
+Kein Agent.
+Kein Commit zum Ausrollen – erst „Prüfen“.
+Kein Handlungsbedarf – alle Anforderungen sind erfüllt oder entbehrlich.
+Kein Logo.
+Keine Anforderung in dieser Auswahl.
+Keine Anmeldung offen – bitte noch einmal „Verbinden“.
+Keine Berechtigung zum Freigeben von Änderungen.
+Keine Bestätigung am Gerät.
+Keine Compose-Datei (compose.yaml / docker-compose.yml) im Ordner gefunden.
+Keine externe Sicherung – mit „Auf andere Server übertragen“ bei einer Sicherung oben einrichten.
+Keine freie Laufwerksbezeichnung mehr.
+Keine offenen Hinweise
+Keine offenen Hinweise – alles grün.
+Kündigungsfrist: 0 bis 730 Tage.
+Kündigungsfrist: Anzahl Tage.
+Legt einen Entwurf für die Lösung an und verknüpft ihn
+Lese die Stände aus dem Ziel …
+Link ungültig.
+Mit einer Vorlage beginnen oder leer starten. Eigene Vorlagen: jede Seite im Ordner „Vorlagen“. Platzhalter
+Name: Kleinbuchstaben, Ziffern, - und _ (höchstens 41 Zeichen).
+Netzwerkkarte nicht gefunden.
+Neue Konten können nicht automatisch Administratoren werden – dafür eine Gruppen-Zuordnung anlegen.
+Noch keine Runbooks. Typische Kandidaten: Server neu aufsetzen, Backup wiederherstellen, Zertifikat erneuern.
+Noch keine externe Sicherung eingerichtet.
+Noch nicht installiert
+Notiz und Nachweis: je höchstens 2000 Zeichen.
+Nur Entwürfe lassen sich beantragen.
+Nur Entwürfe und abgelehnte Anträge lassen sich löschen – sonst abbrechen.
+Nur der zugeordnete Benutzer oder ein Administrator darf das freigeben.
+Nächste
+Nächste Prüfung: Datum im Format JJJJ-MM-TT.
+Ohne eigene Client-ID teilt sich die Sicherung das Kontingent aller rclone-Nutzer – Google drosselt das oft, das Hochladen bleibt dann stehen. Eine eigene ist in fünf Minuten angelegt:
+Ordner im Ziel: Buchstaben, Ziffern, Leerzeichen und . _ - / +
+Ordner nicht (mehr) vorhanden oder nicht lesbar
+Ordner nicht gefunden.
+Passkey gehört zu einem anderen Benutzer.
+Passkey nicht gefunden.
+Passwort ließ sich nicht verschlüsseln.
+Pfad mit / beginnen, z. B. /var/lib/docker/volumes/nextcloud_data.
+Priorität
+Problem nicht gefunden.
+Präfixe lesbar.
+Prüfsumme: SHA-256 (64) oder SHA-512 (128 Hex-Zeichen).
+Prüfung: Wochentag Montag bis Sonntag, Stunde 0 bis 23.
+Regelmäßige Prüfung der Zugänge: wer welche Rechte hat, wann zuletzt angemeldet, mit oder ohne zweiten Faktor – dazu Links ohne Anmeldung und MCP-Identitäten. Befunde lassen sich direkt beheben. Abgezeichnet wird mit Notiz; der Stand wird als Nachweis mit Fingerabdruck gespeichert und lässt sich als Markdown exportieren.
+Regeln für die Container-Images: erlaubte Registries, feste Versionen statt „latest“, Fixierung per Digest, gesperrte Images und Höchstalter. „Warnen“ meldet Verstöße; „Blockieren“ stoppt zusätzlich Stack-Updates, App-Installationen, Vorlagen und GitOps-Ausrollen mit verbotenen Images – der Grund steht im Aufgaben-Protokoll. Einzelne Stacks lassen sich ausnehmen.
+Repository bzw. Ordner fehlt oder ist ungültig.
+Repository: https://… oder git@host:pfad angeben.
+Restzeit wird nach dem Durchsuchen der Ordner berechnet
+Review nicht gefunden.
+Richtet diese Sicherung mit demselben Ziel, derselben Anmeldung, derselben Auswahl und demselben Passwort auch auf den gewählten Servern ein. Jeder Server sichert in seinen eigenen Ordner (HostCore/<servername>). Gibt es dort schon eine Sicherung mit diesem Namen, wird sie aktualisiert.
+Rückbau
+SMTP-Server, Absender und Empfänger eintragen.
+SMTP-Server: ungültiger Name.
+Schlüsseltyp wird nicht unterstützt.
+Schritt für Schritt
+Seite gibt es noch nicht
+Sichert diesen Server nach Google Drive, Dropbox, Nextcloud, auf S3-Speicher oder ein USB-Laufwerk – Docker-Volumes, Kubernetes-Volumes, die Daten des Dashboards, Systemeinstellungen, Logs oder eigene Ordner, je nachdem, was gewählt ist. restic verschlüsselt alles hier auf dem Server, bevor es ihn verlässt, überträgt nur Änderungen und räumt alte Stände nach der Aufbewahrung auf. Ohne das Passwort der Sicherung lässt sie sich nicht wiederherstellen – es gehört an einen sicheren Ort außerhalb des Servers.
+Signatur des ID-Tokens ungültig.
+Steckbrief nicht gefunden.
+Störung nicht gefunden.
+Suche nach Updates …
+Sucht nach Schlüsseln, Tokens und Passwörtern, die an der falschen Stelle liegen: in Stack-Ordnern und GitOps-Klonen, Schnellaktionen, eigenen Ordnern und der Dokumentation des Dashboards (Notizen, Wiki, Runbooks, Tagebuch, Steckbriefe, Befehle).
+Unbekannte Einstellung für die lokale Anmeldung.
+Unbekannte Priorität.
+Unbekannte Verschlüsselung.
+Ungültige Antwort des Browsers.
+Ungültige Art.
+Ungültige Authenticator-Daten.
+Ungültige Betriebssystem-Kennung.
+Ungültige Board-Kennung.
+Ungültige Bridge.
+Ungültige Firmware.
+Ungültige Kategorie.
+Ungültige Zeit, Wochentage, Aufbewahrung oder Prüfung.
+Ungültiger Benutzername (klein, a–z, 0–9, - _).
+Ungültiger Branch.
+Ungültiger Bucket-Name.
+Ungültiger Bus.
+Ungültiger Dienst.
+Ungültiger Domainname – z.B. example.de
+Ungültiger Domainname.
+Ungültiger Hostname.
+Ungültiger Modus.
+Ungültiger Name für das Gruppen-Claim.
+Ungültiger Name – z.B. nas.example.de
+Ungültiger Netzwerktyp.
+Ungültiger Paketname oder Version.
+Ungültiger Stand.
+Ungültiger Zeitraum.
+Ungültiges Board.
+Ungültiges Element.
+Ungültiges ID-Token.
+Ungültiges Laufwerk.
+Ungültiges Netz (z. B. 192.168.150.0/24).
+Ungültiges Netzwerk.
+Ungültiges Netzwerkkarten-Modell.
+Ungültiges Prüfintervall.
+Ungültiges Volume.
+VNC lauscht nicht lokal.
+Variablen: höchstens 50 KB.
+Verbunden – nur neu verbinden, wenn nötig.
+Verfahren des Passkeys wird nicht unterstützt.
+Verzeichnis von Verarbeitungstätigkeiten nach Art. 30 DSGVO: Zweck, Rechtsgrundlage, Betroffene, Datenkategorien, Empfänger, Auftragsverarbeiter, Drittländer, Löschfristen und die beteiligten Systeme. Eine Struktur zum Ausfüllen – keine Rechtsberatung.
+Volume nicht gefunden.
+Was wird hier geprüft?
+WebDAV-Adresse mit https:// angeben, bei Nextcloud z. B. https://cloud.example.de/remote.php/dav/files/<benutzer>
+Wie jeder Dienst nach einem Ausfall zurückkommt – automatisch zusammengestellt aus Stacks, Steckbriefen, Sicherungen, Datenbank-Dumps, GitOps, Inventar und Verträgen, mit fertigen Befehlen für Daten und Datenbanken. Pro Dienst lassen sich Priorität, Sicherungen, eigene Schritte und eine Prüfung ergänzen. Das Handbuch enthält keine Passwörter. Eine Kopie gehört offline: ausdrucken oder als PDF/Markdown außerhalb des Servers ablegen.
+Zeilenumbrüche sind nur in der Anmeldung erlaubt.
+Zertifikat wird nicht geprüft
+Zielordner unter /mnt, /media, /srv oder /data angeben, z. B. /mnt/usb/hostcore.
+Zu viele Dateien mit diesem Namen.
+Zu viele Meldungen – höchstens 60 pro Minute.
+Zu viele offene Anmeldungen. Bitte kurz warten.
+Zugangsdaten nicht in die Adresse schreiben – dafür gibt es das Feld Token.
+Zugangsschlüssel (Key-ID und Secret) angeben.
+Zur Client-ID gehört das Client-Secret (beginnt meist mit GOCSPX-).
+Zwei-Faktor-Anmeldung ist nicht eingerichtet.
+alles grün
+auf grün
+auf grün gesetzt
+ausführen.
+bis sich etwas ändert
+docker compose antwortet nicht.
+docker compose config lieferte kein JSON.
+einige Dateien nicht lesbar
+gemeinsame von rclone – wird oft gedrosselt, eigene Client-ID eintragen
+geschätzt aus dem letzten Lauf
+git ist nicht installiert (sudo apt install git).
+hat sie schon – wird aktualisiert
+kubectl / k3s nicht gefunden.
+leer = wird erzeugt
+mit Problem
+nicht erfüllt
+nicht lesbar
+openssl fehlt – Passwort lässt sich nicht verschlüsseln.
+rclone hat keine Anmeldeadresse geliefert
+rclone hat keine Anmeldeadresse geliefert.
+rclone ist nicht installiert – oben „restic und rclone installieren“.
+restic ist auf diesem Server nicht installiert (sudo apt install restic)
+restic ist nicht installiert – oben „restic und rclone installieren“.
+und
+unveränderte Zeilen
+werden beim Anlegen ausgefüllt.
+z. B. Pi nach Google Drive
+zu groß
+Ändern (POST) braucht zusätzlich den Origin des Dashboards:
+Änderung nicht gefunden.
+Änderungsantrag nicht gefunden.
+Öffentliche Adresse ohne Pfad angeben, z.B. https://picore-mcp.example.com
+– nur Images, die es für diesen Server gibt. Jede App bekommt einen eigenen Ordner mit docker-compose.yml und läuft danach als normaler Compose-Stack (Aktualisieren, Stoppen und Entfernen unten bei den Stacks).
+„Bestätigen“ vor kritischen Änderungen geht dann auch über den Anbieter (öffnet ein kleines Fenster).

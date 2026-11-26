@@ -47,6 +47,14 @@ fi
 CHANNEL="$(as_owner cat "$DIR/.update-channel" 2>/dev/null | tr -d '[:space:]' || true)"
 [ "$CHANNEL" = "stable" ] || CHANNEL="main"
 
+# Signed releases: once install.sh has stored the release keys (trust anchor, root-owned),
+# only releases signed by one of them are installed on the "stable" channel.
+SIGNERS="$STATE/allowed_signers"
+signed_ok() {   # $1 = git wrapper, $2 = tag
+    [ -s "$SIGNERS" ] || return 0
+    "$1" -c gpg.ssh.allowedSignersFile="$SIGNERS" verify-tag "$2" >/dev/null 2>&1
+}
+
 # Target commit for a repo: the branch head, or on "stable" its newest release tag.
 # $1 = git wrapper, $2 = branch, $3 = installed commit
 target() {
@@ -55,6 +63,15 @@ target() {
     [ "$CHANNEL" = "stable" ] || { echo "$head"; return; }
     tag="$("$1" tag --list 'v[0-9]*.[0-9]*.[0-9]*' --merged "origin/$2" --sort=-v:refname | sed -n 1p)"
     [ -n "$tag" ] || { echo "$3"; return; }          # no release yet: stay where we are
+    if ! signed_ok "$1" "$tag"; then
+        # Said once per release, not every minute
+        if [ ! -e "$STATE/unsigned-$tag" ]; then
+            touch "$STATE/unsigned-$tag"
+            echo "⚠️  Release $tag is not signed by a trusted key ($SIGNERS) - not installed" >&2
+        fi
+        echo "$3"
+        return
+    fi
     commit="$("$1" rev-parse "$tag^{commit}")"
     if [ "$commit" != "$3" ] && "$1" merge-base --is-ancestor "$commit" "$3"; then
         echo "$3"                                      # installed version is newer than the release

@@ -718,7 +718,7 @@ async def remote(remote_id: str) -> Dict[str, Any]:
         return hit["data"]
     base = {"id": r["id"], "name": r["name"]}
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(6.0)) as client:
+        async with remotes.http_client(r, 6.0) as client:
             res = await client.get(f"{r['url']}/api/system", headers={"Authorization": f"Bearer {r['token']}"})
         res.raise_for_status()
         s = res.json()

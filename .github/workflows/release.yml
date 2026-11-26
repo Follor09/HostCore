@@ -32,6 +32,18 @@ jobs:
         with:
           ref: ${{ env.TAG }}
 
+      - name: Release signature
+        # Servers with the trust anchor install only signed releases - an unsigned one is not published
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          if git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag "$TAG"; then
+            echo "Signed with a release key."
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "::warning::$TAG is not signed (older release published later)"
+          else
+            echo "::error::$TAG is not signed with a key from .github/allowed_signers (git tag -s)"; exit 1
+          fi
+
       - name: Check setup.sh
         run: bash -n setup.sh
 

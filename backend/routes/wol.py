@@ -72,7 +72,7 @@ async def _wol_import_remote_lists() -> None:
 
     async def one(r):
         try:
-            res = await hostctx.proxy().get(f"{r['url']}/api/wol", headers={"Authorization": f"Bearer {r['token']}"}, timeout=4.0)
+            res = await hostctx.proxy(r).get(f"{r['url']}/api/wol", headers={"Authorization": f"Bearer {r['token']}"}, timeout=4.0)
         except httpx.HTTPError:
             return None
         if res.status_code != 200:
@@ -113,7 +113,7 @@ async def api_wol_wake(device_id: str, request: Request, req: Optional[WolWakeRe
     request.state.audit_detail = f"{device['name']} ({device['mac']})" + (f" über {remote['name']}" if remote else "")
     if remote:
         try:
-            res = await hostctx.proxy().post(f"{remote['url']}/api/agent/wol", json={"mac": device["mac"], "broadcast": device["broadcast"]},
+            res = await hostctx.proxy(remote).post(f"{remote['url']}/api/agent/wol", json={"mac": device["mac"], "broadcast": device["broadcast"]},
                                       headers={"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""},
                                       timeout=10.0)
         except httpx.HTTPError as e:
@@ -204,7 +204,7 @@ async def api_tools_lan_wol(mac: str, req: LanWolRequest, request: Request):
     if not remote:
         return await asyncio.to_thread(netscan.devices)
     try:
-        res = await hostctx.proxy().get(f"{remote['url']}/api/tools/lan", headers={"Authorization": f"Bearer {remote['token']}",
+        res = await hostctx.proxy(remote).get(f"{remote['url']}/api/tools/lan", headers={"Authorization": f"Bearer {remote['token']}",
                                                                             "X-PiCore-User": request.state.user or ""})
         res.raise_for_status()
         return _lan_mark_wol(res.json())

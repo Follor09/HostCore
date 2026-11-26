@@ -20,6 +20,12 @@ class RemoteRequest(BaseModel):
     name: str = ""
     url: str = ""
     token: str = ""
+    trust: str = ""      # certificate fingerprint the user compared and confirmed (agent with https)
+
+
+def _untrusted(e: remotes.UntrustedCert) -> JSONResponse:
+    """409 with the fingerprint: the page asks the user to compare it with ./agent.sh tls."""
+    return JSONResponse({"detail": str(e), "fingerprint": e.fingerprint}, status_code=409)
 
 
 class SelectRemoteRequest(BaseModel):
@@ -63,7 +69,9 @@ async def api_remotes_select(req: SelectRemoteRequest, request: Request):
 async def api_remotes_add(req: RemoteRequest, request: Request):
     request.state.audit_detail = f"{req.name} ({req.url})"[:250]
     try:
-        return await remotes.add(req.name, req.url, req.token)
+        return await remotes.add(req.name, req.url, req.token, req.trust)
+    except remotes.UntrustedCert as e:
+        return _untrusted(e)
     except remotes.RemoteError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -72,8 +80,11 @@ async def api_remotes_add(req: RemoteRequest, request: Request):
 async def api_remotes_test(req: RemoteRequest):
     try:
         url = remotes.normalize_url(req.url)
-        info = await remotes.probe(url, req.token.strip())
-        return {**info, "insecure": await asyncio.to_thread(remotes.transport_risk, url)}
+        info, cert = await remotes._connect(url, req.token.strip(), req.trust)
+        return {**info, "insecure": await asyncio.to_thread(remotes.transport_risk, url),
+                "fingerprint": remotes.cert_fingerprint(cert) if cert else ""}
+    except remotes.UntrustedCert as e:
+        return _untrusted(e)
     except remotes.RemoteError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -81,6 +92,19 @@ async def api_remotes_test(req: RemoteRequest):
 @router.post("/api/remotes/{remote_id}/update")
 async def api_remotes_update(remote_id: str, req: RemoteRequest):
     return _remote_call(remotes.update, remote_id, req.name or None, req.token or None)
+
+
+@router.post("/api/remotes/{remote_id}/address")
+async def api_remotes_address(remote_id: str, req: RemoteRequest, request: Request):
+    """New address or certificate (agent switched to https with ./agent.sh tls on, moved, renewed)."""
+    r = remotes.get(remote_id)
+    request.state.audit_detail = f"{r['name'] if r else remote_id}: {req.url}"[:250]
+    try:
+        return await remotes.change_address(remote_id, req.url, req.trust)
+    except remotes.UntrustedCert as e:
+        return _untrusted(e)
+    except remotes.RemoteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/api/remotes/{remote_id}/delete")

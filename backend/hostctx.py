@@ -16,20 +16,33 @@ HOST_HEADER = "x-picore-host"   # which server the page in the browser shows ("l
 HOST_CHANGED_CLOSE = 4409       # WebSocket close code: the page shows another server than the one selected now
 AGENT = agent.enabled()
 _proxy_client: Optional[httpx.AsyncClient] = None
+_pinned_clients: dict = {}   # (remote id, certificate) -> client trusting exactly that certificate
+_TIMEOUT = httpx.Timeout(connect=5.0, read=600.0, write=600.0, pool=10.0)
 
 
-def proxy() -> httpx.AsyncClient:
+def proxy(remote: Optional[dict] = None) -> httpx.AsyncClient:
+    """The client for calls to remote agents. A remote with a pinned certificate (agent with
+    https, ./agent.sh tls on) gets its own client that trusts only that certificate."""
     global _proxy_client
+    if remote and remote.get("cert"):
+        key = (remote["id"], remote["cert"])
+        client = _pinned_clients.get(key)
+        if client is None:
+            for old in [k for k in _pinned_clients if k[0] == remote["id"]]:   # certificate changed
+                _pinned_clients.pop(old, None)
+            client = _pinned_clients[key] = httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False,
+                                                              verify=remotes.ssl_context(remote["cert"]))
+        return client
     if _proxy_client is None:
-        _proxy_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=600.0, write=600.0, pool=10.0),
-                                          follow_redirects=False)
+        _proxy_client = httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False)
     return _proxy_client
 
 
 def reset_proxy() -> None:
-    """Forget the client (tests: every TestClient request runs in its own event loop)."""
+    """Forget the clients (tests: every TestClient request runs in its own event loop)."""
     global _proxy_client
     _proxy_client = None
+    _pinned_clients.clear()
 
 
 def remote_for(request_or_ws) -> Optional[dict]:

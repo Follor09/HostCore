@@ -373,7 +373,8 @@ def _remote_checks() -> List[Dict[str, Any]]:
     out = []
     for r in remotes._all():
         try:
-            res = httpx.get(f"{r['url']}/api/agent/info", headers={"Authorization": f"Bearer {r['token']}"}, timeout=5)
+            res = httpx.get(f"{r['url']}/api/agent/info", headers={"Authorization": f"Bearer {r['token']}"}, timeout=5,
+                            verify=remotes.verify_for(r))
             state, detail = ("ok", f"erreichbar ({r['url']})") if res.status_code == 200 else \
                 ("critical", "Token abgelehnt – im Agent neu erzeugen und hier eintragen.") if res.status_code in (401, 403) else \
                 ("warning", f"Antwort {res.status_code}")

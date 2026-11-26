@@ -220,8 +220,8 @@ async def remote_proxy(request: Request, call_next):
             headers[h] = request.headers[h]
     body = request.stream() if request.method in ("POST", "PUT", "PATCH", "DELETE") else None
     try:
-        req = _proxy().build_request(request.method, url, headers=headers, content=body)
-        resp = await _proxy().send(req, stream=True)
+        req = _proxy(remote).build_request(request.method, url, headers=headers, content=body)
+        resp = await _proxy(remote).send(req, stream=True)
     except httpx.HTTPError as e:
         remotes.mark_offline(remote["id"], f"Nicht erreichbar ({type(e).__name__})")
         return JSONResponse({"detail": f"{remote['name']} nicht erreichbar ({type(e).__name__}).", "remote": remote["name"]}, status_code=502)
@@ -2011,7 +2011,7 @@ async def api_terminal_ticket(req: TerminalTicketRequest, request: Request):
     remote = _remote_for(request)
     if remote:
         try:
-            res = await _proxy().post(f"{remote['url']}/api/terminal/ticket", json={"container": req.container, "session": req.session},
+            res = await _proxy(remote).post(f"{remote['url']}/api/terminal/ticket", json={"container": req.container, "session": req.session},
                                       headers={"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": request.state.user or ""})
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"{remote['name']} nicht erreichbar ({type(e).__name__}).")
@@ -2162,10 +2162,10 @@ async def _ws_relay(websocket: WebSocket, remote: dict, path_qs: str, user: str)
     headers = {"Authorization": f"Bearer {remote['token']}", "X-PiCore-User": user or ""}
     try:
         from websockets.asyncio.client import connect as ws_connect
-        cm = ws_connect(url, additional_headers=headers, max_size=None, open_timeout=6)
+        cm = ws_connect(url, additional_headers=headers, max_size=None, open_timeout=6, ssl=remotes.ws_ssl(remote))
     except ImportError:  # websockets < 13
         import websockets
-        cm = websockets.connect(url, extra_headers=headers, max_size=None, open_timeout=6)
+        cm = websockets.connect(url, extra_headers=headers, max_size=None, open_timeout=6, ssl=remotes.ws_ssl(remote))
     try:
         async with cm as upstream:
             async def down():

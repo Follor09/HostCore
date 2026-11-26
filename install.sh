@@ -49,6 +49,7 @@ command -v python3 >/dev/null || MISSING+=(python3)
 command -v curl >/dev/null || MISSING+=(curl)
 [ -e /etc/ssl/certs/ca-certificates.crt ] || MISSING+=(ca-certificates)
 command -v hostname >/dev/null || MISSING+=(hostname)
+command -v ssh-keygen >/dev/null || MISSING+=(openssh-client)   # checks release signatures
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo "📦 Installing base packages: ${MISSING[*]}..."
     apt_install "${MISSING[@]}"
@@ -117,6 +118,20 @@ if [ "$SELF" != "$SRC" ]; then
 fi
 
 # --- From here on: running from the root copy ---------------------------------------
+# Trust anchor for signed releases: the release keys from the repo, stored once (root-owned).
+# From then on update.sh installs only releases signed by them; a key change on GitHub alone
+# cannot change it. Only taken when the newest release really is signed with them (a fork
+# with unsigned releases keeps working); /var/lib/pi-dashboard/allowed_signers.off turns it off.
+SIGNERS="$STATE/allowed_signers"
+if [ ! -e "$SIGNERS" ] && [ ! -e "$SIGNERS.off" ] && [ -s "$SRC/.github/allowed_signers" ]; then
+    NEWEST="$(git -C "$SRC" tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | sed -n 1p)"
+    if [ -n "$NEWEST" ] && git -C "$SRC" -c gpg.ssh.allowedSignersFile="$SRC/.github/allowed_signers" verify-tag "$NEWEST" >/dev/null 2>&1; then
+        install -o root -g root -m 644 "$SRC/.github/allowed_signers" "$SIGNERS"
+        echo "🔏 Signed releases: from now on only releases signed with the HostCore release key are installed"
+    fi
+fi
+
+
 echo "📦 Python venv & dependencies (user: $OWNER, dir: $DIR)..."
 # Recreate a venv that is missing or broken (e.g. copied over from a Mac)
 if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then

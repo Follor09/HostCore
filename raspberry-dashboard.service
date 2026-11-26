@@ -16,6 +16,8 @@ Environment=AUTO_UPDATE_ON_COMMIT=false
 # glibc otherwise gives every worker thread its own heap (up to 8 per core) that is rarely
 # handed back - most of the dashboard's memory. Two are plenty for this workload.
 Environment=MALLOC_ARENA_MAX=2
+# Agent with https (./agent.sh tls on): UVICORN_SSL_KEYFILE / UVICORN_SSL_CERTFILE
+EnvironmentFile=-__DIR__/agent-tls.env
 Restart=always
 RestartSec=5
 StandardOutput=journal

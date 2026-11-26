@@ -437,6 +437,7 @@ POST   /api/reminders/{item_id}/snooze  perm=notes.edit  local  audit=-
 POST   /api/remotes  perm=users.manage  local  audit=Remote-Server hinzugefügt
 POST   /api/remotes/select  perm=login  local  audit=Remote-Server gewählt
 POST   /api/remotes/test  perm=users.manage  local  audit=Remote-Server-Verbindung getestet
+POST   /api/remotes/{remote_id}/address  perm=users.manage  local  audit=Remote-Server: Adresse/Zertifikat geändert
 POST   /api/remotes/{remote_id}/delete  perm=users.manage  local  audit=Remote-Server entfernt
 POST   /api/remotes/{remote_id}/update  perm=users.manage  local  audit=Remote-Server geändert
 POST   /api/secret-scan/ignore  perm=settings.manage  remote  audit=Fundstelle im Geheimnis-Scan bewertet

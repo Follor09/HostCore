@@ -4,6 +4,9 @@ __pycache__/
 .DS_Store
 .env
 settings.json
+settings.json.bak
+settings.json.broken-*
+settings.json.tmp
 history.db
 history.db-journal
 secwatch.db
@@ -13,6 +16,9 @@ auth.json.tmp
 geoip.db
 geoip.db.tmp
 agent.json
+agent-tls.env
+tls.key
+tls.crt
 agent.json.tmp
 appstore_cache.json
 appstore_cache.json.tmp

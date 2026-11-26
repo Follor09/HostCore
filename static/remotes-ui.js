@@ -18,8 +18,27 @@
   async function api(path, body) {
     const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || `Fehler ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(data.detail || `Fehler ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return data;
+  }
+
+  // Agent with https (./agent.sh tls on): its certificate is trusted only after the user compared
+  // the fingerprint with the one the agent shows - then the dashboard pins exactly this certificate.
+  async function withTrust(call) {
+    try {
+      return await call('');
+    } catch (e) {
+      if (e.status !== 409 || !e.data || !e.data.fingerprint) throw e;
+      const fp = e.data.fingerprint;
+      const ok = window.confirm(`${t('Der Agent nutzt https mit eigenem Zertifikat. Fingerabdruck (SHA-256):')}\n\n${fp}\n\n${t('Stimmt er mit der Ausgabe von ./agent.sh tls auf dem Server überein? Nur dann bestätigen.')}`);
+      if (!ok) throw new Error(t('Zertifikat nicht bestätigt – keine Verbindung.'));
+      return await call(fp);
+    }
   }
 
   function msg(text, level) {
@@ -56,6 +75,11 @@
         tag.title = t(INSECURE);
         side.appendChild(tag);
       }
+      if (r.tls) {
+        const tag = el('span', 'health-tag good', r.tls === 'pinned' ? t('https · Zertifikat gepinnt') : 'https');
+        if (r.fingerprint) tag.title = `SHA-256 ${r.fingerprint}`;
+        side.appendChild(tag);
+      }
       const open = el('button', 'btn-secondary', current && current.id === r.id ? t('Wird angezeigt') : t('Anzeigen'));
       open.type = 'button';
       open.disabled = !!(current && current.id === r.id);
@@ -69,6 +93,18 @@
         const n = window.prompt(t('Neuer Name'), r.name);
         if (!n || !n.trim()) return;
         try { await api(`/api/remotes/${r.id}/update`, { name: n.trim() }); load(); } catch (e) { msg(e.message, 'error'); }
+      });
+      const address = el('button', 'btn-secondary', t('Adresse'));
+      address.type = 'button';
+      address.title = t('Neue Adresse oder https (./agent.sh tls on) – das Zertifikat wird dabei neu bestätigt');
+      address.addEventListener('click', async () => {
+        const u = window.prompt(t('Adresse des Agents (z.B. https://192.168.178.50:8000)'), r.url);
+        if (!u || !u.trim()) return;
+        try {
+          await withTrust(trust => api(`/api/remotes/${r.id}/address`, { url: u.trim(), trust }));
+          msg(t('Adresse gespeichert.'), 'success');
+          load();
+        } catch (e) { msg(e.message, 'error'); }
       });
       const token = el('button', 'btn-secondary', t('Neuer Token'));
       token.type = 'button';
@@ -88,7 +124,7 @@
         }
         try { render((await api(`/api/remotes/${r.id}/delete`, {})).remotes); } catch (e) { msg(e.message, 'error'); }
       });
-      side.append(open, rename, token, del);
+      side.append(open, rename, address, token, del);
       row.append(main, side);
       box.appendChild(row);
     });
@@ -108,7 +144,7 @@
     $('remote-test').addEventListener('click', async () => {
       msg(t('Teste…'));
       try {
-        const info = await api('/api/remotes/test', form());
+        const info = await withTrust(trust => api('/api/remotes/test', { ...form(), trust }));
         if (info.insecure) msg(`${t('Verbunden mit')} ${info.hostname} – ${t(INSECURE)}`, 'warning');
         else msg(`${t('Verbunden mit')} ${info.hostname}${info.model ? ` (${info.model})` : ''}.`, 'success');
       } catch (e) { msg(e.message, 'error'); }
@@ -117,7 +153,7 @@
       e.preventDefault();
       msg(t('Verbinde…'));
       try {
-        const r = await api('/api/remotes', form());
+        const r = await withTrust(trust => api('/api/remotes', { ...form(), trust }));
         if (r.insecure) msg(`${r.name} ${t('hinzugefügt.')} ${t(INSECURE)}`, 'warning');
         else msg(`${r.name} ${t('hinzugefügt – oben rechts lässt sich jetzt zwischen den Servern wechseln.')}`, 'success');
         $('remote-form').reset();

@@ -5,10 +5,12 @@ the server again after they were entered.
 """
 
 import asyncio
+import hashlib
 import ipaddress
 import re
 import secrets
 import socket
+import ssl
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -30,6 +32,64 @@ LOCAL_ONLY = re.compile(r"^/api/(service-catalog|nis2|policies|suppliers|interna
 
 class RemoteError(Exception):
     pass
+
+
+class UntrustedCert(RemoteError):
+    """The agent answers with https and a certificate no authority vouches for (./agent.sh tls on).
+    It is trusted only after the user compared the fingerprint with the one the agent shows."""
+
+    def __init__(self, fingerprint: str, pem: str):
+        super().__init__(f"Unbekanntes Zertifikat – Fingerabdruck mit ./agent.sh tls auf dem Server vergleichen: {fingerprint}")
+        self.fingerprint, self.pem = fingerprint, pem
+
+
+def cert_fingerprint(pem: str) -> str:
+    h = hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest().upper()
+    return ":".join(h[i:i + 2] for i in range(0, len(h), 2))
+
+
+_ctx_cache: Dict[str, ssl.SSLContext] = {}
+
+
+def ssl_context(pem: str) -> ssl.SSLContext:
+    """Trust exactly this certificate (pinning): no certificate authorities, no host name check -
+    the agent is identified by its certificate, whatever address it is reached at."""
+    ctx = _ctx_cache.get(pem)
+    if ctx is None:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        ctx.load_verify_locations(cadata=pem)
+        _ctx_cache[pem] = ctx
+    return ctx
+
+
+def verify_for(r: Dict[str, Any]):
+    """httpx "verify" for a remote: its pinned certificate, else the system's authorities."""
+    return ssl_context(r["cert"]) if r.get("cert") else True
+
+
+def ws_ssl(r: Dict[str, Any]):
+    """ssl argument for a WebSocket to the agent (None for ws://)."""
+    if not r["url"].startswith("https://"):
+        return None
+    return ssl_context(r["cert"]) if r.get("cert") else ssl.create_default_context()
+
+
+def http_client(r: Dict[str, Any], timeout: float = 20.0) -> httpx.AsyncClient:
+    """A client for calls to this remote (with its pinned certificate, if any)."""
+    return httpx.AsyncClient(timeout=httpx.Timeout(timeout), verify=verify_for(r))
+
+
+async def with_client(fn, r: Dict[str, Any], timeout: float = 20.0):
+    """await fn(client, r) with a client of its own for this remote (its pinned certificate)."""
+    async with http_client(r, timeout) as client:
+        return await fn(client, r)
+
+
+def _fetch_cert(url: str) -> str:
+    p = urlparse(url)
+    return ssl.get_server_certificate((p.hostname, p.port or 443), timeout=5)
 
 
 def _all() -> List[Dict[str, Any]]:
@@ -104,7 +164,9 @@ def public(r: Dict[str, Any]) -> Dict[str, Any]:
     st = _status.get(r["id"], {})
     return {"id": r["id"], "name": r["name"], "url": r["url"], "token_hint": f"…{r['token'][-4:]}",
             "online": st.get("online"), "info": st.get("info"), "error": st.get("error", ""), "checked": st.get("checked", 0),
-            "insecure": transport_risk(r["url"], resolve=False)}
+            "insecure": transport_risk(r["url"], resolve=False),
+            "tls": "pinned" if r.get("cert") else "ca" if r["url"].startswith("https://") else "",
+            "fingerprint": cert_fingerprint(r["cert"]) if r.get("cert") else ""}
 
 
 def normalize_url(url: str) -> str:
@@ -121,11 +183,24 @@ def normalize_url(url: str) -> str:
     return url
 
 
-async def probe(url: str, token: str) -> Dict[str, Any]:
+async def probe(url: str, token: str, cert: str = "") -> Dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0), verify=ssl_context(cert) if cert else True) as client:
             res = await client.get(f"{url}/api/agent/info", headers={"Authorization": f"Bearer {token}"})
     except httpx.HTTPError as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) and url.startswith("https://"):
+            if cert:
+                msg = "Das Zertifikat des Agents hat sich geändert – unter Adresse neu bestätigen und den Fingerabdruck vergleichen."
+                raise RemoteError(msg)
+            try:
+                pem = await asyncio.to_thread(_fetch_cert, url)
+            except (OSError, ValueError):
+                raise RemoteError("Zertifikat des Agents nicht lesbar.")
+            raise UntrustedCert(cert_fingerprint(pem), pem)
+        if "WRONG_VERSION_NUMBER" in str(e) or "record layer failure" in str(e):
+            raise RemoteError("Der Agent spricht kein https – Adresse mit http:// angeben (oder auf dem Server ./agent.sh tls on).")
+        if isinstance(e, httpx.RemoteProtocolError) and url.startswith("http://"):
+            raise RemoteError("Keine Antwort über http – spricht der Agent https? Dann https:// angeben.")
         raise RemoteError(f"Nicht erreichbar ({type(e).__name__}) – Adresse, Port und Firewall prüfen.")
     if res.status_code in (401, 403):
         raise RemoteError("Token falsch.")
@@ -139,7 +214,18 @@ async def probe(url: str, token: str) -> Dict[str, Any]:
     return info
 
 
-async def add(name: str, url: str, token: str) -> Dict[str, Any]:
+async def _connect(url: str, token: str, trust: str = "", cert: str = "") -> tuple:
+    """Probe the agent; an unknown certificate is taken only when its fingerprint is the one the
+    user confirmed (trust). Returns (info, pinned certificate or "")."""
+    try:
+        return await probe(url, token, cert), cert
+    except UntrustedCert as e:
+        if trust and trust.replace(" ", "").upper() == e.fingerprint:
+            return await probe(url, token, e.pem), e.pem
+        raise
+
+
+async def add(name: str, url: str, token: str, trust: str = "") -> Dict[str, Any]:
     name = (name or "").strip()[:40]
     if not name:
         raise RemoteError("Name angeben.")
@@ -152,10 +238,12 @@ async def add(name: str, url: str, token: str) -> Dict[str, Any]:
         raise RemoteError("Diesen Server gibt es schon.")
     if len(items) >= 20:
         raise RemoteError("Maximal 20 Remote-Server.")
-    info = await probe(url, token)
+    info, cert = await _connect(url, token, trust)
     await asyncio.to_thread(transport_risk, url)
     rid = secrets.token_hex(4)
     items.append({"id": rid, "name": name, "url": url, "token": token, "added": int(time.time())})
+    if cert:
+        items[-1]["cert"] = cert
     settings_store.set("remotes", items)
     _status[rid] = {"online": True, "info": info, "checked": time.time()}
     return public(items[-1])
@@ -176,6 +264,30 @@ def update(remote_id: str, name: Optional[str] = None, token: Optional[str] = No
     return public(r)
 
 
+async def change_address(remote_id: str, url: str, trust: str = "") -> Dict[str, Any]:
+    """New address and/or certificate (agent switched to https, moved, new certificate)."""
+    r = get(remote_id)
+    if not r:
+        raise RemoteError("Nicht gefunden.")
+    url = normalize_url(url)
+    if any(x["url"] == url and x["id"] != remote_id for x in _all()):
+        raise RemoteError("Diesen Server gibt es schon.")
+    info, cert = await _connect(url, r["token"], trust)
+    await asyncio.to_thread(transport_risk, url)
+    items = _all()
+    for x in items:
+        if x["id"] == remote_id:
+            x["url"] = url
+            if cert:
+                x["cert"] = cert
+            else:
+                x.pop("cert", None)
+            r = x
+    settings_store.set("remotes", items)
+    _status[remote_id] = {"online": True, "info": info, "checked": time.time()}
+    return public(r)
+
+
 def remove(remote_id: str) -> None:
     settings_store.set("remotes", [r for r in _all() if r["id"] != remote_id])
     _status.pop(remote_id, None)
@@ -189,7 +301,7 @@ async def refresh_status(max_age: float = 20) -> List[Dict[str, Any]]:
         if st and now - st.get("checked", 0) < max_age:
             return
         try:
-            info = await probe(r["url"], r["token"])
+            info = await probe(r["url"], r["token"], r.get("cert", ""))
             _status[r["id"]] = {"online": True, "info": info, "checked": now}
         except RemoteError as e:
             _status[r["id"]] = {"online": False, "info": (st or {}).get("info"), "error": str(e), "checked": now}
