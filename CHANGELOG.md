@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.7 – 2026-11-26
+
+### Fixed
+- Shell check of `update-lib.sh` (missing shell directive). v1.9.6 – the key-change release – is installed by the servers as usual, it only has no release page.
+- First release signed with the dedicated release key.
+
 ## v1.9.6 – 2026-11-26
 
 ### Changed

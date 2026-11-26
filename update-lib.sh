@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Release selection and signature checks for update.sh and install.sh (sourced, runs as root
 # from the root copy). Kept apart so tests can run it against a repository with signed tags.
 #
