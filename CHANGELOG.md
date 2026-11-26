@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.6 – 2026-11-26
+
 ### Changed
 - **Own release key:** releases are now signed with a dedicated key used for nothing else. This release still carries the signature of the previous key and brings the new one; servers switch their trust anchor with it automatically and from then on trust only the new key.
 - **Key changes built in:** the newest release signed with a trusted key decides which keys are trusted, read from that signed release itself – so only the old key can introduce a new one, on any update channel. A server that missed a key-change release installs it first, before newer releases. The release workflow accepts a key-change release signed with the previous release's key. Release selection and key changes live in `update-lib.sh` and are tested with real signed tags.
