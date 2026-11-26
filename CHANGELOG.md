@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.5.1 – 2026-11-26
+
 ### New
 - **Update button on the start page:** the arrow icon in the navigation bar looks for an update, says what would be installed, asks once and installs it the same way as the update timer (`update.sh`, which also updates root's copy of the helpers); the page waits for the restart and reloads by itself. A lit dot on the icon shows that an update is waiting. Needs the permission *Updates installieren*.
 
