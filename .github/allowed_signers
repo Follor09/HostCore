@@ -1,4 +1,6 @@
 # Keys that sign HostCore releases (git tags vX.Y.Z). install.sh copies this file once to
 # /var/lib/pi-dashboard/allowed_signers on a server; from then on update.sh installs only
 # releases signed by one of these keys. Format: ssh-keygen(1) ALLOWED SIGNERS.
-hostcore-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTDrvL8BiZSq680GwstH9YE7zA0DOW+vu7yzBAW2o+h
+# Key change: put the new key here and sign that release with the old key - servers take
+# the new list from it (update-lib.sh, rotate_signers), the old key is then no longer trusted.
+hostcore-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHMBA5ewhnaRaNdOMsSIsZi5TWwDBnWXkXiAklZOH+MN

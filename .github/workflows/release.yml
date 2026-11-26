@@ -35,9 +35,13 @@ jobs:
       - name: Release signature
         # Servers with the trust anchor install only signed releases - an unsigned one is not published
         run: |
-          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          git fetch --force --tags origin
+          PREV="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n1)"
           if git -c gpg.ssh.allowedSignersFile=.github/allowed_signers verify-tag "$TAG"; then
             echo "Signed with a release key."
+          elif [ -n "$PREV" ] && git show "$PREV:.github/allowed_signers" > /tmp/prev_signers 2>/dev/null \
+               && git -c gpg.ssh.allowedSignersFile=/tmp/prev_signers verify-tag "$TAG"; then
+            echo "Key change: signed with the release key of $PREV - servers take the new key from this release."
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "::warning::$TAG is not signed (older release published later)"
           else
