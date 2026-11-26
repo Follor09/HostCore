@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.1 – 2026-11-26
+
 ### Changed
 - **Wake-on-LAN devices are one list for all servers:** the dashboard card and the settings show the same devices whichever server is selected. Lists that remote servers kept until now are taken over once automatically (woken from that server).
 - **Wake via a chosen server:** each device has *Wecken über* – the server whose network the magic packet is sent into (e.g. the Raspberry Pi at home instead of the VPS running the dashboard). The dashboard then asks that server's agent to send it; the card shows "über …". *Zu Wake-on-LAN* in a remote server's LAN scan presets that server. The agents need this version too.
