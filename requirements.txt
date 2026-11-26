@@ -1,7 +1,7 @@
 # Tested version ranges: a new major (or for 0.x a new minor) version is never pulled in by
 # itself - Dependabot proposes it, CI tests it, then the bound is raised here.
 # Lower bounds stay low enough for Python 3.10 (Ubuntu 22.04); pip picks the newest that fits.
-fastapi>=0.110.0,<0.142
+fastapi>=0.165.0,<0.166
 starlette<2
 pydantic>=2,<3
 uvicorn[standard]>=0.28.0,<0.54
