@@ -242,6 +242,23 @@ def resolve(alert_id: str, by: str) -> Dict[str, Any]:
     return _change(alert_id, fn)
 
 
+def resolve_all(by: str) -> int:
+    """Every open or acknowledged alarm to done at once (e.g. after an outage that has been dealt with)."""
+    now = int(time.time())
+    with _lock:
+        alerts = _alerts()
+        n = 0
+        for a in alerts:
+            if a["status"] != "resolved":
+                a.update(status="resolved", resolved_at=now, resolved_by=by)
+                a.pop("tokens", None)
+                _note(a, f"Als erledigt markiert von {by} (alle auf einmal)")
+                n += 1
+        if n:
+            _store(alerts)
+    return n
+
+
 def by_token(token: str) -> Optional[Tuple[Dict[str, Any], str]]:
     """Alarm and recipient of an acknowledgement link."""
     if not token or not re.match(r"^[A-Za-z0-9_-]{20,64}$", token):

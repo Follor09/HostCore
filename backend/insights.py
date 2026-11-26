@@ -508,9 +508,81 @@ def status_summary() -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"Status (reminders): {e}")
 
-    level = max((i["level"] for i in items), key=lambda l: LEVELS[l], default="good")
-    items.sort(key=lambda i: -LEVELS[i["level"]])
-    return {"level": level, "items": items, "checked": int(time.time())}
+    shown, acked = _apply_acks(items)
+    level = max((i["level"] for i in shown), key=lambda l: LEVELS[l], default="good")
+    shown.sort(key=lambda i: -LEVELS[i["level"]])
+    return {"level": level, "items": shown, "acked": acked, "checked": int(time.time())}
+
+
+# ---------------------------------------------------------------------------
+# Setting hints of the status bar to green ("gesehen, ist in Ordnung")
+# A hint is identified by its level and text: when it changes ("2 Lücken" -> "3 Lücken", warning ->
+# critical) it is a new hint and shows again. An acknowledgement ends after its time, or when the
+# hint has been gone for a day (so the same problem next month isn't hidden).
+# ---------------------------------------------------------------------------
+ACK_KEY = "status_acks"
+ACK_MODES = {"change": 0, "24h": 86400, "7d": 7 * 86400}
+MAX_ACKS = 200
+_ack_lock = threading.Lock()
+
+
+def status_key(level: str, text: str) -> str:
+    import hashlib
+    return hashlib.sha1(f"{level}|{text}".encode()).hexdigest()[:12]
+
+
+def _apply_acks(items: List[Dict[str, Any]]) -> tuple:
+    import settings_store
+    now = int(time.time())
+    acks = dict(settings_store.get(ACK_KEY, {}) or {})
+    shown, acked, changed = [], [], False
+    for i in items:
+        k = status_key(i["level"], i["text"])
+        a = acks.get(k)
+        if a and (not a.get("until") or a["until"] > now):
+            acked.append({**i, "key": k, "acked_by": a.get("by", ""), "acked_at": a.get("at", 0), "until": a.get("until", 0)})
+            if now - a.get("seen", 0) > 3600:        # remember it is still there - at most once an hour
+                a["seen"], changed = now, True
+        else:
+            shown.append({**i, "key": k})
+    for k, a in list(acks.items()):
+        if (a.get("until") and a["until"] <= now) or now - a.get("seen", a.get("at", 0)) > 86400 + 3600:
+            del acks[k]
+            changed = True
+    if changed:
+        with _ack_lock:
+            settings_store.set(ACK_KEY, acks)
+    return shown, acked
+
+
+def acknowledge_status(key: str, mode: str, user: str = "", everything: bool = False) -> Dict[str, Any]:
+    """Set one hint (or all shown ones) of the status bar to green, for a while or until it changes."""
+    import settings_store
+    if mode not in ACK_MODES:
+        raise ValueError("Unbekannte Dauer.")
+    current = status_summary()["items"]
+    chosen = current if everything else [i for i in current if i["key"] == key]
+    if not chosen:
+        raise ValueError("Diesen Hinweis gibt es nicht mehr.")
+    now = int(time.time())
+    with _ack_lock:
+        acks = dict(settings_store.get(ACK_KEY, {}) or {})
+        for i in chosen:
+            acks[i["key"]] = {"text": i["text"][:200], "level": i["level"], "by": user, "at": now, "seen": now,
+                              "until": now + ACK_MODES[mode] if ACK_MODES[mode] else 0}
+        if len(acks) > MAX_ACKS:
+            acks = dict(sorted(acks.items(), key=lambda kv: -kv[1].get("at", 0))[:MAX_ACKS])
+        settings_store.set(ACK_KEY, acks)
+    return status_summary()
+
+
+def unacknowledge_status(key: str) -> Dict[str, Any]:
+    import settings_store
+    with _ack_lock:
+        acks = dict(settings_store.get(ACK_KEY, {}) or {})
+        acks.pop(key, None)
+        settings_store.set(ACK_KEY, acks)
+    return status_summary()
 
 
 # ---------------------------------------------------------------------------

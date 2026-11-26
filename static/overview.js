@@ -41,23 +41,60 @@
   // ---------------------------------------------------------------------------
   // Status bar
   // ---------------------------------------------------------------------------
+  const canAck = () => !!(window.PiAuth && window.PiAuth.can && window.PiAuth.can('system.view'));
+  const ACK_MODES = [['change', 'Bis sich etwas ändert'], ['24h', '24 Stunden'], ['7d', '7 Tage']];
+  let showAcked = false;
+  let lastStatus = null;
+
+  async function ackCall(path, body) {
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.detail || `Fehler ${res.status}`);
+    return d;
+  }
+
+  // Small menu below a check button: for how long the hint counts as seen
+  function ackMenu(anchor, body) {
+    document.querySelectorAll('.status-ack-menu').forEach(m => m.remove());
+    const menu = el('div', 'status-ack-menu');
+    menu.appendChild(el('span', 'status-ack-title', t('Auf grün setzen')));
+    ACK_MODES.forEach(([mode, label]) => {
+      const b = el('button', 'text-btn', t(label));
+      b.type = 'button';
+      b.addEventListener('click', async e => {
+        e.stopPropagation();
+        menu.remove();
+        try { renderStatus(await ackCall('/api/status-summary/ack', { ...body, mode })); } catch (err) { window.showToast ? window.showToast(err.message, 'error') : alert(err.message); }
+      });
+      menu.appendChild(b);
+    });
+    anchor.after(menu);
+    setTimeout(() => document.addEventListener('click', function close(ev) {
+      if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', close); }
+    }), 0);
+  }
+
   function renderStatus(s) {
+    lastStatus = s;
     const bar = $('status-bar');
     bar.hidden = false;
     bar.className = `status-bar ${s.level}`;
     bar.innerHTML = '';
+    const acked = s.acked || [];
     const head = el('span', 'status-head');
     head.innerHTML = ICONS[s.level] || ICONS.info;
     head.appendChild(el('span', '', s.items.length
       ? (s.level === 'critical' ? t('Achtung') : s.level === 'warning' ? t('Bitte ansehen') : t('Hinweise'))
       : t('Alles in Ordnung')));
     bar.appendChild(head);
-    if (!s.items.length) {
-      bar.appendChild(el('span', 'status-note', t('Dienste laufen, Speicher und Temperatur im grünen Bereich.')));
-      return;
-    }
     const list = el('div', 'status-items');
+    if (!s.items.length) {
+      list.appendChild(el('span', 'status-note', acked.length
+        ? t(`${acked.length} ${acked.length === 1 ? 'Hinweis ist' : 'Hinweise sind'} auf grün gesetzt.`)
+        : t('Dienste laufen, Speicher und Temperatur im grünen Bereich.')));
+    }
     s.items.forEach(item => {
+      const wrap = el('span', 'status-chip-wrap');
       const chip = el(item.link ? 'button' : 'span', `status-chip ${item.level}`);
       chip.innerHTML = ICONS[item.level] || '';
       chip.appendChild(el('span', '', item.text));
@@ -65,9 +102,52 @@
         chip.type = 'button';
         chip.addEventListener('click', () => follow(item.link));
       }
-      list.appendChild(chip);
+      wrap.appendChild(chip);
+      if (canAck()) {
+        const ok = el('button', 'status-ack');
+        ok.type = 'button';
+        ok.title = t('Auf grün setzen');
+        ok.setAttribute('aria-label', `${t('Auf grün setzen')}: ${item.text}`);
+        ok.innerHTML = ICONS.good;
+        ok.addEventListener('click', e => { e.stopPropagation(); ackMenu(wrap, { key: item.key }); });
+        wrap.appendChild(ok);
+      }
+      list.appendChild(wrap);
     });
+    if (canAck() && s.items.length > 1) {
+      const all = el('button', 'status-chip status-ack-all', t('Alle auf grün'));
+      all.type = 'button';
+      all.addEventListener('click', e => { e.stopPropagation(); ackMenu(all, { all: true }); });
+      list.appendChild(all);
+    }
+    if (acked.length) {
+      const toggle = el('button', 'status-chip status-acked-toggle', `${acked.length} ${t('auf grün gesetzt')} ${showAcked ? '▴' : '▾'}`);
+      toggle.type = 'button';
+      toggle.addEventListener('click', () => { showAcked = !showAcked; renderStatus(lastStatus); });
+      list.appendChild(toggle);
+    }
     bar.appendChild(list);
+    if (showAcked && acked.length) {
+      const box = el('div', 'status-acked');
+      acked.forEach(a => {
+        const row = el('div', 'status-acked-row');
+        const until = a.until ? `${t('bis')} ${new Date(a.until * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : t('bis sich etwas ändert');
+        const text = el('span', '', a.text);
+        const meta = el('span', 'status-acked-meta', [a.acked_by, until].filter(Boolean).join(' · '));
+        meta.setAttribute('data-no-i18n', '');
+        row.append(text, meta);
+        if (canAck()) {
+          const back = el('button', 'text-btn', t('wieder anzeigen'));
+          back.type = 'button';
+          back.addEventListener('click', async () => {
+            try { renderStatus(await ackCall('/api/status-summary/unack', { key: a.key })); } catch (err) { /* offline */ }
+          });
+          row.appendChild(back);
+        }
+        box.appendChild(row);
+      });
+      bar.appendChild(box);
+    }
   }
 
   async function loadStatus() {

@@ -115,6 +115,8 @@
     const open = data.counts.open || 0;
     st.className = `health-tag ${open ? 'critical' : cfg.enabled ? 'good' : ''}`;
     st.textContent = open ? t(open === 1 ? '1 offen' : `${open} offen`) : cfg.enabled ? t('Aktiv') : t('Aus');
+    const all = $('al-resolve-all');
+    if (all) all.hidden = !data.alerts.some(a => a.status !== 'resolved');
     const list = $('al-list');
     list.innerHTML = '';
     if (!cfg.enabled && !data.alerts.length) {
@@ -130,6 +132,29 @@
     shown.forEach(a => list.appendChild(card(a)));
   }
 
+  // All open and acknowledged alarms to done at once - second click within 4 s confirms
+  function initResolveAll() {
+    const b = document.getElementById('al-resolve-all');
+    if (!b) return;
+    b.addEventListener('click', async () => {
+      if (!b.classList.contains('confirming')) {
+        b.classList.add('confirming');
+        b.textContent = t('Wirklich alle?');
+        setTimeout(() => { b.classList.remove('confirming'); b.textContent = t('Alle erledigt'); }, 4000);
+        return;
+      }
+      b.classList.remove('confirming');
+      b.textContent = t('Alle erledigt');
+      b.disabled = true;
+      try {
+        data = await api('/api/alerts/resolve-all', {});
+        render();
+        toast(t(`${data.resolved} ${data.resolved === 1 ? 'Alarm' : 'Alarme'} auf erledigt gesetzt.`), 'success');
+      } catch (err) { toast(err.message, 'error'); }
+      b.disabled = false;
+    });
+  }
+
   async function load() {
     try { data = await api('/api/alerts'); render(); } catch (e) { /* offline */ }
   }
@@ -140,6 +165,7 @@
     if (data) render();
   }));
 
+  initResolveAll();
   (async () => {
     if (window.PiAuth) await window.PiAuth.ready;
     await load();

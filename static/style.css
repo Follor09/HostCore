@@ -12740,3 +12740,29 @@ body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom
 .os-server-head h3 { margin: 0; }
 h3.os-server-head { margin: 6px 0 2px; }
 .os-copy { margin-top: 10px; display: grid; gap: 8px; }
+
+/* Status bar: set hints to green */
+.status-chip-wrap { position: relative; display: inline-flex; align-items: center; gap: 2px; }
+.status-ack { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--text-dim); opacity: 0.55; }
+.status-ack:hover, .status-ack:focus-visible { opacity: 1; color: var(--accent-emerald); background: rgba(var(--ink-rgb), 0.07); }
+.status-ack svg { width: 13px; height: 13px; }
+.status-ack-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; display: grid; gap: 2px; min-width: 190px; padding: 8px;
+  border-radius: 12px; background: var(--bg-card); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+.status-ack-menu .text-btn { justify-content: flex-start; text-align: left; }
+.status-ack-title { font-size: 0.72rem; color: var(--text-dim); padding: 2px 6px 4px; }
+.status-ack-all, .status-acked-toggle { color: var(--text-muted); }
+.status-acked { flex-basis: 100%; display: grid; gap: 4px; margin-top: 8px; }
+.status-acked-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 0.8rem; color: var(--text-muted); }
+.status-acked-meta { color: var(--text-dim); font-size: 0.74rem; }
+
+/* Task dock: hints and alarms */
+.task-dock-hints { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 999px; cursor: pointer;
+  font-size: 0.76rem; font-weight: 500; background: rgba(var(--ink-rgb), 0.06); color: var(--text-muted); white-space: nowrap; }
+.task-dock-hints.good svg { color: var(--accent-emerald); }
+.task-dock-hints.info svg { color: var(--accent-cyan); }
+.task-dock-hints.warning { color: var(--accent-amber); }
+.task-dock-hints.critical { color: var(--accent-rose); }
+.task-dock.hints-mode .task-dock-log { display: none; }
+.task-dock-item.hint-acked-toggle { color: var(--text-dim); font-size: 0.78rem; }
+.task-dock-actions .task-dock-fact-k { align-self: center; margin-left: 6px; }

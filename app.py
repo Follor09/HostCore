@@ -2546,6 +2546,13 @@ async def api_alerts():
     return await asyncio.to_thread(alerting.overview)
 
 
+@app.post("/api/alerts/resolve-all")
+async def api_alerts_resolve_all(request: Request):
+    n = await asyncio.to_thread(alerting.resolve_all, request.state.user or "")
+    request.state.audit_detail = f"{n} Alarme"
+    return {**await asyncio.to_thread(alerting.overview), "resolved": n}
+
+
 @app.post("/api/alerts/{alert_id}/ack")
 async def api_alert_ack(alert_id: str, req: AlertAck, request: Request):
     request.state.audit_detail = alert_id
@@ -5898,6 +5905,21 @@ async def api_events(days: int = 7):
 @app.get("/api/status-summary")
 async def api_status_summary():
     return await asyncio.to_thread(insights.status_summary)
+
+
+@app.post("/api/status-summary/ack")
+async def api_status_ack(payload: dict, request: Request):
+    request.state.audit_detail = "alle" if payload.get("all") else str(payload.get("text", ""))[:150]
+    try:
+        return await asyncio.to_thread(insights.acknowledge_status, str(payload.get("key", "")), str(payload.get("mode", "change")),
+                                       request.state.user or "", bool(payload.get("all")))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/status-summary/unack")
+async def api_status_unack(payload: dict):
+    return await asyncio.to_thread(insights.unacknowledge_status, str(payload.get("key", "")))
 
 
 @app.get("/api/disk-forecast")

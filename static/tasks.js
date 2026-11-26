@@ -21,6 +21,7 @@
   let filter = 'all';
   let selected = null, offset = 0, logTimer = null;
   let pollTimer = null;
+  let hints = null, alarms = null, hintSel = null, hintTimer = null, showAckedHints = false;
   const seenRunning = new Set();
   const initialHash = location.hash;   // read now: the page's own scripts may rewrite the address before load() is done
   const pref = (() => { try { return JSON.parse(localStorage.getItem(PREF) || '{}'); } catch (e) { return {}; } })();
@@ -76,10 +77,12 @@
           <span class="task-dock-title">Aufgaben</span>
           <span class="task-dock-summary" data-id="summary"></span>
         </button>
+        <button class="task-dock-hints" data-id="hints" type="button" hidden></button>
         <div class="segmented task-dock-filter" data-id="filter" role="radiogroup" aria-label="Filter">
           <button type="button" data-f="all" class="active">Alle</button>
           <button type="button" data-f="running">Laufend</button>
           <button type="button" data-f="failed">Fehlgeschlagen</button>
+          <button type="button" data-f="hints">Hinweise</button>
         </div>
         <button class="task-dock-chevron" data-id="chevron" type="button" title="Auf- oder zuklappen">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg>
@@ -103,6 +106,7 @@
       if (!dock.classList.contains('open')) setOpen(true);
       renderList();
     }));
+    $('hints').addEventListener('click', () => showHints());
     dragHeight();
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && dock.classList.contains('open') && !e.target.closest('input, textarea, .xterm')) setOpen(false);
@@ -145,7 +149,8 @@
     savePref();
     if (open) {
       renderList();
-      if (!selected && data && data.tasks.length) select((data.tasks.find(x => x.state === 'running') || data.tasks[0]).id);
+      if (filter === 'hints') renderList();
+      else if (!selected && data && data.tasks.length) select((data.tasks.find(x => x.state === 'running') || data.tasks[0]).id);
       else if (selected) pollLog();
     } else {
       clearTimeout(logTimer);
@@ -169,8 +174,156 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Hints: the status bar's warnings and the open alarms, on every page - set to green from here
+  // ---------------------------------------------------------------------------
+  const ICON = {
+    good: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+    warning: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>'
+  };
+  const ACK_MODES = [['change', 'Bis sich etwas ändert'], ['24h', '24 Stunden'], ['7d', '7 Tage']];
+  const HINT_LABEL = { critical: 'Kritisch', warning: 'Warnung', info: 'Hinweis' };
+  const openAlarms = () => (alarms ? alarms.alerts.filter(a => a.status !== 'resolved') : []);
+
+  function showHints() {
+    filter = 'hints';
+    dock.querySelectorAll('[data-id="filter"] button').forEach(x => x.classList.toggle('active', x.dataset.f === 'hints'));
+    if (!dock.classList.contains('open')) setOpen(true); else renderList();
+  }
+
+  async function loadHints() {
+    clearTimeout(hintTimer);
+    const [s, a] = await Promise.all([api('/api/status-summary').catch(() => null), api('/api/alerts').catch(() => null)]);
+    if (s) hints = s;
+    if (a) alarms = a;
+    renderHints();
+    hintTimer = setTimeout(loadHints, document.hidden ? 120000 : 30000);
+  }
+
+  function renderHints() {
+    if (!dock || !hints) return;
+    // the status bar counts the open alarms as one hint already ("1 Alarm nicht quittiert")
+    const n = hints.items.length;
+    const b = $('hints');
+    b.hidden = false;
+    b.className = `task-dock-hints ${n ? hints.level : 'good'}`;
+    b.innerHTML = n ? ICON.warning : ICON.good;
+    b.appendChild(el('span', '', n ? t(n === 1 ? '1 Hinweis' : `${n} Hinweise`) : t('alles grün')));
+    b.title = n ? hints.items.map(i => i.text).join('\n') : t('Keine offenen Hinweise');
+    if (filter === 'hints') renderList();
+  }
+
+  function hintRow(cls, label, text, sel, onClick) {
+    const row = el('button', `task-dock-item hint ${cls}${sel ? ' selected' : ''}`);
+    row.type = 'button';
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(sel));
+    const top = el('span', 'task-dock-item-top');
+    top.append(raw('span', 'task-dock-item-title', t(text)), el('span', `health-tag ${cls}`, t(label)));
+    row.appendChild(top);
+    row.addEventListener('click', onClick);
+    return row;
+  }
+
+  function renderHintList() {
+    const list = $('list');
+    list.innerHTML = '';
+    if (!hints) { list.appendChild(el('p', 'task-dock-empty', t('Lade …'))); return; }
+    openAlarms().forEach(a => list.appendChild(hintRow(a.status === 'open' ? 'critical' : 'warning', a.status === 'open' ? 'Alarm' : 'Quittiert',
+      a.title || a.subject, hintSel === `a:${a.id}`, () => { hintSel = `a:${a.id}`; renderHintList(); renderHintDetail(); })));
+    hints.items.filter(i => !/Alarme? nicht quittiert$/.test(i.text) || !alarms).forEach(i => list.appendChild(hintRow(i.level, HINT_LABEL[i.level] || 'Hinweis', i.text,
+      hintSel === `h:${i.key}`, () => { hintSel = `h:${i.key}`; renderHintList(); renderHintDetail(); })));
+    const acked = hints.acked || [];
+    if (acked.length) {
+      const tog = el('button', 'task-dock-item hint-acked-toggle', `${acked.length} ${t('auf grün gesetzt')} ${showAckedHints ? '▴' : '▾'}`);
+      tog.type = 'button';
+      tog.addEventListener('click', () => { showAckedHints = !showAckedHints; renderHintList(); });
+      list.appendChild(tog);
+      if (showAckedHints) acked.forEach(i => list.appendChild(hintRow('', 'auf grün', i.text, hintSel === `g:${i.key}`,
+        () => { hintSel = `g:${i.key}`; renderHintList(); renderHintDetail(); })));
+    }
+    if (!list.querySelector('.hint:not(.hint-acked-toggle)') && !acked.length) list.appendChild(el('p', 'task-dock-empty', t('Keine offenen Hinweise – alles grün.')));
+    if (!hintSel || !findHint()) renderHintDetail();
+  }
+
+  function findHint() {
+    if (!hintSel || !hints) return null;
+    const [kind, id] = [hintSel.slice(0, 1), hintSel.slice(2)];
+    if (kind === 'a') { const a = openAlarms().find(x => x.id === id); return a && { kind, a }; }
+    const pool = kind === 'g' ? hints.acked || [] : hints.items;
+    const i = pool.find(x => x.key === id);
+    return i && { kind, i };
+  }
+
+  function actionButton(label, cls, fn) {
+    const b = el('button', cls, t(label));
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await fn(); } catch (err) { toast(err.message, 'error'); }
+      b.disabled = false;
+    });
+    return b;
+  }
+
+  function goTo(link) {
+    if (!link) return;
+    location.href = link.startsWith('#') ? `/${link}` : link;
+  }
+
+  function renderHintDetail() {
+    const head = $('detail-head');
+    head.innerHTML = '';
+    $('log').textContent = '';
+    dock.classList.add('hints-mode');
+    const h = findHint();
+    if (!h) {
+      head.appendChild(el('p', 'task-dock-empty', t('Einen Hinweis wählen: öffnen, wo er herkommt, oder auf grün setzen, wenn er gesehen und in Ordnung ist. Auf grün gesetzt zählt er nicht mehr – ändert sich etwas, erscheint er wieder.')));
+      return;
+    }
+    const title = el('div', 'task-dock-detail-title');
+    const actions = el('div', 'task-dock-actions');
+    if (h.kind === 'a') {
+      const a = h.a;
+      title.append(raw('strong', '', a.title || a.subject), el('span', `health-tag ${a.status === 'open' ? 'critical' : 'warning'}`, t(a.status === 'open' ? 'Offen' : 'Quittiert')));
+      if (a.status === 'open' && can('system.view')) actions.appendChild(actionButton('Quittieren', 'btn-secondary', async () => { await api(`/api/alerts/${a.id}/ack`, { note: '' }); toast(t('Quittiert.'), 'success'); await loadHints(); }));
+      if (can('system.view')) actions.appendChild(actionButton('Erledigt', 'btn-primary', async () => { await api(`/api/alerts/${a.id}/resolve`, {}); hintSel = null; toast(t('Auf erledigt gesetzt.'), 'success'); await loadHints(); }));
+      actions.appendChild(actionButton('Zu den Alarmen', 'btn-secondary', async () => goTo('/system#alarme')));
+    } else if (h.kind === 'h') {
+      const i = h.i;
+      title.append(raw('strong', '', t(i.text)), el('span', `health-tag ${i.level}`, t(HINT_LABEL[i.level] || 'Hinweis')));
+      if (i.link) actions.appendChild(actionButton('Öffnen', 'btn-secondary', async () => goTo(i.link)));
+      if (can('system.view')) {
+        actions.appendChild(el('span', 'task-dock-fact-k', t('Auf grün setzen:')));
+        ACK_MODES.forEach(([mode, label]) => actions.appendChild(actionButton(label, 'btn-secondary', async () => {
+          hints = await api('/api/status-summary/ack', { key: i.key, mode });
+          hintSel = null;
+          toast(t('Auf grün gesetzt.'), 'success');
+          renderHints();
+        })));
+      }
+    } else {
+      const i = h.i;
+      title.append(raw('strong', '', t(i.text)), el('span', 'health-tag good', t('auf grün')));
+      const facts = el('div', 'task-dock-facts');
+      const until = i.until ? new Date(i.until * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : t('bis sich etwas ändert');
+      facts.append(raw('span', '', `${t('von')} ${i.acked_by || '–'} · ${t('am')} ${fmtTime(i.acked_at)} · ${t('gilt')} ${i.until ? `${t('bis')} ${until}` : until}`));
+      head.append(title, facts);
+      if (can('system.view')) actions.appendChild(actionButton('Wieder anzeigen', 'btn-secondary', async () => {
+        hints = await api('/api/status-summary/unack', { key: i.key });
+        hintSel = null;
+        renderHints();
+      }));
+      head.appendChild(actions);
+      return;
+    }
+    head.append(title, actions);
+  }
+
   function renderList() {
     if (!data || !dock.classList.contains('open')) return;
+    if (filter === 'hints') { renderHintList(); return; }
+    dock.classList.remove('hints-mode');
     const list = $('list');
     list.innerHTML = '';
     const items = data.tasks.filter(x => filter === 'all' || (filter === 'running' ? x.state === 'running' : ['error', 'timeout', 'lost'].includes(x.state)));
@@ -222,6 +375,10 @@
   }
 
   function select(id) {
+    if (filter === 'hints') {
+      filter = 'all';
+      dock.querySelectorAll('[data-id="filter"] button').forEach(x => x.classList.toggle('active', x.dataset.f === 'all'));
+    }
     selected = id;
     offset = 0;
     $('log').textContent = '';
@@ -232,7 +389,7 @@
 
   async function pollLog() {
     clearTimeout(logTimer);
-    if (!selected || !dock.classList.contains('open')) return;
+    if (!selected || !dock.classList.contains('open') || filter === 'hints') return;
     const id = selected;
     let r;
     try { r = await api(`/api/tasks/${id}/log?offset=${offset}`); } catch (err) {
@@ -298,14 +455,16 @@
       if (!can('system.view')) return;
     }
     await load();
+    if (dock) loadHints();
     const fromHash = hash => {
       const m = hash.match(/^#aufgabe=([0-9a-f]{16})$/);
       if (m) openTask(m[1]);
       else if (hash === '#aufgaben' && dock) setOpen(true);
+      else if (hash === '#hinweise' && dock) showHints();
     };
     fromHash(initialHash);
     window.addEventListener('hashchange', () => fromHash(location.hash));
     window.addEventListener('resize', () => { if (dock) setHeight(pref.height); });
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { load(); if (dock) loadHints(); } });
   })();
 })();
