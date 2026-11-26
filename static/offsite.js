@@ -32,9 +32,18 @@
     return `${days} · ${String(s.hour).padStart(2, '0')}:00`;
   }
 
+  // Generations (grandfather-father-son): how many daily, weekly, monthly and yearly states stay
+  const GENERATIONS = [['daily', 'Söhne', 'täglich'], ['weekly', 'Väter', 'wöchentlich'], ['monthly', 'Großväter', 'monatlich'], ['yearly', 'Urgroßväter', 'jährlich']];
   function keepText(k) {
-    return [k.daily ? `${k.daily} ${t('täglich')}` : '', k.weekly ? `${k.weekly} ${t('wöchentlich')}` : '', k.monthly ? `${k.monthly} ${t('monatlich')}` : '']
-      .filter(Boolean).join(' · ');
+    return GENERATIONS.filter(([key]) => k[key]).map(([key, gen, every]) => `${k[key]} ${t(gen)} (${t(every)})`).join(' · ');
+  }
+
+  const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+  function verifyText(j) {
+    const v = j.verify || {};
+    const plan = v.enabled ? `${t(v.every === 'monthly' ? 'monatlich, am ersten' : 'wöchentlich,')} ${t(WEEKDAYS[v.weekday] || '')} ${String(v.hour).padStart(2, '0')}:00` : t('aus');
+    const last = j.last_check ? ` · ${t('zuletzt')} ${time(j.last_check)}: ${t(j.last_check_state === 'ok' ? 'in Ordnung' : 'Fehler')}${j.check_part ? ` (${t('Teil')} ${j.check_part}/${data.check_parts})` : ''}` : '';
+    return plan + last;
   }
 
   // Durations as "1 Std. 05 Min." / "4 Min. 10 s" / "35 s"
@@ -160,6 +169,8 @@
     if (j.target.kind === 'drive') add('Google-Kennung', j.target.client_id ? t('eigene Client-ID') : t('gemeinsame von rclone – wird oft gedrosselt, eigene Client-ID eintragen'), j.target.client_id ? '' : 'warn');
     add('Zeitplan', schedText(j.schedule));
     add('Aufbewahrung', keepText(j.keep || {}));
+    add('Prüfung', verifyText(j), j.last_check_state === 'error' ? 'warn' : '');
+    if (j.last_check_state === 'error' && j.last_check_error) add('Prüffehler', j.last_check_error, 'warn');
     add('Zuletzt erfolgreich', j.last_ok ? time(j.last_ok) : '');
     const s = j.summary || {};
     if (j.last_ok && s.files != null) add('Letzter Lauf', `${Number(s.files).toLocaleString(U.LOCALE)} ${t('Dateien')} · ${size(s.bytes)} · ${t('neu')} ${size(s.added)} · ${dur(s.total_seconds != null ? s.total_seconds : s.seconds)}${s.partial ? ` · ${t('einige Dateien nicht lesbar')}` : ''}`);
@@ -283,8 +294,8 @@
 
   function openForm(job) {
     const wrap = $('os-form-wrap');
-    const v = job || { sources: ['docker', 'dashboard', 'system'], target: { kind: 'drive' }, keep: { daily: 7, weekly: 4, monthly: 6 },
-      schedule: { enabled: true, hour: 3, days: [0, 1, 2, 3, 4, 5, 6] } };
+    const v = job || { sources: ['docker', 'dashboard', 'system'], target: { kind: 'drive' }, keep: { daily: 7, weekly: 4, monthly: 6, yearly: 2 },
+      schedule: { enabled: true, hour: 3, days: [0, 1, 2, 3, 4, 5, 6] }, verify: data.default_verify };
     const old = v.target || {};
     wrap.innerHTML = '';
     wrap.hidden = false;
@@ -440,12 +451,29 @@
     const hour = input('number', s.hour ?? 3, { min: 0, max: 23 });
     field(form, 'Uhrzeit (Stunde)', hour);
     const k = v.keep || {};
-    const kd = input('number', k.daily ?? 7, { min: 0, max: 1000 });
-    const kw = input('number', k.weekly ?? 4, { min: 0, max: 1000 });
-    const km = input('number', k.monthly ?? 6, { min: 0, max: 1000 });
-    field(form, 'Tägliche Stände behalten', kd);
-    field(form, 'Wöchentliche Stände behalten', kw);
-    field(form, 'Monatliche Stände behalten', km);
+    form.appendChild(el('p', 'field-hint full', t('Aufbewahrung nach dem Generationenprinzip: Jeder Lauf überträgt nur Änderungen, trotzdem ist jeder Stand vollständig wiederherstellbar – ein wöchentliches Vollbackup ist darum nicht nötig. Behalten wird der jeweils letzte Stand jedes Tages (Söhne), jeder Woche (Väter), jedes Monats (Großväter) und jedes Jahres (Urgroßväter). 7 / 4 / 6 / 2 heißt: eine Woche tageweise, einen Monat wochenweise, ein halbes Jahr monatsweise und zwei Jahre jahresweise. 0 = diese Generation nicht.')));
+    const keepIn = {};
+    GENERATIONS.forEach(([key, gen, every]) => {
+      keepIn[key] = input('number', k[key] ?? 0, { min: 0, max: 1000 });
+      field(form, `${t(gen)} – ${t(every)}e Stände`, keepIn[key]);
+    });
+    const vf = v.verify || {};
+    const ven = el('label', 'toggle-label full');
+    const venIn = el('input');
+    venIn.type = 'checkbox';
+    venIn.checked = !!vf.enabled;
+    ven.append(venIn, ' ', el('span', '', t(`Automatisch prüfen – liest bei jedem Lauf ein anderes ${data.check_parts}tel der Daten aus dem Ziel zurück, nach ${data.check_parts} Prüfungen ist alles einmal gelesen`)));
+    form.appendChild(ven);
+    const every = el('select');
+    [['weekly', 'Wöchentlich'], ['monthly', 'Monatlich (erster Wochentag im Monat)']].forEach(([a, b]) => { const o = el('option', '', t(b)); o.value = a; every.appendChild(o); });
+    every.value = vf.every || 'weekly';
+    field(form, 'Prüfen', every);
+    const wday = el('select');
+    WEEKDAYS.forEach((d, i) => { const o = el('option', '', t(d)); o.value = String(i); wday.appendChild(o); });
+    wday.value = String(vf.weekday ?? 6);
+    field(form, 'Am', wday);
+    const vhour = input('number', vf.hour ?? 5, { min: 0, max: 23 });
+    field(form, 'Um (Stunde)', vhour);
     const pw = input('password', '', { autocomplete: 'new-password', placeholder: job ? t('gespeichert – leer lassen zum Behalten') : t('leer = wird erzeugt') });
     field(form, 'Passwort der Sicherung (für ein vorhandenes Repository)', pw);
 
@@ -463,7 +491,8 @@
       if ((target.kind === 'drive' || target.kind === 'dropbox') && !target.token && job && old.kind === target.kind) delete target.token;
       const body = { name: name.value.trim(), target, sources: sources(), custom: custom.value, exclude: exclude.value,
         schedule: { enabled: en.checked, hour: Number(hour.value), days: days().map(Number) },
-        keep: { daily: Number(kd.value), weekly: Number(kw.value), monthly: Number(km.value) }, password: pw.value };
+        keep: Object.fromEntries(GENERATIONS.map(([key]) => [key, Number(keepIn[key].value)])),
+        verify: { enabled: venIn.checked, every: every.value, weekday: Number(wday.value), hour: Number(vhour.value) }, password: pw.value };
       try {
         data = await api(job ? `/api/offsite/${job.id}` : '/api/offsite', body);
         close();

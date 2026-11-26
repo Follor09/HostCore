@@ -4,6 +4,10 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Off-site backup by generations (grandfather-father-son):** retention now has a fourth generation – yearly states – next to daily, weekly and monthly, and the form calls them sons, fathers, grandfathers and great-grandfathers with an explanation; new backups keep 7 / 4 / 6 / 2. No weekly full backup is needed: every run transfers only changes and every state can be restored on its own.
+- **Automatic check of the off-site backup:** weekly or monthly (first chosen weekday of the month) at a chosen hour – on by default for new backups. Each check reads the structure and another twelfth of the data back from the target, so all of it is read within 12 checks; the manual *Prüfen* does the same. A failed check shows up as a warning; the card shows the plan and the last result with its part. A planned backup or check that finds the other one running waits and tries again for up to four hours.
+
 ## v1.7.1 – 2026-11-26
 
 ### Changed

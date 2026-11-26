@@ -32,7 +32,16 @@ Inhalt: [Wie es funktioniert](#wie-es-funktioniert) · [Einrichten](#einrichten)
 
      Dazu kommen **eigene Ordner** und **Ausnahmen** (je Zeile eine, z. B. `*.tmp` oder `/var/log/journal`).
    - **Zeitplan:** Wochentage und Stunde. Ohne Zeitplan läuft die Sicherung nur von Hand.
-   - **Aufbewahrung:** wie viele tägliche, wöchentliche und monatliche Stände bleiben, z. B. 7 / 4 / 6. Ältere Stände räumt die Sicherung nach jedem Lauf weg.
+   - **Aufbewahrung nach dem Generationenprinzip (Großvater-Vater-Sohn):** wie viele Stände je Generation bleiben, z. B. 7 / 4 / 6 / 2:
+     | Generation | Behalten wird | Beispiel 7 / 4 / 6 / 2 |
+     |---|---|---|
+     | Söhne | der letzte Stand jedes Tages | die letzte Woche tageweise |
+     | Väter | der letzte Stand jeder Woche | der letzte Monat wochenweise |
+     | Großväter | der letzte Stand jedes Monats | das letzte halbe Jahr monatsweise |
+     | Urgroßväter | der letzte Stand jedes Jahres | zwei Jahre jahresweise |
+
+     Ältere Stände räumt die Sicherung nach jedem Lauf weg. **Ein wöchentliches Vollbackup braucht es nicht:** Jeder Lauf überträgt nur Änderungen, und trotzdem ist jeder Stand für sich vollständig wiederherstellbar. Es gibt keine Kette aus Voll- und Teilsicherungen, die reißen könnte.
+   - **Automatisch prüfen:** wöchentlich oder monatlich (am ersten gewählten Wochentag im Monat), z. B. sonntags um 5 Uhr. Jede Prüfung liest die Struktur und ein anderes Zwölftel der Daten aus dem Ziel zurück, nach 12 Prüfungen ist alles einmal gelesen. Findet sie einen Fehler, erscheint eine Warnung. Treffen Sicherung und Prüfung aufeinander, wartet die spätere, bis die andere fertig ist.
    - **Passwort:** leer lassen, dann wird eins erzeugt. Ein eigenes Passwort nur eintragen, wenn du ein schon vorhandenes Repository weiterbenutzen willst.
 3. **Speichern**, dann sofort **Passwort anzeigen** und das Passwort in einen Passwort-Manager oder auf Papier übertragen, also an einen Ort außerhalb dieses Servers.
 4. **Jetzt sichern** für den ersten Lauf.
@@ -97,7 +106,7 @@ Tipp: Die Zeitpläne der Pis um eine Stunde versetzen, z. B. 2:00, 3:00 und 4:00
 - **Fortschritt:** Während eine Sicherung läuft, zeigt ihre Karte die Phase, die Prozente, Dateien und Datenmenge, die tatsächlich hochgeladene Menge mit Geschwindigkeit, die Laufzeit und die Restzeit. Das gilt für Sicherungen von Hand und nach Zeitplan. Das Protokoll steht in der Aufgabenleiste unten.
 - **Die erste Sicherung** überträgt alles und kann bei vielen GB Stunden dauern. Ein Abbruch schadet nicht, denn schon Hochgeladenes erkennt der nächste Lauf wieder.
 - **Warnungen:** Fehlgeschlagene oder überfällige Sicherungen erscheinen in der Statusübersicht und in den E-Mail-Berichten.
-- **Prüfen:** Der Knopf *Prüfen* liest die Struktur und 2 % der Daten aus dem Ziel zurück. Sinnvoll etwa einmal im Monat.
+- **Prüfen:** Außer nach Zeitplan geht es jederzeit mit dem Knopf *Prüfen*. Auch dabei wird der nächste Datenteil gelesen (Teil x/12 steht auf der Karte).
 - **Stände & Wiederherstellen** listet alle gespeicherten Stände.
 
 ## Wiederherstellen

@@ -70,6 +70,16 @@ class OffsiteError(Exception):
     pass
 
 
+class OffsiteBusy(OffsiteError):
+    """Another task of this backup is running (a backup while its check runs, or the other way round)."""
+
+
+KEEP_KINDS = ("daily", "weekly", "monthly", "yearly")     # sons, fathers, grandfathers, great-grandfathers
+CHECK_PARTS = 12             # each automatic check reads another twelfth of the data: all of it within 12 checks
+DEFAULT_VERIFY = {"enabled": True, "every": "weekly", "weekday": 6, "hour": 5}
+CATCH_UP_HOURS = 4           # a planned run that found another one running tries again within these hours
+
+
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
@@ -185,7 +195,7 @@ def overview() -> Dict[str, Any]:
     _refresh_running()
     jobs = [_public(j) for j in _jobs()]
     return {"jobs": jobs, "tools": tools(), "providers": PROVIDERS, "sources": {k: {"label": v[0], "desc": v[1]} for k, v in SOURCES.items()},
-            "fields": FIELDS, "problems": sum(1 for j in jobs if j["state"] in ("error", "overdue")), "restore_dir": "/var/lib/pi-dashboard/restore"}
+            "fields": FIELDS, "check_parts": CHECK_PARTS, "default_verify": DEFAULT_VERIFY, "problems": sum(1 for j in jobs if j["state"] in ("error", "overdue")), "restore_dir": "/var/lib/pi-dashboard/restore"}
 
 
 def _clean_target(kind: str, f: Dict[str, Any], old: Dict[str, Any]) -> Dict[str, Any]:
@@ -293,22 +303,27 @@ def save(jid: Optional[str], f: Dict[str, Any], user: str = "") -> Dict[str, Any
     try:
         hour = int(sched.get("hour", 3))
         days = sorted({int(d) for d in sched.get("days") or []})
-        keep = {k: int((f.get("keep") or {}).get(k) or 0) for k in ("daily", "weekly", "monthly")}
+        keep = {k: int((f.get("keep") or {}).get(k) or 0) for k in KEEP_KINDS}
+        v = f.get("verify") or {}
+        verify = {"enabled": bool(v.get("enabled")), "every": v.get("every") if v.get("every") in ("weekly", "monthly") else "weekly",
+                  "weekday": int(v.get("weekday", 6)), "hour": int(v.get("hour", 5))}
     except (TypeError, ValueError):
-        raise OffsiteError("Ungültige Zeit, Wochentage oder Aufbewahrung.")
+        raise OffsiteError("Ungültige Zeit, Wochentage, Aufbewahrung oder Prüfung.")
+    if not 0 <= verify["weekday"] <= 6 or not 0 <= verify["hour"] <= 23:
+        raise OffsiteError("Prüfung: Wochentag Montag bis Sonntag, Stunde 0 bis 23.")
     if not 0 <= hour <= 23 or any(d < 0 or d > 6 for d in days):
         raise OffsiteError("Stunde 0 bis 23, Wochentage Montag bis Sonntag.")
     if bool(sched.get("enabled")) and not days:
         raise OffsiteError("Für den Zeitplan mindestens einen Wochentag wählen.")
     if any(not 0 <= v <= 1000 for v in keep.values()) or not any(keep.values()):
-        raise OffsiteError("Aufbewahrung: mindestens eine Zahl zwischen 1 und 1000 (täglich, wöchentlich oder monatlich).")
+        raise OffsiteError("Aufbewahrung: mindestens eine Generation mit 1 bis 1000 Ständen (täglich, wöchentlich, monatlich oder jährlich).")
     password = str(f.get("password") or "")
     if password and len(password) < 12:
         raise OffsiteError("Das Passwort der Sicherung braucht mindestens 12 Zeichen.")
     if old and password and password != old.get("password") and old.get("last_ok"):
         raise OffsiteError("Das Passwort einer Sicherung mit gespeicherten Ständen lässt sich nicht ändern – dafür eine neue Sicherung anlegen.")
     clean = {"name": name, "target": target, "sources": sources, "custom": custom, "exclude": exclude,
-             "schedule": {"enabled": bool(sched.get("enabled")), "hour": hour, "days": days}, "keep": keep}
+             "schedule": {"enabled": bool(sched.get("enabled")), "hour": hour, "days": days}, "keep": keep, "verify": verify}
     with _lock:
         items = _jobs()
         if jid:
@@ -322,7 +337,8 @@ def save(jid: Optional[str], f: Dict[str, Any], user: str = "") -> Dict[str, Any
             if len(items) >= MAX_JOBS:
                 raise OffsiteError(f"Höchstens {MAX_JOBS} externe Sicherungen.")
             items.append({"id": secrets.token_hex(5), **clean, "password": password or secrets.token_urlsafe(24), "user": user,
-                          "created": int(time.time()), "last_run": 0, "last_ok": 0, "last_state": "", "last_error": "", "last_day": ""})
+                          "created": int(time.time()), "last_run": 0, "last_ok": 0, "last_state": "", "last_error": "", "last_day": "",
+                          "check_count": 0})
         settings_store.set(KEY, items)
     return overview()
 
@@ -374,7 +390,8 @@ def _quote(s: str) -> str:
     return "'" + s.replace("'", "'\\''") + "'"
 
 
-def _start(j: Dict[str, Any], cmd: str, title: str, user: str, args: List[str] = (), timeout: int = 24 * 3600) -> Dict[str, Any]:
+def _start(j: Dict[str, Any], cmd: str, title: str, user: str, args: List[str] = (), timeout: int = 24 * 3600,
+           extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     import sys
     if not sys.platform.startswith("linux"):
         raise OffsiteError("Nur unter Linux möglich.")
@@ -384,7 +401,7 @@ def _start(j: Dict[str, Any], cmd: str, title: str, user: str, args: List[str] =
     path = os.path.join(SPEC_DIR, f"{j['id']}-{secrets.token_hex(4)}.json")
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump(_spec(j), f)
+        json.dump({**_spec(j), **(extra or {})}, f)
     shell = (f"sudo -n {_quote(helper)} offsite {cmd} {' '.join(_quote(a) for a in args)} < {_quote(path)}; "
              f"rc=$?; rm -f {_quote(path)}; exit $rc")
     try:
@@ -392,9 +409,11 @@ def _start(j: Dict[str, Any], cmd: str, title: str, user: str, args: List[str] =
                            data={"job": j["id"], "cmd": cmd, "spec": path})
     except tasks.TaskError as e:
         os.unlink(path)
-        raise OffsiteError(str(e))
+        raise (OffsiteBusy if "läuft schon" in str(e) else OffsiteError)(str(e))
     if cmd == "backup":
         _update(j["id"], running=task["id"], last_run=int(time.time()))
+    if cmd == "check":
+        _update(j["id"], checking=task["id"])
     return task
 
 
@@ -404,8 +423,13 @@ def run(jid: str, user: str = "") -> Dict[str, Any]:
 
 
 def check(jid: str, user: str = "") -> Dict[str, Any]:
+    """Read the structure and the next twelfth of the data back from the target (all of it within 12 checks)."""
     j = _job(jid)
-    return _start(j, "check", f"Externe Sicherung prüfen: {j['name']}", user)
+    part = int(j.get("check_count") or 0) % CHECK_PARTS + 1
+    task = _start(j, "check", f"Externe Sicherung prüfen: {j['name']} (Teil {part}/{CHECK_PARTS})", user,
+                  extra={"subset": f"{part}/{CHECK_PARTS}"})
+    _update(jid, check_count=int(j.get("check_count") or 0) + 1, check_part=part)
+    return task
 
 
 def restore(jid: str, snapshot: str, path: str, user: str = "") -> Dict[str, Any]:
@@ -453,6 +477,12 @@ def _task_done(task: Dict[str, Any]) -> None:
     if spec and os.path.exists(spec):
         os.unlink(spec)
     jid = data.get("job")
+    if jid and data.get("cmd") == "check":
+        ok = task.get("state") == "ok"
+        err = "" if ok else next((ln[2:].strip() for ln in reversed(_log_tail(task["id"]).splitlines()) if ln.startswith("❌")), "")
+        _update(jid, checking="", last_check=int(time.time()), last_check_state="ok" if ok else "error",
+                last_check_error="" if ok else (err or f"Aufgabe: {tasks.STATES.get(task.get('state'), task.get('state'))}")[:400])
+        return
     if not jid or data.get("cmd") != "backup":
         return
     tail = _log_tail(task["id"])
@@ -485,19 +515,43 @@ def _refresh_running() -> None:
                 _update(j["id"], running="")
 
 
+def _in_window(lt: time.struct_time, hour: int) -> bool:
+    """From the planned hour on, for a few hours - a run that found the other task of its backup busy tries again."""
+    return hour <= lt.tm_hour < hour + CATCH_UP_HOURS
+
+
+def verify_due(j: Dict[str, Any], lt: time.struct_time) -> bool:
+    v = j.get("verify") or {}
+    if not v.get("enabled") or lt.tm_wday != v.get("weekday") or not _in_window(lt, v.get("hour", 5)):
+        return False
+    if v.get("every") == "monthly" and lt.tm_mday > 7:          # the first such weekday of the month
+        return False
+    return j.get("last_check_day") != time.strftime("%Y-%m-%d", lt)
+
+
 def tick(now: Optional[float] = None) -> None:
-    """Once a minute: each job once on its planned days, at its hour."""
+    """Once a minute: each backup once on its planned days at its hour, and its automatic check. If the
+    other task of the same backup is still running, it is tried again a minute later (for a few hours)."""
     lt = time.localtime(now or time.time())
     today = time.strftime("%Y-%m-%d", lt)
     for j in _jobs():
         s = j.get("schedule") or {}
-        if not s.get("enabled") or lt.tm_wday not in (s.get("days") or []) or lt.tm_hour != s.get("hour") or j.get("last_day") == today:
-            continue
-        _update(j["id"], last_day=today)
-        try:
-            run(j["id"], "Zeitplan")
-        except OffsiteError as e:
-            _update(j["id"], last_state="error", last_error=str(e)[:400], last_run=int(time.time()))
+        if s.get("enabled") and lt.tm_wday in (s.get("days") or []) and _in_window(lt, s.get("hour", 3)) and j.get("last_day") != today:
+            try:
+                run(j["id"], "Zeitplan")
+                _update(j["id"], last_day=today)
+            except OffsiteBusy:
+                pass                                                  # its check runs: next minute again
+            except Exception as e:                                    # anything else: once, recorded, not every minute
+                _update(j["id"], last_day=today, last_state="error", last_error=str(e)[:400], last_run=int(time.time()))
+        if verify_due(j, lt):
+            try:
+                check(j["id"], "Zeitplan")
+                _update(j["id"], last_check_day=today)
+            except OffsiteBusy:
+                pass                                                  # its backup runs: next minute again
+            except Exception as e:
+                _update(j["id"], last_check_day=today, last_check=int(time.time()), last_check_state="error", last_check_error=str(e)[:400])
 
 
 def alerts() -> List[Dict[str, Any]]:
@@ -508,6 +562,8 @@ def alerts() -> List[Dict[str, Any]]:
             out.append({"level": "warning", "text": f"Externe Sicherung {j['name']} fehlgeschlagen: {j.get('last_error') or 'siehe Aufgaben'}"})
         elif st == "overdue":
             out.append({"level": "warning", "text": f"Externe Sicherung {j['name']} ist überfällig"})
+        if j.get("last_check_state") == "error":
+            out.append({"level": "warning", "text": f"Prüfung der externen Sicherung {j['name']} fehlgeschlagen: {j.get('last_check_error') or 'siehe Aufgaben'}"})
     return out
 
 
@@ -673,7 +729,7 @@ def _copy_payload(j: Dict[str, Any]) -> Dict[str, Any]:
     if t.get("kind") == "s3" and t.get("folder") == me:
         t["folder"] = ""
     return {"name": j["name"], "target": t, "sources": j["sources"], "custom": j.get("custom") or [], "exclude": j.get("exclude") or [],
-            "schedule": j.get("schedule") or {}, "keep": j.get("keep") or {}, "password": j["password"]}
+            "schedule": j.get("schedule") or {}, "keep": j.get("keep") or {}, "verify": j.get("verify") or {}, "password": j["password"]}
 
 
 async def copy_to(jid: str, server_ids: List[str], user: str = "") -> Dict[str, Any]:

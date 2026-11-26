@@ -480,7 +480,7 @@ def backup(spec, r: Restic) -> None:
         say("⚠ Einige Dateien ließen sich nicht lesen – der Stand ist trotzdem gespeichert.")
     keep = spec.get("keep") or {}
     flags = []
-    for k in ("daily", "weekly", "monthly"):
+    for k in ("daily", "weekly", "monthly", "yearly"):           # sons, fathers, grandfathers, great-grandfathers
         try:
             n = int(keep.get(k) or 0)
         except (TypeError, ValueError):
@@ -540,9 +540,13 @@ def main() -> None:
         elif cmd == "restore":
             restore(spec, r, sys.argv[2] if len(sys.argv) > 2 else "", sys.argv[3] if len(sys.argv) > 3 else "")
         elif cmd == "check":
+            subset = str(spec.get("subset") or "")
+            m = re.match(r"^(\d{1,3})/(\d{1,3})$", subset)
+            if not (m and 1 <= int(m.group(1)) <= int(m.group(2)) <= 100):
+                subset = "2%"
             r.ensure_repo()
-            say("▶ Repository prüfen (Struktur und 2 % der Daten)")
-            r.run("check", "--read-data-subset=2%", timeout=12 * 3600, capture=False)
+            say(f"▶ Repository prüfen: Struktur und Datenteil {subset}" if "/" in subset else "▶ Repository prüfen: Struktur und 2 % der Daten")
+            r.run("check", f"--read-data-subset={subset}", timeout=12 * 3600, capture=False)
             say("✅ Repository in Ordnung")
         else:
             die("Unbekannter Befehl.")
