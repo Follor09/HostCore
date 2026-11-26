@@ -23,10 +23,13 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 STATE_DIR = "/var/lib/pi-dashboard"
 RESTORE_ROOT = os.path.join(STATE_DIR, "restore")
+PROGRESS_DIR = os.path.join(STATE_DIR, "offsite-progress")   # root-owned, readable: <job>.json while a backup runs
+JOB_RE = re.compile(r"^[0-9a-f]{10}$")
 DATA_ROOTS = ("/home", "/srv", "/opt", "/mnt", "/media", "/data", "/var/www", "/var/lib/docker/volumes")
 SOURCES = {
     "docker": ["/var/lib/docker/volumes"],
@@ -183,6 +186,35 @@ def sources(spec):
 
 
 # ---------------------------------------------------------------------------
+# Progress for the dashboard: one small JSON file per job, written by root, never anything secret
+# ---------------------------------------------------------------------------
+class Progress:
+    def __init__(self, job: str):
+        self.path = os.path.join(PROGRESS_DIR, f"{job}.json") if JOB_RE.match(job or "") else ""
+        self.state = {"started": int(time.time()), "phase": "connect"}
+        self.last = 0.0
+        if self.path:
+            os.makedirs(PROGRESS_DIR, mode=0o755, exist_ok=True)
+            os.chmod(PROGRESS_DIR, 0o755)
+        self.write()
+
+    def write(self, force: bool = True, **fields) -> None:
+        self.state.update(fields)
+        if not self.path or (not force and time.time() - self.last < 3):
+            return
+        self.last = time.time()
+        self.state["updated"] = int(self.last)
+        tmp = f"{self.path}.tmp"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+            with os.fdopen(fd, "w") as f:
+                json.dump(self.state, f)
+            os.replace(tmp, self.path)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # restic
 # ---------------------------------------------------------------------------
 class Restic:
@@ -248,21 +280,33 @@ def human(n) -> str:
 
 
 def backup(spec, r: Restic) -> None:
+    prog = Progress(str(spec.get("job") or ""))
     paths, missing, excludes = sources(spec)
     if not paths:
+        prog.write(phase="error")
         die("Keine der gewählten Quellen ist auf diesem Server vorhanden.")
     say(f"▶ Ziel: {r.repo}")
     for p in missing:
         say(f"   (übersprungen, gibt es hier nicht: {p})")
-    r.ensure_repo()
+    try:
+        r.ensure_repo()
+    except SystemExit:
+        prog.write(phase="error")
+        raise
     r.run("unlock", check=False, timeout=300)          # stale locks of an interrupted run
     say("▶ Sichern: " + ", ".join(paths))
+    prog.write(phase="backup", percent=0)
     args = ["backup", "--json", "--host", r.host, "--tag", TAG, "--exclude-caches", "--one-file-system"]
     for e in excludes:
         args += ["--exclude", e]
     start = time.time()
-    proc = subprocess.Popen(["nice", "-n", "15", "ionice", "-c3", "restic", *args, *paths], env=r.env, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True, errors="replace")
+    # A status line every 2 s (restic's default without a terminal is one a minute)
+    proc = subprocess.Popen(["nice", "-n", "15", "ionice", "-c3", "restic", *args, *paths], env={**r.env, "RESTIC_PROGRESS_FPS": "0.5"},
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+    # stderr is read alongside: a run with many unreadable files would otherwise fill the pipe and stall
+    err_lines = []
+    reader = threading.Thread(target=lambda: err_lines.extend(proc.stderr), daemon=True)
+    reader.start()
     summary, last_print = {}, 0.0
     for line in proc.stdout:
         try:
@@ -270,6 +314,10 @@ def backup(spec, r: Restic) -> None:
         except ValueError:
             continue
         kind = msg.get("message_type")
+        if kind == "status":
+            prog.write(False, percent=round((msg.get("percent_done") or 0) * 100, 1), files_done=msg.get("files_done", 0),
+                       total_files=msg.get("total_files", 0), bytes_done=msg.get("bytes_done", 0), total_bytes=msg.get("total_bytes", 0),
+                       remaining=msg.get("seconds_remaining"), errors=msg.get("error_count", 0))
         if kind == "status" and time.time() - last_print > 30:
             last_print = time.time()
             pct = msg.get("percent_done") or 0
@@ -279,11 +327,13 @@ def backup(spec, r: Restic) -> None:
             say(f"   ⚠ {item}: {(msg.get('error') or {}).get('message', '')}"[:300])
         elif kind == "summary":
             summary = msg
-    err = proc.stderr.read()
     rc = proc.wait()
+    reader.join(timeout=10)
     if rc not in (0, 3):              # 3: some files could not be read, the snapshot exists anyway
-        lines = err.strip().splitlines()
+        prog.write(phase="error")
+        lines = "".join(err_lines).strip().splitlines()
         die(f"restic backup: {(lines[-1] if lines else f'Fehler {rc}')[:400]}")
+    prog.write(percent=100, remaining=0, backup_seconds=int(time.time() - start))
     if rc == 3:
         say("⚠ Einige Dateien ließen sich nicht lesen – der Stand ist trotzdem gespeichert.")
     keep = spec.get("keep") or {}
@@ -297,10 +347,13 @@ def backup(spec, r: Restic) -> None:
             flags += [f"--keep-{k}", str(n)]
     if flags:
         say("▶ Alte Stände aufräumen")
+        prog.write(phase="prune", prune_started=int(time.time()))
         r.run("forget", "--host", r.host, "--tag", TAG, "--prune", *flags, timeout=6 * 3600, capture=True)
+    prog.write(phase="done")
     out = {"files": summary.get("total_files_processed"), "bytes": summary.get("total_bytes_processed"),
            "added": summary.get("data_added"), "snapshot": (summary.get("snapshot_id") or "")[:8],
-           "seconds": int(time.time() - start), "partial": rc == 3}
+           "seconds": int(time.time() - start), "partial": rc == 3, "total_seconds": int(time.time() - prog.state["started"]),
+           "backup_seconds": prog.state.get("backup_seconds"), "prune_seconds": int(time.time() - prog.state.get("prune_started", time.time()))}
     say(f"✅ Gesichert: {out['files']} Dateien, {human(out['bytes'])} – neu übertragen {human(out['added'])} in {out['seconds']} s")
     say("HC-SUMMARY " + json.dumps(out))
 

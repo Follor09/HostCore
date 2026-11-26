@@ -12727,3 +12727,11 @@ body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom
 .update-now.busy svg { animation: update-spin 1.2s linear infinite; }
 @keyframes update-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .update-now.busy svg { animation: none; } }
+.os-progress { margin: 10px 0 4px; display: grid; gap: 6px; }
+.os-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.os-progress-phase { font-size: 0.82rem; color: var(--text-main); }
+.os-progress-pct { font-weight: 300; font-size: 1.6rem; line-height: 1; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+.os-progress-line { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.os-indeterminate { opacity: 0.35; animation: os-pulse 1.6s ease-in-out infinite; }
+@keyframes os-pulse { 50% { opacity: 0.12; } }
+@media (prefers-reduced-motion: reduce) { .os-indeterminate { animation: none; } }

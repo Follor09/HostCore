@@ -60,6 +60,8 @@ DATA_ROOTS = ("/home", "/srv", "/opt", "/mnt", "/media", "/data", "/var/www", "/
 PATH_RE = re.compile(r"^/[A-Za-z0-9._/@+ -]{1,250}$")
 SNAP_RE = re.compile(r"^([0-9a-f]{8,64}|latest)$")
 AUTH_PORT = 53682
+PROGRESS_DIR = "/var/lib/pi-dashboard/offsite-progress"   # written by offsitetool.py (root) while a backup runs
+PHASES = {"connect": "Verbinde mit dem Ziel", "backup": "Sichern", "prune": "Alte Stände aufräumen", "done": "Abschließen", "error": "Fehler"}
 _lock = threading.Lock()
 _auth: Dict[str, Any] = {}
 
@@ -106,13 +108,51 @@ def _where(t: Dict[str, Any]) -> str:
     return t.get("folder") or "HostCore"
 
 
+def _num(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def progress(j: Dict[str, Any], now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """How far a running backup is and how long it still takes - from restic's own estimate while it
+    knows one, else from the last run's duration."""
+    if not j.get("running"):
+        return None
+    now = now or time.time()
+    p: Dict[str, Any] = {}
+    try:
+        with open(os.path.join(PROGRESS_DIR, f"{j['id']}.json")) as f:
+            p = json.load(f)
+    except (OSError, ValueError):
+        pass
+    started = _num(p.get("started"))
+    if not started or started < (j.get("last_run") or 0) - 120:      # file of an earlier run: not started yet
+        p, started = {}, float(j.get("last_run") or now)
+    phase = p.get("phase") if p.get("phase") in PHASES else "connect"
+    elapsed = max(0, int(now - started))
+    last = j.get("summary") or {}
+    previous = _num(last.get("total_seconds")) or _num(last.get("seconds"))
+    remaining, estimate = None, False
+    if phase == "backup":
+        r = _num(p.get("remaining"))
+        if r and r > 0:
+            remaining = max(0, int(r - (now - (_num(p.get("updated")) or now))))
+    if remaining is None and previous and phase in ("connect", "backup", "prune"):
+        remaining, estimate = max(0, int(previous - elapsed)), True
+    percent = _num(p.get("percent"))
+    if phase in ("prune", "done"):
+        percent = 100.0
+    return {"phase": phase, "label": PHASES[phase], "percent": percent, "elapsed": elapsed, "remaining": remaining, "estimate": estimate,
+            "previous": int(previous) if previous else None,
+            **{k: p.get(k) for k in ("files_done", "total_files", "bytes_done", "total_bytes", "errors")}}
+
+
 def _public(j: Dict[str, Any]) -> Dict[str, Any]:
     t = j.get("target") or {}
     hidden = SECRETS.get(t.get("kind"), ())
     target = {k: v for k, v in t.items() if k not in hidden}
     target.update({f"has_{k}": bool(t.get(k)) for k in hidden})
     out = {k: v for k, v in j.items() if k not in ("password", "target")}
-    out.update(target=target, where=_where(t), provider=PROVIDERS.get(t.get("kind"), t.get("kind")), state=_state(j))
+    out.update(target=target, where=_where(t), provider=PROVIDERS.get(t.get("kind"), t.get("kind")), state=_state(j), progress=progress(j))
     return out
 
 
@@ -295,7 +335,7 @@ def _spec(j: Dict[str, Any]) -> Dict[str, Any]:
             stacks = sorted({s["dir"] for s in containers.stacks() if s.get("dir")})
         except Exception as e:
             logger.warning(f"Off-site backup: stack folders: {e}")
-    return {"target": j["target"], "password": j["password"], "sources": j["sources"], "custom": j.get("custom") or [],
+    return {"job": j["id"], "target": j["target"], "password": j["password"], "sources": j["sources"], "custom": j.get("custom") or [],
             "stacks": stacks, "exclude": j.get("exclude") or [], "keep": j.get("keep") or {}}
 
 

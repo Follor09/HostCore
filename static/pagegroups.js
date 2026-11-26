@@ -93,6 +93,13 @@
               const p = bk.value.problems;
               out.push(p ? { level: 'warning', text: `${n(p, 'Backup', 'Backups')} mit Problem` } : { level: 'good', text: `${n(bk.value.jobs.length, 'Backup', 'Backups')} aktuell` });
             }
+            if (os.status === 'fulfilled') {
+              os.value.jobs.filter(j => j.progress).forEach(j => {
+                const pr = j.progress;
+                const rest = pr.remaining != null ? `, noch ${pr.estimate ? 'etwa ' : ''}${pr.remaining >= 3600 ? `${Math.floor(pr.remaining / 3600)} Std. ${Math.round((pr.remaining % 3600) / 60)} Min.` : `${Math.max(1, Math.round(pr.remaining / 60))} Min.`}` : '';
+                out.push({ level: 'info', text: `Sicherung ${j.name} läuft${pr.percent != null ? `: ${Math.floor(pr.percent)} %` : ''}${rest}` });
+              });
+            }
             if (os.status === 'fulfilled' && os.value.jobs.length) {
               const p = os.value.problems;
               out.push(p ? { level: 'warning', text: `${n(p, 'externe Sicherung', 'externe Sicherungen')} mit Problem` } : { level: 'good', text: `${n(os.value.jobs.length, 'externe Sicherung', 'externe Sicherungen')} in Ordnung` });

@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Progress of a running off-site backup:** whether started by hand or by its schedule, the backup's card shows the phase (connecting, backing up, pruning old states), a meter with the percentage, files and data done out of the total, how long it has been running and how long it still takes – restic's own estimate once it has scanned the folders, before that an estimate from the last run. Updated every few seconds; the overview of *Speicher & Backups* names running backups with their percentage too. The last run shows its total duration.
+
+### Fixed
+- **Off-site backup could stall with many unreadable files:** restic's error output was only read at the end, so a run with lots of warnings could fill the pipe and stop. It is read alongside now.
+
 ## v1.5.1 – 2026-11-26
 
 ### New

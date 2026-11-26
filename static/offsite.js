@@ -20,6 +20,7 @@
     local: 'Ein eingehängtes Laufwerk, z. B. /mnt/usb/hostcore. Am besten ein Laufwerk, das nicht ständig am Server hängt.'
   };
   let data = null;
+  let pollTimer = 0;
 
   // ---------------------------------------------------------------------------
   // List
@@ -33,6 +34,43 @@
   function keepText(k) {
     return [k.daily ? `${k.daily} ${t('täglich')}` : '', k.weekly ? `${k.weekly} ${t('wöchentlich')}` : '', k.monthly ? `${k.monthly} ${t('monatlich')}` : '']
       .filter(Boolean).join(' · ');
+  }
+
+  // Durations as "1 Std. 05 Min." / "4 Min. 10 s" / "35 s"
+  function dur(s) {
+    if (s == null) return '';
+    s = Math.max(0, Math.round(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h) return `${h} ${t('Std.')} ${String(m).padStart(2, '0')} ${t('Min.')}`;
+    if (m) return `${m} ${t('Min.')} ${String(sec).padStart(2, '0')} s`;
+    return `${sec} s`;
+  }
+
+  // A running backup: phase, meter, how much is done, how long it has run and still runs
+  function progressBox(p) {
+    const box = el('div', 'os-progress');
+    const head = el('div', 'os-progress-head');
+    const pct = p.percent == null ? null : Math.min(100, Math.max(0, p.percent));
+    head.append(el('span', 'os-progress-phase', t(p.label)), raw('strong', 'os-progress-pct', pct == null ? '' : `${Math.floor(pct)} %`));
+    box.appendChild(head);
+    const bar = el('div', 'progress-bar-bg os-progress-bar');
+    const fill = el('div', `progress-bar-fill${pct == null ? ' os-indeterminate' : ''}`);
+    fill.style.width = pct == null ? '100%' : `${pct}%`;
+    fill.style.height = '100%';
+    bar.appendChild(fill);
+    box.appendChild(bar);
+    const parts = [];
+    if (p.phase === 'backup' && p.total_files) {
+      parts.push(`${Number(p.files_done || 0).toLocaleString(U.LOCALE)} ${t('von')} ${Number(p.total_files).toLocaleString(U.LOCALE)} ${t('Dateien')}`);
+      if (p.total_bytes) parts.push(`${size(p.bytes_done || 0)} ${t('von')} ${size(p.total_bytes)}`);
+    }
+    if (p.errors) parts.push(`${p.errors} ${t('nicht lesbar')}`);
+    if (parts.length) box.appendChild(raw('div', 'os-progress-line', parts.join(' · ')));
+    const times = [`${t('läuft seit')} ${dur(p.elapsed)}`];
+    if (p.remaining != null) times.push(`${t(p.estimate ? 'noch etwa' : 'noch')} ${dur(p.remaining)}${p.estimate ? ` (${t('geschätzt aus dem letzten Lauf')})` : ''}`);
+    else if (!p.previous) times.push(t('Restzeit wird nach dem Durchsuchen der Ordner berechnet'));
+    box.appendChild(raw('div', 'os-progress-line field-hint', times.join(' · ')));
+    return box;
   }
 
   function render() {
@@ -51,7 +89,8 @@
     }
     if (!data.jobs.length) list.appendChild(el('p', 'field-hint', t('Noch keine externe Sicherung eingerichtet.')));
     data.jobs.forEach(j => list.appendChild(card(j)));
-    if (data.jobs.some(j => j.state === 'running')) setTimeout(load, 5000);
+    clearTimeout(pollTimer);
+    if (data.jobs.some(j => j.state === 'running')) pollTimer = setTimeout(load, 3000);
   }
 
   function card(j) {
@@ -61,6 +100,7 @@
     head.append(raw('span', 'backup-name', j.name), el('span', 'backup-kind', t(j.provider)), tag(cls, label));
     c.appendChild(head);
     c.appendChild(raw('span', 'backup-target mono', j.where));
+    if (j.progress) c.appendChild(progressBox(j.progress));
     const facts = el('dl', 'backup-facts');
     const add = (k, v, cls2) => { if (v === '' || v == null) return; facts.append(el('dt', '', t(k)), raw('dd', cls2 || '', v)); };
     add('Was', [...j.sources.map(s => t((data.sources[s] || {}).label || s)), ...(j.custom || [])].join(', '));
@@ -68,7 +108,7 @@
     add('Aufbewahrung', keepText(j.keep || {}));
     add('Zuletzt erfolgreich', j.last_ok ? time(j.last_ok) : '');
     const s = j.summary || {};
-    if (j.last_ok && s.files != null) add('Letzter Lauf', `${Number(s.files).toLocaleString(U.LOCALE)} ${t('Dateien')} · ${size(s.bytes)} · ${t('neu')} ${size(s.added)} · ${s.seconds} s${s.partial ? ` · ${t('einige Dateien nicht lesbar')}` : ''}`);
+    if (j.last_ok && s.files != null) add('Letzter Lauf', `${Number(s.files).toLocaleString(U.LOCALE)} ${t('Dateien')} · ${size(s.bytes)} · ${t('neu')} ${size(s.added)} · ${dur(s.total_seconds != null ? s.total_seconds : s.seconds)}${s.partial ? ` · ${t('einige Dateien nicht lesbar')}` : ''}`);
     if (j.snapshots != null) add('Stände', String(j.snapshots));
     if (j.last_state === 'error' && j.last_error) add('Fehler', j.last_error, 'warn');
     c.appendChild(facts);
