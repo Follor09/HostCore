@@ -31,14 +31,17 @@ Data files (`settings.json`, `auth.json`, `history.db`, `tasks/` …) are create
 - UI texts are German; add the English translation to `static/i18n.js`.
 - Avoid class names starting with `ad-` – ad blockers hide them.
 - New dependencies only if really needed (it also runs on a Pi); `cryptography` and `httpx` are already there.
+- Run the tests (`venv/bin/python -m pytest`) – CI runs them on Python 3.10–3.13 for every push and pull request, and a release is only published when they pass. New features get a test in `tests/`.
+- Dependencies have tested version ranges in `requirements.txt`; Dependabot proposes newer ones.
 - Test on a Pi or a Debian/Ubuntu machine if you can, and describe what you tested in the pull request.
 
 ## Development
 
 ```bash
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
+python3 -m venv venv && venv/bin/pip install -r requirements-dev.txt
 venv/bin/python -m uvicorn app:app --port 8000 --reload
 venv/bin/python backend/auth.py set-password      # first user
+venv/bin/python -m pytest                         # tests (run on a temporary copy, never on your data)
 ```
 
 Many features need Linux tools (systemd, apt, Docker); on other systems those sections stay empty.

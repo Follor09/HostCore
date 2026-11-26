@@ -1,0 +1,15 @@
+# Proposes dependency updates as pull requests - CI tests them before anything reaches a server
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      patches:
+        update-types: [patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -37,3 +37,5 @@ gitops-env/
 .update-channel
 vms/
 offsite/
+.pytest_cache/
+.ruff_cache/

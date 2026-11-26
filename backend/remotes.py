@@ -45,6 +45,8 @@ def public(r: Dict[str, Any]) -> Dict[str, Any]:
 
 def normalize_url(url: str) -> str:
     url = (url or "").strip().rstrip("/")
+    if not url or re.fullmatch(r"(?i)https?:?/*", url):
+        raise RemoteError("Adresse wie http://192.168.178.50:8000 angeben.")
     if not re.match(r"^https?://", url):
         url = "http://" + url
     p = urlparse(url)

@@ -244,17 +244,39 @@ def _db_checks() -> List[Dict[str, Any]]:
 # Environment
 # ---------------------------------------------------------------------------
 def _requirements() -> List[tuple]:
+    """(name, [(op, version), ...]) per line, e.g. ("fastapi", [(">=", "0.110.0"), ("<", "0.142")])."""
     out = []
     try:
         with open(os.path.join(BASE_DIR, "requirements.txt")) as f:
             for line in f:
-                line = line.split("#", 1)[0].strip()
-                m = re.match(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*(==|>=)?\s*([\w.]+)?", line)
+                line = line.split("#", 1)[0].split(";", 1)[0].strip()
+                m = re.match(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*(.*)$", line)
                 if m:
-                    out.append((m.group(1), m.group(2) or "", m.group(3) or ""))
+                    specs = re.findall(r"(==|>=|<=|<|>|~=|!=)\s*([\w.*]+)", m.group(2))
+                    out.append((m.group(1), specs))
     except OSError:
         pass
     return out
+
+
+def _vtuple(v: str) -> tuple:
+    """"0.141.1" -> (0, 141, 1); pre-release suffixes are ignored (good enough for a range check)."""
+    return tuple(int(x) for x in re.findall(r"\d+", re.split(r"[a-zA-Z+]", v, 1)[0])[:4])
+
+
+def _satisfies(have: str, specs: List[tuple]) -> bool:
+    h = _vtuple(have)
+    for op, ver in specs:
+        if "*" in ver:
+            continue
+        w = _vtuple(ver)
+        n = max(len(h), len(w))
+        a, b = h + (0,) * (n - len(h)), w + (0,) * (n - len(w))
+        ok = {"==": a == b, "!=": a != b, ">=": a >= b, "<=": a <= b, ">": a > b, "<": a < b,
+              "~=": a >= b and a[:max(1, len(w) - 1)] == b[:max(1, len(w) - 1)]}[op]
+        if not ok:
+            return False
+    return True
 
 
 def _env_checks() -> List[Dict[str, Any]]:
@@ -262,14 +284,14 @@ def _env_checks() -> List[Dict[str, Any]]:
     out = []
     from importlib import metadata
     missing, wrong = [], []
-    for name, op, ver in _requirements():
+    for name, specs in _requirements():
         try:
             have = metadata.version(name)
         except metadata.PackageNotFoundError:
             missing.append(name)
             continue
-        if op == "==" and ver and have != ver:
-            wrong.append(f"{name} {have} (erwartet {ver})")
+        if specs and not _satisfies(have, specs):
+            wrong.append(f"{name} {have} (erwartet {','.join(op + v for op, v in specs)})")
     py = ".".join(map(str, sys.version_info[:3]))
     if missing or wrong:
         out.append(_r("python", g, "Python-Pakete", "critical" if missing else "warning",

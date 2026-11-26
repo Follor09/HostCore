@@ -16,7 +16,13 @@ permissions:
   contents: write
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref_name }}
+
   release:
+    needs: checks          # no release when tests or checks fail
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}

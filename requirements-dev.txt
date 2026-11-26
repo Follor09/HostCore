@@ -1,0 +1,4 @@
+# Only for development and CI - not installed on servers
+-r requirements.txt
+pytest>=8,<10
+ruff>=0.8,<1

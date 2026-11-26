@@ -4,6 +4,13 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### Changed
+- **Tested dependency versions:** `requirements.txt` now has upper bounds, so a fresh install or an update never pulls in an untested major version of FastAPI, uvicorn & co.; `cryptography` (SSO) is listed explicitly. The self-test checks the ranges too. Dependabot proposes updates.
+- **Tests and CI:** a test suite (login and permissions, every API route answering, remote forwarding, Wake-on-LAN, version checks) runs with lint, shell and JavaScript checks on Python 3.10–3.13 for every push; a release is only published when everything passes.
+
+### Fixed
+- Adding a remote server with just `http://` as address is refused instead of becoming `http://http:8000`.
+
 ## v1.9.2 – 2026-11-26
 
 ### New

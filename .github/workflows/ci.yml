@@ -1,0 +1,68 @@
+# Checks for every push and pull request. The release workflow runs the same checks first
+# and only publishes a release when they pass.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:          # used by release.yml
+    inputs:
+      ref:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 = Ubuntu 22.04, 3.11 = Debian 12 / Raspberry Pi OS, 3.12 = Ubuntu 24.04, 3.13 = Debian 13
+        python: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      # Only real errors (syntax, undefined names) - not style
+      - run: ruff check --select E9,F63,F7,F82 --output-format github .
+      - run: python -m pytest
+
+  scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Shell scripts
+        run: |
+          for f in *.sh; do bash -n "$f"; done
+          shellcheck -S error *.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JavaScript syntax
+        run: |
+          for f in static/*.js; do
+            if grep -qE '^(import|export) ' "$f"; then
+              cp "$f" /tmp/check.mjs && node --check /tmp/check.mjs || { echo "::error file=$f::Syntaxfehler"; exit 1; }
+            else
+              node --check "$f" || { echo "::error file=$f::Syntaxfehler"; exit 1; }
+            fi
+          done
+      - name: Systemd units
+        run: |
+          for f in *.service *.timer; do
+            grep -q '^\[Unit\]' "$f" || { echo "::error file=$f::kein [Unit]-Abschnitt"; exit 1; }
+          done
