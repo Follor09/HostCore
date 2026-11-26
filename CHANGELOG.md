@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.7.0 – 2026-11-26
+
 ### New
 - **Set warnings to green:** every hint of the status bar on the start page has a check mark – *Auf grün setzen* for *until something changes*, *24 hours* or *7 days*; *Alle auf grün* does all at once. A hint set to green no longer counts, so the bar turns green. It shows again when it changes (e.g. "2 Lücken" becomes "3 Lücken", or a warning becomes critical), when its time is up, or when the problem was gone for a day and comes back. Hints set to green stay visible under *auf grün gesetzt* with who and until when, and can be shown again. Recorded in the activity log.
 - **Hints and alarms in the task bar:** the bar at the bottom of every page shows how many hints are open (or *alles grün*); a click or the new filter *Hinweise* lists them together with the open alarms – open where a hint comes from, set it to green, or acknowledge and close an alarm, from any page. `#hinweise` opens it directly.
