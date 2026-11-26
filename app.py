@@ -2759,6 +2759,28 @@ async def api_offsite_auth_finish(payload: dict):
     return await asyncio.to_thread(_offsite, offsite.auth_finish, str(payload.get("address", "")))
 
 
+@app.get("/api/offsite/fleet")
+async def api_offsite_fleet():
+    return await offsite.fleet()
+
+
+@app.post("/api/offsite/copy")
+async def api_offsite_copy(payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('job', '')} -> {', '.join(map(str, payload.get('servers') or []))}"[:200]
+    try:
+        return await offsite.copy_to(str(payload.get("job", "")), [str(x) for x in payload.get("servers") or []], request.state.user or "")
+    except offsite.OffsiteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/offsite/fleet/{server_id}/{job_id}/{action}")
+async def api_offsite_fleet_action(server_id: str, job_id: str, action: str, request: Request):
+    try:
+        return await offsite.remote_action(server_id, job_id, action, request.state.user or "")
+    except offsite.OffsiteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/api/offsite")
 async def api_offsite_create(payload: dict, request: Request):
     request.state.audit_detail = str(payload.get("name", ""))[:120]

@@ -12735,3 +12735,8 @@ body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom
 .os-indeterminate { opacity: 0.35; animation: os-pulse 1.6s ease-in-out infinite; }
 @keyframes os-pulse { 50% { opacity: 0.12; } }
 @media (prefers-reduced-motion: reduce) { .os-indeterminate { animation: none; } }
+.os-server { margin-top: 18px; display: grid; gap: 10px; }
+.os-server-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.os-server-head h3 { margin: 0; }
+h3.os-server-head { margin: 6px 0 2px; }
+.os-copy { margin-top: 10px; display: grid; gap: 8px; }

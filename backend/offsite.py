@@ -630,3 +630,101 @@ def auth_finish(address: str) -> Dict[str, Any]:
     with _lock:
         _auth_stop()
     return {"token": token, "kind": kind}
+
+
+# ---------------------------------------------------------------------------
+# Several servers: the main dashboard sees the backups of all its agents and copies one to others
+# ---------------------------------------------------------------------------
+async def fleet() -> Dict[str, Any]:
+    """This server's backups and those of every remote server (through its agent), one group per server."""
+    import asyncio
+    import platform
+
+    import fleet as fleet_mod
+    import httpx
+    import remotes
+
+    async def one(r: Dict[str, Any]) -> Dict[str, Any]:
+        base = {"id": r["id"], "name": r["name"]}
+        try:
+            data = await fleet_mod._call(r["id"], "GET", "/api/offsite")
+            return {**base, "online": True, "jobs": data.get("jobs") or [], "tools": data.get("tools") or {}}
+        except ValueError as e:
+            msg = str(e)
+            if "404" in msg or "Not Found" in msg:
+                msg = "Kennt die externe Sicherung noch nicht – bitte dort HostCore aktualisieren."
+            return {**base, "online": True, "jobs": [], "error": msg}
+        except httpx.HTTPError as e:
+            return {**base, "online": False, "jobs": [], "error": f"Nicht erreichbar ({type(e).__name__})"}
+
+    local = await asyncio.to_thread(overview)
+    rows = await asyncio.gather(*(one(r) for r in remotes._all()))
+    return {"servers": [{"id": "", "name": platform.node() or "Dieser Server", "online": True, "local": True, "jobs": local["jobs"],
+                         "tools": local["tools"]}, *rows]}
+
+
+def _copy_payload(j: Dict[str, Any]) -> Dict[str, Any]:
+    """Everything a save() on another server needs, secrets included. Folders named after this server
+    are left empty, so the other one fills in its own name (HostCore/<its name>) - each server its own repository."""
+    t = dict(j["target"])
+    me = _hostname()
+    if t.get("kind") in ("drive", "dropbox", "webdav") and t.get("folder") == f"HostCore/{me}":
+        t["folder"] = ""
+    if t.get("kind") == "s3" and t.get("folder") == me:
+        t["folder"] = ""
+    return {"name": j["name"], "target": t, "sources": j["sources"], "custom": j.get("custom") or [], "exclude": j.get("exclude") or [],
+            "schedule": j.get("schedule") or {}, "keep": j.get("keep") or {}, "password": j["password"]}
+
+
+async def copy_to(jid: str, server_ids: List[str], user: str = "") -> Dict[str, Any]:
+    """Set up this server's backup on other servers too - or bring their copy up to date (same name)."""
+    import asyncio
+
+    import fleet as fleet_mod
+    import httpx
+    import remotes
+
+    j = _job(jid)
+    payload = _copy_payload(j)
+    known = {r["id"]: r["name"] for r in remotes._all()}
+    ids = [i for i in dict.fromkeys(server_ids or []) if i in known]
+    if not ids:
+        raise OffsiteError("Bitte mindestens einen anderen Server wählen.")
+
+    async def one(sid: str) -> Dict[str, Any]:
+        try:
+            there = await fleet_mod._call(sid, "GET", "/api/offsite")
+            same = next((x for x in there.get("jobs") or [] if x["name"] == j["name"]), None)
+            if same:
+                await fleet_mod._call(sid, "POST", f"/api/offsite/{same['id']}", payload, user)
+                msg = "aktualisiert"
+            else:
+                await fleet_mod._call(sid, "POST", "/api/offsite", payload, user)
+                msg = "eingerichtet"
+            missing = [k for k, ok in (there.get("tools") or {}).items() if not ok]
+            if missing:
+                msg += f" – dort fehlt noch {' und '.join(missing)}"
+            return {"id": sid, "name": known[sid], "ok": True, "message": msg}
+        except ValueError as e:
+            msg = str(e)
+            if "404" in msg or "Not Found" in msg:
+                msg = "kennt die externe Sicherung noch nicht – bitte dort HostCore aktualisieren"
+            return {"id": sid, "name": known[sid], "ok": False, "message": msg}
+        except httpx.HTTPError as e:
+            return {"id": sid, "name": known[sid], "ok": False, "message": f"nicht erreichbar ({type(e).__name__})"}
+
+    return {"results": await asyncio.gather(*(one(i) for i in ids))}
+
+
+async def remote_action(server_id: str, jid: str, action: str, user: str = "") -> Dict[str, Any]:
+    """Start a backup (or its check) of another server from here."""
+    import fleet as fleet_mod
+    import httpx
+    if action not in ("run", "check") or not re.match(r"^[0-9a-f]{10}$", jid or ""):
+        raise OffsiteError("Unbekannte Aktion.")
+    try:
+        return await fleet_mod._call(server_id, "POST", f"/api/offsite/{jid}/{action}", {}, user)
+    except ValueError as e:
+        raise OffsiteError(str(e))
+    except httpx.HTTPError as e:
+        raise OffsiteError(f"Server nicht erreichbar ({type(e).__name__})")

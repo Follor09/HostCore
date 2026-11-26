@@ -2,7 +2,7 @@
 
 Die externe Sicherung kopiert Daten dieses Servers verschlüsselt an einen Ort außerhalb: Google Drive, Dropbox, Nextcloud/WebDAV, S3-Speicher oder ein USB-Laufwerk. Zu finden unter **System → Speicher & Backups → Externe Sicherung**.
 
-Inhalt: [Wie es funktioniert](#wie-es-funktioniert) · [Einrichten](#einrichten) · [Google Drive: eigene Client-ID](#google-drive-eigene-client-id) · [Andere Ziele](#andere-ziele) · [Im Alltag](#im-alltag) · [Wiederherstellen](#wiederherstellen) · [Wenn der Server weg ist](#wenn-der-server-weg-ist) · [Fehlerbehebung](#fehlerbehebung) · [Rückbau](#rückbau)
+Inhalt: [Wie es funktioniert](#wie-es-funktioniert) · [Einrichten](#einrichten) · [Google Drive: eigene Client-ID](#google-drive-eigene-client-id) · [Andere Ziele](#andere-ziele) · [Mehrere Pis](#mehrere-pis) · [Im Alltag](#im-alltag) · [Wiederherstellen](#wiederherstellen) · [Wenn der Server weg ist](#wenn-der-server-weg-ist) · [Fehlerbehebung](#fehlerbehebung) · [Rückbau](#rückbau)
 
 ---
 
@@ -77,6 +77,21 @@ Im Drive landet die Sicherung im Ordner `HostCore/<servername>`, außer im Formu
 | **S3-kompatibel** (AWS, Backblaze B2, Hetzner, Wasabi, MinIO …) | Endpunkt `https://…` ohne Pfad, Bucket (muss schon existieren), Key-ID und Secret. Am besten einen Schlüssel anlegen, der nur diesen Bucket darf. |
 | **USB-Laufwerk / Ordner** | Ein eingehängter Ordner unter `/mnt`, `/media`, `/srv` oder `/data`, z. B. `/mnt/usb/hostcore`. Gegen Ransomware hilft ein Laufwerk, das nicht ständig angeschlossen ist. |
 
+## Mehrere Pis
+
+Sind weitere Server als Agents verbunden (*Einstellungen → Verbindungen → Remote-Server*), zeigt das Haupt-Dashboard unter *Externe Sicherung* die Sicherungen **aller** Server, eine Gruppe pro Server. Dort sieht man jeweils Status und Fortschritt und kann **Jetzt sichern** und **Prüfen** starten.
+
+**Eine Sicherung auf andere Pis übertragen:**
+1. Die Sicherung auf dem Haupt-Dashboard einrichten und einmal testen.
+2. Bei ihr auf **Auf andere Server übertragen** klicken, die Server ankreuzen und **Übertragen** klicken.
+3. Jeder gewählte Server bekommt dieselbe Sicherung mit demselben Ziel, derselben Anmeldung (bei Google Drive auch derselben Client-ID), derselben Auswahl, demselben Zeitplan und **demselben Passwort**. Du musst dir also nur eins merken.
+4. Jeder Server sichert in seinen **eigenen Ordner** `HostCore/<servername>`, die Stände kommen sich nicht in die Quere.
+5. Fehlen auf einem Server noch restic oder rclone, sagt die Meldung das. Dann dort über **Dort öffnen** den Knopf *restic und rclone installieren* drücken.
+
+Überträgst du später erneut, wird die Sicherung mit gleichem Namen auf dem anderen Server **aktualisiert**, nicht doppelt angelegt. So kommen z. B. eine neue Client-ID oder ein geänderter Zeitplan auf alle Pis. Bearbeiten, Wiederherstellen und Entfernen macht man auf dem jeweiligen Server über **Dort öffnen**.
+
+Tipp: Die Zeitpläne der Pis um eine Stunde versetzen, z. B. 2:00, 3:00 und 4:00. Dann teilen sie sich nicht gleichzeitig die Leitung und das Google-Kontingent.
+
 ## Im Alltag
 
 - **Fortschritt:** Während eine Sicherung läuft, zeigt ihre Karte die Phase, die Prozente, Dateien und Datenmenge, die tatsächlich hochgeladene Menge mit Geschwindigkeit, die Laufzeit und die Restzeit. Das gilt für Sicherungen von Hand und nach Zeitplan. Das Protokoll steht in der Aufgabenleiste unten.
@@ -141,7 +156,7 @@ Danach HostCore neu installieren (`install.sh`) und die *Dashboard-Daten* aus de
 
 So entfernst du die externe Sicherung vollständig. Die Schritte sind unabhängig voneinander, mach nur die, die du brauchst.
 
-**1. Sicherung im Dashboard entfernen**
+**1. Sicherung im Dashboard entfernen** (bei mehreren Pis auf jedem Server, über *Dort öffnen*)
 *Externe Sicherung → Entfernen* (zweimal klicken). Damit sind Zeitplan, Zugangsdaten und Passwort vom Server gelöscht. **Die Daten im Ziel bleiben erhalten.** Willst du sie später noch wiederherstellen, das Passwort vorher notieren.
 
 **2. Daten im Ziel löschen**

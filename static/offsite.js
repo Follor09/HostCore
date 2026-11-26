@@ -20,6 +20,7 @@
     local: 'Ein eingehängtes Laufwerk, z. B. /mnt/usb/hostcore. Am besten ein Laufwerk, das nicht ständig am Server hängt.'
   };
   let data = null;
+  let fleet = null;          // all servers (main dashboard with agents only), else null
   let pollTimer = 0;
 
   // ---------------------------------------------------------------------------
@@ -88,13 +89,64 @@
         if (r) toast(t(r.message), 'success');
       }, 'users.manage'));
     }
+    const others = fleet ? fleet.servers.filter(s => !s.local) : [];
+    if (others.length) list.appendChild(el('h3', 'subhead os-server-head', `${t('Dieser Server')} · ${fleet.servers[0].name}`));
     if (!data.jobs.length) list.appendChild(el('p', 'field-hint', t('Noch keine externe Sicherung eingerichtet.')));
     data.jobs.forEach(j => list.appendChild(card(j)));
+    others.forEach(s => list.appendChild(serverGroup(s)));
     clearTimeout(pollTimer);
-    if (data.jobs.some(j => j.state === 'running')) pollTimer = setTimeout(load, 3000);
+    const running = data.jobs.some(j => j.state === 'running') || others.some(s => s.jobs.some(j => j.state === 'running'));
+    if (running) pollTimer = setTimeout(load, others.length ? 5000 : 3000);
   }
 
-  function card(j) {
+  // Another server's backups (through its agent): status, progress, start - set up and changed over there
+  function serverGroup(s) {
+    const box = el('div', 'os-server');
+    const head = el('div', 'os-server-head');
+    head.append(raw('h3', 'subhead', s.name), s.online ? (s.error ? tag('warning', 'Hinweis') : tag('good', 'erreichbar')) : tag('critical', 'nicht erreichbar'));
+    if (s.online && window.PiHosts) head.appendChild(button('Dort öffnen', 'text-btn', () => window.PiHosts.select(s.id)));
+    box.appendChild(head);
+    if (s.error) box.appendChild(el('p', 'field-hint warn', t(s.error)));
+    else if (!s.jobs.length) box.appendChild(el('p', 'field-hint', t('Keine externe Sicherung – mit „Auf andere Server übertragen“ bei einer Sicherung oben einrichten.')));
+    s.jobs.forEach(j => box.appendChild(card(j, s)));
+    return box;
+  }
+
+  // Copy a backup of this server to others; the same name there is updated
+  function copyPanel(j, c) {
+    let box = c.querySelector('.os-copy');
+    if (box) { box.remove(); return; }
+    box = el('div', 'os-copy');
+    const others = fleet.servers.filter(s => !s.local);
+    box.appendChild(el('p', 'field-hint', t('Richtet diese Sicherung mit demselben Ziel, derselben Anmeldung, derselben Auswahl und demselben Passwort auch auf den gewählten Servern ein. Jeder Server sichert in seinen eigenen Ordner (HostCore/<servername>). Gibt es dort schon eine Sicherung mit diesem Namen, wird sie aktualisiert.')));
+    const wrap = el('div', 'inc-targets pb-checks');
+    others.forEach(s => {
+      const l = el('label', 'toggle-label');
+      const i = el('input');
+      i.type = 'checkbox';
+      i.value = s.id;
+      i.disabled = !s.online || !!s.error;
+      const has = s.jobs.some(x => x.name === j.name);
+      l.append(i, ' ', raw('span', '', s.name), el('span', 'field-hint', has ? ` (${t('hat sie schon – wird aktualisiert')})` : !s.online ? ` (${t('nicht erreichbar')})` : s.error ? ` (${t('zu alt')})` : ''));
+      wrap.appendChild(l);
+    });
+    box.appendChild(wrap);
+    const act = el('div', 'form-actions');
+    act.appendChild(button('Übertragen', 'btn-primary', async b => {
+      const ids = [...wrap.querySelectorAll('input:checked')].map(i => i.value);
+      if (!ids.length) { toast(t('Bitte mindestens einen Server wählen.'), 'error'); return; }
+      b.disabled = true;
+      const r = await run(() => api('/api/offsite/copy', { job: j.id, servers: ids }));
+      b.disabled = false;
+      if (!r) return;
+      r.results.forEach(x => toast(`${x.name}: ${t(x.message)}`, x.ok ? 'success' : 'error'));
+      if (r.results.some(x => x.ok)) await load();
+    }, 'users.manage'));
+    box.appendChild(act);
+    c.appendChild(box);
+  }
+
+  function card(j, server) {
     const c = el('div', `backup-card ${j.state}`);
     const head = el('div', 'backup-head');
     const [cls, label] = STATE[j.state] || ['', j.state];
@@ -115,6 +167,19 @@
     if (j.last_state === 'error' && j.last_error) add('Fehler', j.last_error, 'warn');
     c.appendChild(facts);
     const act = el('div', 'docs-row-actions');
+    if (server) {
+      // another server: start and check from here, everything else over there ("Dort öffnen")
+      const remote = action => async b => {
+        b.disabled = true;
+        await run(() => api(`/api/offsite/fleet/${server.id}/${j.id}/${action}`, {}), action === 'run' ? `Sicherung auf ${server.name} gestartet.` : `Prüfung auf ${server.name} gestartet.`);
+        b.disabled = false;
+        await load();
+      };
+      act.append(button('Jetzt sichern', 'text-btn', remote('run'), 'settings.manage'), button('Prüfen', 'text-btn', remote('check'), 'settings.manage'));
+      c.appendChild(act);
+      return c;
+    }
+    if (fleet && fleet.servers.length > 1) act.appendChild(button('Auf andere Server übertragen', 'text-btn', () => copyPanel(j, c), 'users.manage'));
     act.append(
       button('Jetzt sichern', 'text-btn', async b => {
         b.disabled = true;
@@ -413,7 +478,14 @@
   }
 
   async function load() {
-    try { data = await api('/api/offsite'); render(); } catch (e) { /* no permission or offline */ }
+    try {
+      const onRemote = window.PiHost && window.PiHost.isRemote();
+      const [d, f] = await Promise.all([api('/api/offsite'), onRemote ? null : api('/api/offsite/fleet').catch(() => null)]);
+      data = d;
+      fleet = f && f.servers && f.servers.length > 1 ? f : null;
+      if (fleet) fleet.servers[0].jobs = data.jobs;
+      render();
+    } catch (e) { /* no permission or offline */ }
   }
 
   async function init() {
