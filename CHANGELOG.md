@@ -4,6 +4,8 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.5 – 2026-11-26
+
 ### New
 - **https for agents with certificate pinning:** `./agent.sh tls on` gives an agent its own certificate and switches it to https; it shows the SHA-256 fingerprint. In the main dashboard *Remote servers → Address* takes the `https://` address – the fingerprint is shown to compare, and only after confirming is exactly this certificate stored. From then on token, API calls, live data, terminal and Wake-on-LAN go encrypted, and no other certificate is accepted for this agent (a renewed one is confirmed the same way). The list shows *https · certificate pinned*.
 - **Signed releases:** releases are signed with the HostCore release key. On a server `install.sh` stores this key once (root-owned); from then on the stable channel installs only releases with a valid signature – a release pushed with stolen GitHub access alone does not reach the servers. The release workflow refuses to publish an unsigned release.
@@ -17,8 +19,6 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 ### Changed
 - **`app.py` split up:** from 6,500 to 940 lines – every feature has its routes in `backend/routes/` (now including login extras, passkeys, SSO, terminal, VMs, Docker, settings, system tools and auto-update); app.py keeps the app, its middleware and the API docs. Shared helpers: `backend/authweb.py` (sessions), `backend/hostctx.py` (server selection, agent connections), `backend/webutil.py`, `backend/weather.py`. Behaviour unchanged: identical route manifest, no route shadowed by another, every page answers as before.
 - **Styles split by area:** the 12,800-line `style.css` is now ten files in `static/css/` (base, settings, dashboard, system pages, themes, boards, design …), loaded in the same order – byte for byte the same rules, each part cache-busted on its own after an update.
-
-### Changed
 
 ## v1.9.4 – 2026-11-26
 
