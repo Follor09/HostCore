@@ -29,11 +29,25 @@ async def heavy(fn, *args, **kwargs):
     return await asyncio.get_running_loop().run_in_executor(HEAVY_POOL, functools.partial(fn, *args, **kwargs))
 
 
+STYLE_LINK = '<link rel="stylesheet" href="/static/style.css">'
+
+
+def stylesheet_links() -> str:
+    """The styles are split by area into static/css/NN-name.css; loaded in name order, they
+    cascade exactly like the single style.css they came from. Each with its mtime as ?v=."""
+    css_dir = os.path.join(STATIC_DIR, "css")
+    names = sorted(n for n in os.listdir(css_dir) if n.endswith(".css"))
+    return "\n  ".join(f'<link rel="stylesheet" href="/static/css/{n}?v={int(os.path.getmtime(os.path.join(css_dir, n)))}">'
+                       for n in names)
+
+
 def serve_page(name: str) -> HTMLResponse:
     """Serve an HTML page with each asset's mtime appended as ?v=..., so browsers never
-    mix a new page with a cached old style.css / *.js after an auto-update."""
+    mix a new page with cached old styles / *.js after an auto-update. The pages name one
+    stylesheet (/static/style.css); it becomes the links to the parts in static/css/."""
     with open(os.path.join(STATIC_DIR, name), "r", encoding="utf-8") as f:
         html = f.read()
+    html = html.replace(STYLE_LINK, stylesheet_links())
 
     def versioned(m: "re.Match") -> str:
         path = os.path.join(STATIC_DIR, m.group(1))

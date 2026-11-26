@@ -35,3 +35,15 @@ def test_pages_load(admin, path):
     res = admin.get(path)
     assert res.status_code == 200
     assert "<html" in res.text.lower()
+
+
+def test_pages_load_all_style_parts(admin):
+    import os
+    import webutil
+    parts = sorted(n for n in os.listdir(os.path.join(webutil.STATIC_DIR, "css")) if n.endswith(".css"))
+    html = admin.get("/settings").text
+    assert "/static/style.css" not in html
+    found = [p for p in parts if f"/static/css/{p}?v=" in html]
+    assert found == parts
+    assert [html.index(p) for p in parts] == sorted(html.index(p) for p in parts)   # in cascade order
+    assert admin.get(f"/static/css/{parts[0]}").status_code == 200

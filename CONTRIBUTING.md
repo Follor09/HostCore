@@ -30,7 +30,7 @@ Data files (`settings.json`, `auth.json`, `history.db`, `tasks/` …) are create
 
 ## Pull requests
 
-- Keep the style of the surrounding code: plain FastAPI + Python modules (one module per feature), vanilla JavaScript without a build step, no inline scripts (strict CSP), CSS in `static/style.css`.
+- Keep the style of the surrounding code: plain FastAPI + Python modules (one module per feature), vanilla JavaScript without a build step, no inline scripts (strict CSP), CSS in `static/css/` (split by area, loaded in file-name order – new rules go into the part of their area, a new part gets the next number).
 - Every new changing endpoint needs an entry in `backend/access.py` and a label in `backend/audit.py`; if it must never go to a remote server, add it to `LOCAL_ONLY` in `backend/remotes.py`. The test `tests/test_routes.py` fails for a changing route without a permission rule, and shows every change to permissions, forwarding or labels as a diff of `tests/routes.txt` – refresh it with `UPDATE_ROUTES=1 venv/bin/python -m pytest tests/test_routes.py` and commit it.
 - UI texts are German; add the English translation to `static/i18n.js`.
 - Avoid class names starting with `ad-` – ad blockers hide them.

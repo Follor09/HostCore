@@ -783,7 +783,7 @@ def _sso_page(title: str, message: str, target: str = "", close: bool = False, s
     script = '<script src="/static/sso-close.js"></script>' if close else ""
     html = (f'<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
             f'{refresh}<title>{html_escape(title)} | HostCore Server</title><script src="/static/theme.js"></script>'
-            f'<link rel="stylesheet" href="/static/style.css"></head><body class="theme-cyber login-page"><main class="login-wrap">'
+            f'{webutil.stylesheet_links()}</head><body class="theme-cyber login-page"><main class="login-wrap">'
             f'<div class="glass-card login-card"><h1>{html_escape(title)}</h1><p class="card-subtitle">{html_escape(message)}</p>{link}</div>'
             f'</main>{script}</body></html>')
     return HTMLResponse(html.replace("<script src=", '<script data-cfasync="false" src='), status_code=status,

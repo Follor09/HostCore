@@ -15,6 +15,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 - The English README now covers updates, signed releases, remote servers and their encryption.
 
 ### Changed
+- **Styles split by area:** the 12,800-line `style.css` is now ten files in `static/css/` (base, settings, dashboard, system pages, themes, boards, design …), loaded in the same order – byte for byte the same rules, each part cache-busted on its own after an update.
+
+### Changed
 - **Internals:** `app.py` shrank from 6,500 to 3,800 lines – 28 features (incidents, GitOps, files, compliance, off-site backup, security watchers, documentation, containers page and more) now have their routes in `backend/routes/`, shared helpers in `backend/webutil.py`. Behaviour unchanged: the route manifest is identical before and after.
 
 ## v1.9.4 – 2026-11-26
