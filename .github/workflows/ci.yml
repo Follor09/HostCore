@@ -25,7 +25,7 @@ jobs:
         # 3.10 = Ubuntu 22.04, 3.11 = Debian 12 / Raspberry Pi OS, 3.12 = Ubuntu 24.04, 3.13 = Debian 13
         python: ['3.10', '3.11', '3.12', '3.13']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-python@v5
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.sha }}
       - name: Shell scripts
