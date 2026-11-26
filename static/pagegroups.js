@@ -81,10 +81,10 @@
             if (s.throttled && (s.throttled.undervoltage || s.throttled.throttled)) out.push({ level: 'critical', text: s.throttled.undervoltage ? 'Unterspannung' : 'Gedrosselt' });
             return out;
           } },
-        { id: 'speicher', label: 'Speicher & Backups', desc: 'Füllstände, Prognose und überwachte Backups', sections: ['speicherprognose', 'backups'],
+        { id: 'speicher', label: 'Speicher & Backups', desc: 'Füllstände, Prognose, überwachte Backups und externe Sicherung', sections: ['speicherprognose', 'backups', 'externe-sicherung'],
           facts: async () => {
             const out = [];
-            const [drives, bk] = await Promise.allSettled([get('/api/drives'), get('/api/backups')]);
+            const [drives, bk, os] = await Promise.allSettled([get('/api/drives'), get('/api/backups'), get('/api/offsite')]);
             if (drives.status === 'fulfilled') {
               const root = (drives.value.drives || []).find(d => d.mount === '/');
               if (root) out.push({ level: root.percent >= 95 ? 'critical' : root.percent >= 85 ? 'warning' : 'good', text: `/ zu ${Math.round(root.percent)} % belegt` });
@@ -92,6 +92,10 @@
             if (bk.status === 'fulfilled' && bk.value.jobs.length) {
               const p = bk.value.problems;
               out.push(p ? { level: 'warning', text: `${n(p, 'Backup', 'Backups')} mit Problem` } : { level: 'good', text: `${n(bk.value.jobs.length, 'Backup', 'Backups')} aktuell` });
+            }
+            if (os.status === 'fulfilled' && os.value.jobs.length) {
+              const p = os.value.problems;
+              out.push(p ? { level: 'warning', text: `${n(p, 'externe Sicherung', 'externe Sicherungen')} mit Problem` } : { level: 'good', text: `${n(os.value.jobs.length, 'externe Sicherung', 'externe Sicherungen')} in Ordnung` });
             }
             return out;
           } },

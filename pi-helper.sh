@@ -28,6 +28,8 @@
 #   pi-helper.sh malware-scan clamav <path>...  ClamAV, prints findings; never deletes anything
 #   pi-helper.sh malware-scan rkhunter          rootkit check, prints warnings
 #   pi-helper.sh malware-scan rkhunter-baseline rkhunter's reference after system updates
+#   pi-helper.sh offsite <backup|snapshots|check> < spec      off-site backup with restic (backend/offsitetool.py checks everything)
+#   pi-helper.sh offsite restore <snapshot> [<path>] < spec   into /var/lib/pi-dashboard/restore/ (root only)
 #   pi-helper.sh falco-setup                    Falco from its signed package source, modern eBPF, JSON output
 #   pi-helper.sh f2b-banned
 #   pi-helper.sh f2b-unban <ip>
@@ -407,6 +409,11 @@ case "$CMD" in
     fim-scan)
         [ $# -ge 1 ] && [ $# -le 30 ] || die "Pfade fehlen."
         exec nice -n 10 python3 -I "$(dirname "$(readlink -f "$0")")/backend/fimscan.py" "$@"
+        ;;
+    offsite)
+        case "${1:-}" in backup|snapshots|check|restore) ;; *) die "Unbekannter Befehl." ;; esac
+        [ $# -le 3 ] || die "Zu viele Angaben."
+        exec python3 -I "$(dirname "$(readlink -f "$0")")/backend/offsitetool.py" "$@"
         ;;
     malware-scan)
         kind="${1:-}"

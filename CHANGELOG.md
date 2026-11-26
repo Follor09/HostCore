@@ -4,6 +4,9 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+### New
+- **Off-site backup** (System → Speicher & Backups → *Externe Sicherung*): back up this server to Google Drive, Dropbox, Nextcloud/WebDAV, S3-compatible storage (AWS, Backblaze B2, Hetzner, Wasabi, MinIO …) or a USB drive. Each backup picks what to include – Docker volumes and compose stack folders, Kubernetes (k3s) volumes with the cluster database, the dashboard's own data with its database dumps, system settings (`/etc`, cron, `/usr/local`), logs (`/var/log`), home folders or own folders – plus exclusions, a schedule by weekday and hour, and how many daily, weekly and monthly states to keep. restic encrypts everything on the server before it leaves, transfers only changes and prunes old states; the password is generated and can be shown to keep it somewhere safe. Google Drive and Dropbox are connected in the dashboard: sign in with the provider, paste the address the browser ends on, done – no rclone needed on your own computer. States can be listed, checked (structure plus 2 % of the data) and restored into a root-only folder below `/var/lib/pi-dashboard/restore/`; nothing is overwritten in place. Runs as a task as root through the helper, which builds the folder list itself and accepts own folders only below /home, /srv, /opt, /mnt, /media, /data and /var/www; password hashes and SSH host keys are never backed up. Failed and overdue backups appear in the status overview and the e-mail reports. Setting up, credentials and restores need *Benutzer & Berechtigungen*, starting a backup *Einstellungen ändern*. restic and rclone can be installed with one click.
+
 ## v1.4.1 – 2026-11-26
 
 ### Fixed

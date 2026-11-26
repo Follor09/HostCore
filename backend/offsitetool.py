@@ -1,0 +1,359 @@
+"""
+Off-site backup: one restic run as root through pi-helper.sh offsite (from the root-owned copy).
+
+    offsitetool.py backup      < spec      back up the chosen sources, then apply retention
+    offsitetool.py snapshots   < spec      JSON list of this server's backup states
+    offsitetool.py restore <snapshot> [<path>] < spec    into a root-only folder below RESTORE_ROOT
+    offsitetool.py check       < spec      read part of the data back and verify it
+
+The spec (JSON on stdin) comes from the dashboard. Reading every file as root is what makes a
+backup useful, and also what makes this script powerful, so the dashboard is not trusted to
+choose freely: it names source *categories*, the folders are fixed here; own folders, stack
+folders and local targets must lie below a short list of data roots; rclone remotes are built
+here from a few fields per provider (no free rclone config: options like `ssh` or
+`bearer_token_command` would run commands as root). Shadow files and SSH host keys are never
+backed up. Only the standard library; restic and rclone must be installed.
+"""
+
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+STATE_DIR = "/var/lib/pi-dashboard"
+RESTORE_ROOT = os.path.join(STATE_DIR, "restore")
+DATA_ROOTS = ("/home", "/srv", "/opt", "/mnt", "/media", "/data", "/var/www", "/var/lib/docker/volumes")
+SOURCES = {
+    "docker": ["/var/lib/docker/volumes"],
+    "k3s": ["/var/lib/rancher/k3s/storage", "/var/lib/rancher/k3s/server/db", "/var/lib/rancher/k3s/server/token",
+            "/var/lib/rancher/k3s/server/manifests", "/etc/rancher/k3s"],
+    "system": ["/etc", "/var/spool/cron", "/usr/local/bin", "/usr/local/sbin"],
+    "logs": ["/var/log"],
+    "home": ["/home"],
+}
+NEVER = ["/etc/shadow", "/etc/shadow-", "/etc/gshadow", "/etc/gshadow-", "/etc/ssh/ssh_host_*_key", "/etc/.pwd.lock"]
+DASHBOARD_SKIP = ["venv", ".git", "__pycache__", "icon_cache", "appstore_logos", "geoip.db", "tasks", "node_modules"]
+PROVIDERS = ("drive", "dropbox", "webdav", "s3", "local")
+WEBDAV_VENDORS = ("nextcloud", "owncloud", "sharepoint", "other")
+HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
+PATH_RE = re.compile(r"^/[A-Za-z0-9._/@+ -]{1,250}$")
+REMOTE_PATH_RE = re.compile(r"^[A-Za-z0-9._/ +-]{1,200}$")
+SNAP_RE = re.compile(r"^[0-9a-f]{8,64}$")
+TAG = "hostcore"
+
+
+def die(text: str) -> None:
+    print(f"❌ {text}", file=sys.stderr, flush=True)
+    sys.exit(2)
+
+
+def say(text: str) -> None:
+    print(text, flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Checking what the dashboard asks for
+# ---------------------------------------------------------------------------
+def below(path: str, roots) -> bool:
+    real = os.path.normpath(path)
+    return any(real == r or real.startswith(r + "/") for r in roots)
+
+
+def clean_path(p, roots, what: str) -> str:
+    p = str(p or "").strip().rstrip("/") or "/"
+    if not PATH_RE.match(p) or ".." in p.split("/") or not below(p, roots):
+        die(f"{what} {p!r}: erlaubt sind Ordner unter {', '.join(roots)}.")
+    real = os.path.realpath(p)
+    if not below(real, roots):
+        die(f"{what} {p!r} zeigt per Link nach {real} – nicht erlaubt.")
+    return real
+
+
+def dashboard_dir() -> str:
+    try:
+        with open(os.path.join(STATE_DIR, "dir")) as f:
+            d = f.read().strip()
+    except OSError:
+        d = ""
+    if not d or not os.path.isdir(d):
+        die("Dashboard-Ordner unbekannt – install.sh erneut ausführen.")
+    return d
+
+
+def text(spec, key: str, limit: int = 4000) -> str:
+    v = spec.get(key, "")
+    if not isinstance(v, str) or len(v) > limit or "\n" in v or "\r" in v or "\x00" in v:
+        die(f"Ungültiger Wert für {key}.")
+    return v.strip()
+
+
+def target(spec, tmpdir: str):
+    """(repository, environment) for restic; rclone remotes get their own config file in tmpdir."""
+    t = spec.get("target")
+    if not isinstance(t, dict) or t.get("kind") not in PROVIDERS:
+        die("Unbekanntes Ziel.")
+    kind = t["kind"]
+    env = {}
+    if kind == "local":
+        repo = clean_path(t.get("path"), ("/mnt", "/media", "/srv", "/data"), "Zielordner")
+        return repo, env
+    if kind == "s3":
+        endpoint = text(t, "endpoint", 300).rstrip("/")
+        bucket = text(t, "bucket", 100)
+        if not re.match(r"^https://[A-Za-z0-9.-]+(:\d{1,5})?$", endpoint):
+            die("S3-Endpunkt: https://… ohne Pfad, z. B. https://s3.eu-central-1.amazonaws.com")
+        if not re.match(r"^[a-z0-9][a-z0-9.-]{1,62}$", bucket):
+            die("Ungültiger Bucket-Name.")
+        sub = text(t, "folder", 200).strip("/")
+        if sub and not REMOTE_PATH_RE.match(sub):
+            die("Ungültiger Ordner im Bucket.")
+        env = {"AWS_ACCESS_KEY_ID": text(t, "key_id", 200), "AWS_SECRET_ACCESS_KEY": text(t, "secret", 300)}
+        region = text(t, "region", 60)
+        if region:
+            env["AWS_DEFAULT_REGION"] = region
+        return f"s3:{endpoint}/{bucket}" + (f"/{sub}" if sub else ""), env
+    if not shutil.which("rclone"):
+        die("rclone ist nicht installiert.")
+    folder = text(t, "folder", 200).strip("/") or "HostCore"
+    if not REMOTE_PATH_RE.match(folder):
+        die("Ungültiger Ordner im Ziel.")
+    lines = ["[hc]"]
+    if kind in ("drive", "dropbox"):
+        token = t.get("token", "")
+        try:
+            tok = json.loads(token)
+            assert isinstance(tok, dict) and (tok.get("refresh_token") or tok.get("access_token"))
+        except (ValueError, TypeError, AssertionError):
+            die("Die Anmeldung fehlt oder ist ungültig – bitte im Dashboard neu verbinden.")
+        lines += [f"type = {kind}", f"token = {json.dumps(tok, separators=(',', ':'))}"]
+        if kind == "drive":
+            lines.append("scope = drive")
+            root = text(t, "root_folder_id", 100)
+            if root:
+                if not re.match(r"^[A-Za-z0-9_-]{5,100}$", root):
+                    die("Ungültige Ordner-ID.")
+                lines.append(f"root_folder_id = {root}")
+    elif kind == "webdav":
+        url = text(t, "url", 400)
+        if not re.match(r"^https://[^\s]+$", url):
+            die("WebDAV-Adresse: https://…")
+        vendor = t.get("vendor") if t.get("vendor") in WEBDAV_VENDORS else "other"
+        user = text(t, "user", 200)
+        res = subprocess.run(["rclone", "obscure", "-"], input=t.get("password", "") or "", capture_output=True, text=True, timeout=30)
+        if res.returncode != 0:
+            die("Passwort ließ sich nicht für rclone aufbereiten.")
+        lines += ["type = webdav", f"url = {url}", f"vendor = {vendor}", f"user = {user}", f"pass = {res.stdout.strip()}"]
+    conf = os.path.join(tmpdir, "rclone.conf")
+    fd = os.open(conf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    env["RCLONE_CONFIG"] = conf
+    return f"rclone:hc:{folder}", env
+
+
+def sources(spec):
+    paths, excludes = [], list(NEVER)
+    for cat in spec.get("sources") or []:
+        if cat == "dashboard":
+            d = dashboard_dir()
+            paths.append(d)
+            excludes += [os.path.join(d, x) for x in DASHBOARD_SKIP]
+        elif cat in SOURCES:
+            paths += SOURCES[cat]
+        else:
+            die(f"Unbekannte Quelle {cat!r}.")
+    if "docker" in (spec.get("sources") or []):
+        for p in (spec.get("stacks") or [])[:100]:
+            if PATH_RE.match(str(p)) and below(os.path.realpath(str(p)), DATA_ROOTS):
+                paths.append(os.path.realpath(str(p)))
+    for p in (spec.get("custom") or [])[:50]:
+        paths.append(clean_path(p, DATA_ROOTS, "Ordner"))
+    for p in (spec.get("exclude") or [])[:100]:
+        p = str(p)
+        if not p or len(p) > 300 or "\n" in p:
+            die("Ungültige Ausnahme.")
+        excludes.append(p)
+    there = sorted({p for p in paths if os.path.exists(p)})
+    return there, sorted(set(paths) - set(there)), excludes
+
+
+# ---------------------------------------------------------------------------
+# restic
+# ---------------------------------------------------------------------------
+class Restic:
+    def __init__(self, spec, tmpdir: str):
+        if not shutil.which("restic"):
+            die("restic ist nicht installiert.")
+        password = spec.get("password")
+        if not isinstance(password, str) or len(password) < 12:
+            die("Das Passwort der Sicherung fehlt.")
+        repo, env = target(spec, tmpdir)
+        pw = os.path.join(tmpdir, "password")
+        fd = os.open(pw, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(password)
+        self.env = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root", "LC_ALL": "C",
+                    "RESTIC_REPOSITORY": repo, "RESTIC_PASSWORD_FILE": pw, "RESTIC_CACHE_DIR": os.path.join(STATE_DIR, "restic-cache"), **env}
+        self.repo = repo
+        host = socket.gethostname()
+        self.host = host if HOST_RE.match(host) else "server"
+
+    def run(self, *args, check=True, timeout=None, capture=True):
+        res = subprocess.run(["restic", *args], env=self.env, capture_output=capture, text=True, timeout=timeout, errors="replace")
+        if check and res.returncode != 0:
+            err = (res.stderr or "").strip().splitlines()
+            die(f"restic {args[0]}: {(err[-1] if err else 'fehlgeschlagen')[:400]}")
+        return res
+
+    def ensure_repo(self) -> None:
+        res = self.run("cat", "config", check=False, timeout=300)
+        if res.returncode == 0:
+            return
+        err = res.stderr or ""
+        if res.returncode == 10 or "does not exist" in err or "unable to open config file" in err.lower() or "Is there a repository" in err:
+            say(f"▶ Neues Repository anlegen: {self.repo}")
+            self.run("init", timeout=600)
+            return
+        if "wrong password" in err.lower() or res.returncode == 12:
+            die("Das Repository gibt es schon, aber das Passwort passt nicht.")
+        lines = err.strip().splitlines()
+        die(f"Ziel nicht erreichbar: {(lines[-1] if lines else 'unbekannter Fehler')[:400]}")
+
+    def snapshots(self):
+        res = self.run("snapshots", "--json", "--host", self.host, "--tag", TAG, check=False, timeout=300)
+        if res.returncode != 0:
+            err = res.stderr or ""
+            if res.returncode == 10 or "does not exist" in err or "unable to open config file" in err.lower():
+                return {"exists": False, "snapshots": []}
+            lines = err.strip().splitlines()
+            die((lines[-1] if lines else "restic snapshots fehlgeschlagen")[:400])
+        items = json.loads(res.stdout or "[]") or []
+        return {"exists": True, "snapshots": [{"id": s.get("short_id") or s["id"][:8], "time": s.get("time", ""), "paths": s.get("paths", []),
+                                              "summary": {k: (s.get("summary") or {}).get(k) for k in ("total_files_processed", "total_bytes_processed", "data_added")}}
+                                             for s in items][-200:]}
+
+
+def human(n) -> str:
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{int(n)} B"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def backup(spec, r: Restic) -> None:
+    paths, missing, excludes = sources(spec)
+    if not paths:
+        die("Keine der gewählten Quellen ist auf diesem Server vorhanden.")
+    say(f"▶ Ziel: {r.repo}")
+    for p in missing:
+        say(f"   (übersprungen, gibt es hier nicht: {p})")
+    r.ensure_repo()
+    r.run("unlock", check=False, timeout=300)          # stale locks of an interrupted run
+    say("▶ Sichern: " + ", ".join(paths))
+    args = ["backup", "--json", "--host", r.host, "--tag", TAG, "--exclude-caches", "--one-file-system"]
+    for e in excludes:
+        args += ["--exclude", e]
+    start = time.time()
+    proc = subprocess.Popen(["nice", "-n", "15", "ionice", "-c3", "restic", *args, *paths], env=r.env, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, errors="replace")
+    summary, last_print = {}, 0.0
+    for line in proc.stdout:
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        kind = msg.get("message_type")
+        if kind == "status" and time.time() - last_print > 30:
+            last_print = time.time()
+            pct = msg.get("percent_done") or 0
+            say(f"   {pct * 100:.0f} % · {msg.get('files_done', 0)} Dateien · {human(msg.get('bytes_done'))}")
+        elif kind == "error":
+            item = msg.get("item") or ""
+            say(f"   ⚠ {item}: {(msg.get('error') or {}).get('message', '')}"[:300])
+        elif kind == "summary":
+            summary = msg
+    err = proc.stderr.read()
+    rc = proc.wait()
+    if rc not in (0, 3):              # 3: some files could not be read, the snapshot exists anyway
+        lines = err.strip().splitlines()
+        die(f"restic backup: {(lines[-1] if lines else f'Fehler {rc}')[:400]}")
+    if rc == 3:
+        say("⚠ Einige Dateien ließen sich nicht lesen – der Stand ist trotzdem gespeichert.")
+    keep = spec.get("keep") or {}
+    flags = []
+    for k in ("daily", "weekly", "monthly"):
+        try:
+            n = int(keep.get(k) or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if 0 < n <= 1000:
+            flags += [f"--keep-{k}", str(n)]
+    if flags:
+        say("▶ Alte Stände aufräumen")
+        r.run("forget", "--host", r.host, "--tag", TAG, "--prune", *flags, timeout=6 * 3600, capture=True)
+    out = {"files": summary.get("total_files_processed"), "bytes": summary.get("total_bytes_processed"),
+           "added": summary.get("data_added"), "snapshot": (summary.get("snapshot_id") or "")[:8],
+           "seconds": int(time.time() - start), "partial": rc == 3}
+    say(f"✅ Gesichert: {out['files']} Dateien, {human(out['bytes'])} – neu übertragen {human(out['added'])} in {out['seconds']} s")
+    say("HC-SUMMARY " + json.dumps(out))
+
+
+def restore(spec, r: Restic, snap: str, path: str) -> None:
+    if not SNAP_RE.match(snap) and snap != "latest":
+        die("Ungültiger Stand.")
+    if path and (not PATH_RE.match(path) or ".." in path.split("/")):
+        die("Ungültiger Pfad.")
+    os.makedirs(RESTORE_ROOT, mode=0o700, exist_ok=True)
+    os.chmod(RESTORE_ROOT, 0o700)
+    dest = os.path.join(RESTORE_ROOT, f"{time.strftime('%Y%m%d-%H%M%S')}-{snap}")
+    say(f"▶ Stand {snap} wiederherstellen nach {dest}" + (f" (nur {path})" if path else ""))
+    args = ["restore", snap, "--host", r.host, "--target", dest]
+    if path:
+        args += ["--include", path]
+    r.run(*args, timeout=12 * 3600, capture=False)
+    say(f"✅ Wiederhergestellt nach {dest}")
+    say("   Der Ordner gehört root. Dateien von dort an ihren Platz kopieren, z. B. im Terminal mit sudo cp -a.")
+    say("HC-RESTORED " + json.dumps({"dir": dest}))
+
+
+def main() -> None:
+    if os.geteuid() != 0:
+        die("Muss als root laufen (pi-helper.sh offsite).")
+    if len(sys.argv) < 2:
+        die("Befehl fehlt.")
+    cmd = sys.argv[1]
+    try:
+        spec = json.loads(sys.stdin.read(1024 * 1024) or "{}")
+    except ValueError:
+        die("Ungültige Angaben.")
+    if not isinstance(spec, dict):
+        die("Ungültige Angaben.")
+    tmpdir = tempfile.mkdtemp(prefix="hc-offsite-")
+    try:
+        r = Restic(spec, tmpdir)
+        if cmd == "backup":
+            backup(spec, r)
+        elif cmd == "snapshots":
+            print(json.dumps(r.snapshots()))
+        elif cmd == "restore":
+            restore(spec, r, sys.argv[2] if len(sys.argv) > 2 else "", sys.argv[3] if len(sys.argv) > 3 else "")
+        elif cmd == "check":
+            r.ensure_repo()
+            say("▶ Repository prüfen (Struktur und 2 % der Daten)")
+            r.run("check", "--read-data-subset=2%", timeout=12 * 3600, capture=False)
+            say("✅ Repository in Ordnung")
+        else:
+            die("Unbekannter Befehl.")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

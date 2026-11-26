@@ -622,6 +622,21 @@
         <div class="backup-list" id="bk-list"></div>
       </section>
 
+      <!-- Externe Sicherung -->
+      <section data-perm="system.view" class="glass-card settings-section" id="externe-sicherung">
+        <div class="section-head">
+          <h2>Externe Sicherung</h2>
+          <div class="head-tools">
+            <span class="field-hint" id="os-summary"></span>
+            <button data-perm="users.manage" class="btn-primary" id="os-add" type="button">Sicherung einrichten</button>
+          </div>
+        </div>
+        <p class="section-desc">Sichert diesen Server nach Google Drive, Dropbox, Nextcloud, auf S3-Speicher oder ein USB-Laufwerk – Docker-Volumes, Kubernetes-Volumes, die Daten des Dashboards, Systemeinstellungen, Logs oder eigene Ordner, je nachdem, was gewählt ist. restic verschlüsselt alles hier auf dem Server, bevor es ihn verlässt, überträgt nur Änderungen und räumt alte Stände nach der Aufbewahrung auf. Ohne das Passwort der Sicherung lässt sie sich nicht wiederherstellen – es gehört an einen sicheren Ort außerhalb des Servers.</p>
+        <div class="vm-manage-row" id="os-install"></div>
+        <div class="docs-form" id="os-form-wrap" hidden></div>
+        <div class="backup-list" id="os-list"></div>
+      </section>
+
       <!-- Sensoren -->
       <section class="glass-card settings-section" id="sensoren">
         <div class="section-head">
@@ -1142,6 +1157,7 @@
   <script src="/static/secretscan.js"></script>
   <script src="/static/opsui.js"></script>
   <script src="/static/secwatch.js"></script>
+  <script src="/static/offsite.js"></script>
   <script src="/static/patchsla.js"></script>
   <script src="/static/system-extra.js"></script>
   <script src="/static/pagegroups.js"></script>

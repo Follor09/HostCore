@@ -401,7 +401,7 @@ def deadlines() -> List[Tuple[str, str, str]]:
     except Exception as e:
         logger.warning(f"Deadlines (backups): {e}")
     for mod, fn, link in (("eol", "alerts", "/system#lebenszyklus"), ("vulns", "alerts", "/system#schwachstellen"),
-                          ("incidents", "overdue_actions", "/doku#stoerungen")):
+                          ("incidents", "overdue_actions", "/doku#stoerungen"), ("offsite", "alerts", "/system#externe-sicherung")):
         try:
             for a in getattr(__import__(mod), fn)():
                 out.append((a["level"], a["text"], link))

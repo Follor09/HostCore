@@ -12711,3 +12711,8 @@ body.has-topnav .app-header { min-height: 52px; padding-top: 8px; padding-bottom
   .blx-reading strong { grid-row: auto; }
   .blx-reading .blx-meter { width: 220px; }
 }
+
+/* Externe Sicherung */
+.os-snapshots { margin-top: 10px; }
+.os-password { padding: 4px 8px; border-radius: 6px; background: rgba(var(--shade-rgb), 0.35); user-select: all; word-break: break-all; }
+.os-target { gap: inherit; }

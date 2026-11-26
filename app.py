@@ -85,6 +85,7 @@ import autoupdate
 import anomalies
 import apidocs
 import backups
+import offsite
 import capacity
 import dnswatch
 import incidents
@@ -2725,6 +2726,80 @@ async def api_backups_check(job_id: str):
 @app.post("/api/backups/{job_id}/delete")
 async def api_backups_delete(job_id: str):
     return await asyncio.to_thread(backups.delete, job_id)
+
+
+# ---------------------------------------------------------------------------
+# Off-site backup with restic (per server)
+# ---------------------------------------------------------------------------
+def _offsite(fn, *args):
+    try:
+        return fn(*args)
+    except offsite.OffsiteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/offsite")
+async def api_offsite():
+    return await asyncio.to_thread(offsite.overview)
+
+
+@app.post("/api/offsite/install")
+async def api_offsite_install():
+    return await asyncio.to_thread(_offsite, offsite.install)
+
+
+@app.post("/api/offsite/auth/start")
+async def api_offsite_auth_start(payload: dict):
+    return await asyncio.to_thread(_offsite, offsite.auth_start, str(payload.get("kind", "")))
+
+
+@app.post("/api/offsite/auth/finish")
+async def api_offsite_auth_finish(payload: dict):
+    return await asyncio.to_thread(_offsite, offsite.auth_finish, str(payload.get("address", "")))
+
+
+@app.post("/api/offsite")
+async def api_offsite_create(payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_offsite, offsite.save, None, payload, request.state.user or "")
+
+
+@app.get("/api/offsite/{job_id}/snapshots")
+async def api_offsite_snapshots(job_id: str):
+    return await heavy(_offsite, offsite.snapshots, job_id)
+
+
+@app.post("/api/offsite/{job_id}/run")
+async def api_offsite_run(job_id: str, request: Request):
+    return await asyncio.to_thread(_offsite, offsite.run, job_id, request.state.user or "")
+
+
+@app.post("/api/offsite/{job_id}/check")
+async def api_offsite_check(job_id: str, request: Request):
+    return await asyncio.to_thread(_offsite, offsite.check, job_id, request.state.user or "")
+
+
+@app.post("/api/offsite/{job_id}/restore")
+async def api_offsite_restore(job_id: str, payload: dict, request: Request):
+    request.state.audit_detail = f"{payload.get('snapshot', '')} {payload.get('path', '')}".strip()[:200]
+    return await asyncio.to_thread(_offsite, offsite.restore, job_id, str(payload.get("snapshot", "")), str(payload.get("path", "")),
+                                   request.state.user or "")
+
+
+@app.post("/api/offsite/{job_id}/password")
+async def api_offsite_password(job_id: str):
+    return await asyncio.to_thread(_offsite, offsite.password, job_id)
+
+
+@app.post("/api/offsite/{job_id}/delete")
+async def api_offsite_delete(job_id: str):
+    return await asyncio.to_thread(_offsite, offsite.delete, job_id)
+
+
+@app.post("/api/offsite/{job_id}")
+async def api_offsite_update(job_id: str, payload: dict, request: Request):
+    request.state.audit_detail = str(payload.get("name", ""))[:120]
+    return await asyncio.to_thread(_offsite, offsite.save, job_id, payload, request.state.user or "")
 
 
 # ---------------------------------------------------------------------------

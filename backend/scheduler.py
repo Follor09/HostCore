@@ -6,11 +6,12 @@ import logging
 import falco
 import fim
 import malware
+import offsite
 import sudolog
 import vmops
 
 logger = logging.getLogger("pi_dashboard.scheduler")
-JOBS = [("VM-Zeitpläne", vmops.tick), ("Datei-Integrität", fim.tick), ("Malware-Scan", malware.tick), ("sudo-Protokoll", sudolog.sync), ("Falco", falco.sync)]
+JOBS = [("VM-Zeitpläne", vmops.tick), ("Datei-Integrität", fim.tick), ("Malware-Scan", malware.tick), ("sudo-Protokoll", sudolog.sync), ("Falco", falco.sync), ("Externe Sicherung", offsite.tick)]
 
 
 async def background_runner() -> None:
