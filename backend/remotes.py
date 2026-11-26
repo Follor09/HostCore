@@ -4,8 +4,11 @@ API calls, live data and the terminal to. Stored in settings.json - tokens never
 the server again after they were entered.
 """
 
+import asyncio
+import ipaddress
 import re
 import secrets
+import socket
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -37,10 +40,61 @@ def get(remote_id: str) -> Optional[Dict[str, Any]]:
     return next((r for r in _all() if r["id"] == remote_id), None)
 
 
+# Networks where plain http stays inside: LAN, loopback, link-local, and the 100.64.0.0/10
+# range of VPNs like Tailscale / NetBird (CGNAT), IPv6 unique-local
+_PRIVATE_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8",
+                                                   "169.254.0.0/16", "100.64.0.0/10", "::1/128", "fc00::/7", "fe80::/10")]
+_LOCAL_SUFFIXES = (".local", ".lan", ".home", ".home.arpa", ".internal", ".intranet", ".localdomain", ".fritz.box", ".netbird.cloud", ".ts.net")
+_risk_cache: Dict[str, tuple] = {}
+INSECURE_HINT = ("Unverschlüsselt über das Internet: Token, Terminal und Dateien sind unterwegs mitlesbar. "
+                 "Den Agent über ein VPN (WireGuard, NetBird, Tailscale) oder per https hinter einem Reverse-Proxy anbinden.")
+
+
+def _is_private(addr: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(addr.split("%")[0])
+    except ValueError:
+        return False
+    if getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
+    return any(ip in n for n in _PRIVATE_NETS)
+
+
+def transport_risk(url: str, resolve: bool = True) -> bool:
+    """True when the agent is reached with plain http at a public address - the token and
+    everything else would cross the internet unencrypted. Names are resolved (cached 10 min);
+    a name that does not resolve counts as no risk (nothing to warn about yet). With
+    resolve=False only the cache is used (never blocks - for code on the event loop)."""
+    p = urlparse(url)
+    if p.scheme != "http" or not p.hostname:
+        return False
+    host = p.hostname.lower().rstrip(".")
+    if host == "localhost" or "." not in host and ":" not in host or host.endswith(_LOCAL_SUFFIXES):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return not _is_private(host)
+    except ValueError:
+        pass
+    hit = _risk_cache.get(host)
+    if hit and (not resolve or time.time() - hit[0] < 600):
+        return hit[1]
+    if not resolve:
+        return False
+    try:
+        addrs = {a[4][0] for a in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)}
+        risky = bool(addrs) and not all(_is_private(a) for a in addrs)
+    except (OSError, UnicodeError):
+        risky = False
+    _risk_cache[host] = (time.time(), risky)
+    return risky
+
+
 def public(r: Dict[str, Any]) -> Dict[str, Any]:
     st = _status.get(r["id"], {})
     return {"id": r["id"], "name": r["name"], "url": r["url"], "token_hint": f"…{r['token'][-4:]}",
-            "online": st.get("online"), "info": st.get("info"), "error": st.get("error", ""), "checked": st.get("checked", 0)}
+            "online": st.get("online"), "info": st.get("info"), "error": st.get("error", ""), "checked": st.get("checked", 0),
+            "insecure": transport_risk(r["url"], resolve=False)}
 
 
 def normalize_url(url: str) -> str:
@@ -89,6 +143,7 @@ async def add(name: str, url: str, token: str) -> Dict[str, Any]:
     if len(items) >= 20:
         raise RemoteError("Maximal 20 Remote-Server.")
     info = await probe(url, token)
+    await asyncio.to_thread(transport_risk, url)
     rid = secrets.token_hex(4)
     items.append({"id": rid, "name": name, "url": url, "token": token, "added": int(time.time())})
     settings_store.set("remotes", items)
@@ -117,7 +172,6 @@ def remove(remote_id: str) -> None:
 
 
 async def refresh_status(max_age: float = 20) -> List[Dict[str, Any]]:
-    import asyncio
     now = time.time()
 
     async def one(r):
@@ -130,7 +184,7 @@ async def refresh_status(max_age: float = 20) -> List[Dict[str, Any]]:
         except RemoteError as e:
             _status[r["id"]] = {"online": False, "info": (st or {}).get("info"), "error": str(e), "checked": now}
 
-    await asyncio.gather(*(one(r) for r in _all()))
+    await asyncio.gather(*(one(r) for r in _all()), *(asyncio.to_thread(transport_risk, r["url"]) for r in _all()))
     return [public(r) for r in _all()]
 
 

@@ -6,6 +6,7 @@
 
   const $ = id => document.getElementById(id);
   const t = s => (window.I18N && window.I18N.t ? window.I18N.t(s) : s);
+  const INSECURE = 'Unverschlüsselt über das Internet: Token, Terminal und Dateien sind unterwegs mitlesbar. Den Agent über ein VPN (WireGuard, NetBird, Tailscale) oder per https hinter einem Reverse-Proxy anbinden.';
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -47,8 +48,14 @@
       sub.setAttribute('data-no-i18n', '');
       main.append(name, sub);
       if (r.online === false && r.error) main.appendChild(el('span', 'workload-sub remote-err', r.error));
+      if (r.insecure) main.appendChild(el('span', 'workload-sub remote-err', t(INSECURE)));
       const side = el('div', 'iface-tags');
       side.appendChild(el('span', `health-tag ${r.online ? 'good' : r.online === false ? 'critical' : ''}`, r.online ? t('Erreichbar') : r.online === false ? t('Nicht erreichbar') : '–'));
+      if (r.insecure) {
+        const tag = el('span', 'health-tag warning', t('Unverschlüsselt'));
+        tag.title = t(INSECURE);
+        side.appendChild(tag);
+      }
       const open = el('button', 'btn-secondary', current && current.id === r.id ? t('Wird angezeigt') : t('Anzeigen'));
       open.type = 'button';
       open.disabled = !!(current && current.id === r.id);
@@ -102,7 +109,8 @@
       msg(t('Teste…'));
       try {
         const info = await api('/api/remotes/test', form());
-        msg(`${t('Verbunden mit')} ${info.hostname}${info.model ? ` (${info.model})` : ''}.`, 'success');
+        if (info.insecure) msg(`${t('Verbunden mit')} ${info.hostname} – ${t(INSECURE)}`, 'warning');
+        else msg(`${t('Verbunden mit')} ${info.hostname}${info.model ? ` (${info.model})` : ''}.`, 'success');
       } catch (e) { msg(e.message, 'error'); }
     });
     $('remote-form').addEventListener('submit', async e => {
@@ -110,7 +118,8 @@
       msg(t('Verbinde…'));
       try {
         const r = await api('/api/remotes', form());
-        msg(`${r.name} ${t('hinzugefügt – oben rechts lässt sich jetzt zwischen den Servern wechseln.')}`, 'success');
+        if (r.insecure) msg(`${r.name} ${t('hinzugefügt.')} ${t(INSECURE)}`, 'warning');
+        else msg(`${r.name} ${t('hinzugefügt – oben rechts lässt sich jetzt zwischen den Servern wechseln.')}`, 'success');
         $('remote-form').reset();
         load();
       } catch (err) { msg(err.message, 'error'); }

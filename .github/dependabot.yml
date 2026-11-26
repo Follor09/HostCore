@@ -3,6 +3,8 @@ version: 2
 updates:
   - package-ecosystem: pip
     directory: /
+    # Only raise the upper bound: the lower bounds keep Python 3.10 (Ubuntu 22.04) installable
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

@@ -175,7 +175,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.9.2", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.9.3", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -4174,7 +4174,9 @@ async def api_remotes_add(req: RemoteRequest, request: Request):
 @app.post("/api/remotes/test")
 async def api_remotes_test(req: RemoteRequest):
     try:
-        return await remotes.probe(remotes.normalize_url(req.url), req.token.strip())
+        url = remotes.normalize_url(req.url)
+        info = await remotes.probe(url, req.token.strip())
+        return {**info, "insecure": await asyncio.to_thread(remotes.transport_risk, url)}
     except remotes.RemoteError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

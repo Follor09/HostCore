@@ -445,6 +445,8 @@ git clone https://github.com/Follor09/HostCore.git ~/pi-dashboard
 ./agent.sh disable               # wieder normales Dashboard
 ```
 
+**Verschlüsselung:** Haupt-Dashboard und Agent sprechen einfaches http – im LAN oder über ein VPN (WireGuard, NetBird, Tailscale) ist das in Ordnung. Über das Internet (z.B. VPS → Pi zuhause) wären Token, Terminal und Dateien unterwegs mitlesbar: dann den Agent per VPN anbinden oder https über einen Reverse-Proxy davor setzen und die `https://`-Adresse eintragen. Ein Remote-Server mit `http://` und öffentlicher Adresse wird in den Einstellungen und im Selbsttest als *Unverschlüsselt* markiert.
+
 Mit `--from` nimmt der Agent nur Anfragen von dieser Adresse an – zusätzlich zum Token, ein abgegriffener Token allein reicht dann nicht. Ist auf dem Remote-Server ufw aktiv, gibt `install.sh` Port 8000 frei (mit `--from` nur für diese Adresse). Ohne `--from` gilt nur der Token.
 
 Im Haupt-Dashboard unter **Einstellungen → Remote-Server** Name, Adresse (`http://IP:8000`) und Token eintragen („Verbindung testen“ prüft vorher). Danach wechselt der Schalter oben rechts zwischen „Dieser Server“ und den Remote-Servern. Das Haupt-Dashboard leitet dann alle API-Aufrufe, die Live-Werte und das Web-Terminal an den Agent weiter – **alle Funktionen** (Dienste, Prozesse, Container & k3s, Dateien, Firewall, Updates, Pakete, Logs, Verlauf …) zeigen und steuern den gewählten Server. Eine gelbe Leiste zeigt, welcher Server gerade dran ist (rot, wenn er nicht erreichbar ist).

@@ -379,6 +379,8 @@ def _remote_checks() -> List[Dict[str, Any]]:
                 ("warning", f"Antwort {res.status_code}")
         except httpx.HTTPError as e:
             state, detail = "warning", f"Nicht erreichbar ({type(e).__name__}) – {r['url']}"
+        if state == "ok" and remotes.transport_risk(r["url"]):
+            state, detail = "warning", f"{r['url']} – {remotes.INSECURE_HINT}"
         out.append(_r(f"remote:{r['id']}", "Verbindungen", f"Remote-Server {r['name']}", state, detail,
                       "" if state == "ok" else "Einstellungen → Remote-Server"))
     return out

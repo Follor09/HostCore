@@ -4,9 +4,13 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.3 – 2026-11-26
+
 ### Changed
 - **Tested dependency versions:** `requirements.txt` now has upper bounds, so a fresh install or an update never pulls in an untested major version of FastAPI, uvicorn & co.; `cryptography` (SSO) is listed explicitly. The self-test checks the ranges too. Dependabot proposes updates.
 - **Tests and CI:** a test suite (login and permissions, every API route answering, remote forwarding, Wake-on-LAN, version checks) runs with lint, shell and JavaScript checks on Python 3.10–3.13 for every push; a release is only published when everything passes.
+- **Warning for unencrypted remote servers:** a remote server reached with plain `http://` at a public address (e.g. a VPS talking to a Pi at home over the internet) is marked *Unverschlüsselt* in Settings → Remote servers, when testing or adding it and in the self-test – with the hint to connect it through a VPN or https. LAN addresses, VPN ranges (NetBird, Tailscale) and `.local`/`.lan` names stay quiet.
+- Dependabot only raises upper bounds, so Python 3.10 stays installable.
 
 ### Fixed
 - Adding a remote server with just `http://` as address is refused instead of becoming `http://http:8000`.
