@@ -3434,6 +3434,17 @@
     'Terminal-Mitschnitt angesehen': 'Terminal recording viewed',
     'Terminal-Mitschnitt gelöscht': 'Terminal recording deleted',
     'Terminal-Mitschnitte eingestellt': 'Terminal recordings changed',
+    'Laufende Sitzungen': 'Running sessions',
+    'Alle gerade laufenden Terminal-Sitzungen auf diesem Server, von allen Benutzern. Beenden schließt die Shell sofort – laufende Programme darin werden abgebrochen, Verbundene sehen, dass ein Administrator die Sitzung beendet hat.': 'All terminal sessions currently running on this server, from every user. Ending one closes the shell at once – programs running in it are stopped, and anyone connected sees that an administrator ended the session.',
+    'Keine laufenden Sitzungen.': 'No running sessions.',
+    'Sitzung von': 'End the session of',
+    'jetzt beenden? Laufende Programme darin werden abgebrochen.': 'now? Programs running in it will be stopped.',
+    'Sitzung beendet.': 'Session ended.',
+    'Die laufende Sitzung beenden': 'End the running session',
+    'niemand': 'nobody',
+    'geteilt mit': 'shared with',
+    'Die Sitzung wurde beendet.': 'The session was ended.',
+    'Terminal-Sitzung durch Admin beendet': 'Terminal session ended by an admin',
     // --- Patch deadlines, problems, baseline check, data protection, evidence
     'Compliance': 'Compliance',
     'Grundschutz-Check': 'Baseline check',
@@ -4841,6 +4852,7 @@
   const tr = s => (DICT[s] !== undefined ? DICT[s] : translateDynamic(s) ?? s);
   const plural = (n, one, many) => (Number(n) === 1 ? one : many);
   const PATTERNS = [
+    [/^Die Sitzung wurde von (.+) beendet\.$/, 'The session was ended by $1.'],
     // Virtual machines
     [/^(.+) wird gestartet\.$/, '$1 is starting.'],
     [/^(.+) fährt herunter\.$/, '$1 is shutting down.'],

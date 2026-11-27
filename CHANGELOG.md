@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.10.2 – 2026-11-27
+
+### Added
+- **End any running terminal session (admins):** Settings → *Terminal-Mitschnitte* lists every terminal session running on the selected server, from all users (target, since, last active, who is connected, shared with), and *Beenden* ends it at once – also on agents. Running recordings have a *Beenden* button too. Anyone connected sees who ended the session; the activity log records it as "Terminal-Sitzung durch Admin beendet".
+
 ## v1.10.1 – 2026-11-27
 
 ### Changed

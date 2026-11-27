@@ -274,6 +274,21 @@ async def api_terminal_close(sid: str, request: Request):
     return await api_terminal_sessions(request)
 
 
+@router.get("/api/terminal/admin/sessions")
+async def api_terminal_admin_sessions():
+    """Admins: every running session on this server (all users), with who is connected - to end them."""
+    return {"persistent": terminal.persistent(), "sessions": await asyncio.to_thread(terminal.sessions),
+            "detached_hours": terminal.DETACHED_TTL // 3600}
+
+
+@router.post("/api/terminal/admin/sessions/{sid}/kill")
+async def api_terminal_admin_kill(sid: str, request: Request):
+    """Admins: end any running session at once (the shell and everything running in it)."""
+    s = await asyncio.to_thread(_terminal_change, terminal.kill_session, sid, request.state.user or "")
+    request.state.audit_detail = f"{sid} ({s['user']}{' · Container ' + s['container'] if s['container'] else ''})"
+    return await api_terminal_admin_sessions()
+
+
 def _terminal_target(container: str) -> str:
     if not container:
         return ""

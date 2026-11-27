@@ -125,7 +125,13 @@
         });
         if (hit.count > hit.hits.length) cell.appendChild(el('span', 'field-hint', `+ ${hit.count - hit.hits.length} ${t('weitere Treffer')}`));
       }
-      if (!r.running) {
+      if (r.running) {
+        const kill = el('button', 'text-btn', t('Beenden'));
+        kill.type = 'button';
+        kill.title = t('Die laufende Sitzung beenden');
+        kill.addEventListener('click', () => killSession(r.id, r.user));
+        act.appendChild(kill);
+      } else {
         const del = el('button', 'text-btn', t('Löschen'));
         del.type = 'button';
         del.addEventListener('click', async () => {
@@ -136,6 +142,68 @@
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Running sessions (all users): end any of them
+  // ---------------------------------------------------------------------------
+  let live = null;
+
+  async function killSession(id, who) {
+    if (!confirm(`${t('Sitzung von')} ${who} ${t('jetzt beenden? Laufende Programme darin werden abgebrochen.')}`)) return;
+    try {
+      live = await api(`/api/terminal/admin/sessions/${encodeURIComponent(id)}/kill`, {});
+      toast(t('Sitzung beendet.'), 'success');
+    } catch (err) { toast(err.message, 'error'); }
+    renderLive();
+    loadRecordings();
+  }
+
+  function renderLive() {
+    const box = $('rec-sessions-box');
+    box.hidden = !live || !live.persistent;
+    if (box.hidden) return;
+    const tbl = $('rec-sessions');
+    tbl.innerHTML = '';
+    if (!live.sessions.length) {
+      tbl.appendChild(el('caption', 'field-hint rec-empty', t('Keine laufenden Sitzungen.')));
+      return;
+    }
+    const head = tbl.createTHead().insertRow();
+    ['Benutzer', 'Ziel', 'Seit', 'Zuletzt aktiv', 'Verbunden', ''].forEach(h => head.appendChild(el('th', '', t(h))));
+    const body = tbl.createTBody();
+    live.sessions.forEach(x => {
+      const row = body.insertRow();
+      const who = row.insertCell();
+      who.appendChild(raw('span', '', x.user));
+      if (x.client) who.appendChild(raw('div', 'field-hint', x.client));
+      const target = row.insertCell();
+      target.appendChild(x.container ? raw('span', '', `${t('Container')} ${x.container}`) : el('span', '', t('Server')));
+      if (x.recorded) target.appendChild(el('span', 'health-tag rec-live', t('Aufzeichnung')));
+      row.insertCell().textContent = fmtTs(x.created);
+      row.insertCell().textContent = fmtTs(x.activity);
+      const con = row.insertCell();
+      const names = (x.connected || []).map(c => c.user + (c.mode === 'view' ? ` (${t('Zuschauen')})` : ''));
+      con.appendChild(names.length ? raw('span', '', names.join(', ')) : el('span', 'field-hint', t(x.attached ? 'verbunden' : 'niemand')));
+      if ((x.shares || []).length) con.appendChild(raw('div', 'field-hint', `${t('geteilt mit')} ${x.shares.map(sh => sh.user).join(', ')}`));
+      const act = row.insertCell();
+      act.className = 'row-action';
+      const kill = el('button', 'btn-secondary', t('Beenden'));
+      kill.type = 'button';
+      kill.addEventListener('click', () => killSession(x.id, x.user));
+      act.appendChild(kill);
+    });
+  }
+
+  async function loadLive() {
+    try { live = await api('/api/terminal/admin/sessions'); } catch (e) { live = null; }
+    renderLive();
+  }
+
+  async function loadRecordings() {
+    try { data = await api('/api/terminal/recordings'); render(); } catch (e) { /* offline */ }
+  }
+
+  $('rec-sessions-reload').addEventListener('click', () => { loadLive(); loadRecordings(); });
 
   // ---------------------------------------------------------------------------
   // Player
@@ -318,6 +386,6 @@
   (async () => {
     if (window.PiAuth) await window.PiAuth.ready;
     if (!can('users.manage')) return;
-    try { data = await api('/api/terminal/recordings'); render(); } catch (e) { /* offline */ }
+    await Promise.all([loadRecordings(), loadLive()]);
   })();
 })();

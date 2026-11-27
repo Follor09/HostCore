@@ -350,6 +350,14 @@
           <span class="field-hint" id="rec-total"></span>
         </div>
         <p class="section-desc">Jede Web-Terminal-Sitzung wird aufgezeichnet und lässt sich hier wie ein Video abspielen – wer wann was auf dem Server oder in welchem Container gemacht hat. Aufgezeichnet wird auch, solange kein Browser verbunden ist. Passwörter an einer sudo-Abfrage zeigt das Terminal nicht an, sie sind daher nicht enthalten. Nur Administratoren sehen die Mitschnitte; jedes Abspielen steht im Aktivitätsprotokoll.</p>
+        <div class="rec-live-box" id="rec-sessions-box" hidden>
+          <div class="section-head">
+            <h3 class="subhead">Laufende Sitzungen</h3>
+            <button type="button" class="text-btn" id="rec-sessions-reload">Neu laden</button>
+          </div>
+          <p class="field-hint">Alle gerade laufenden Terminal-Sitzungen auf diesem Server, von allen Benutzern. Beenden schließt die Shell sofort – laufende Programme darin werden abgebrochen, Verbundene sehen, dass ein Administrator die Sitzung beendet hat.</p>
+          <div class="table-scroll"><table class="data-table" id="rec-sessions"></table></div>
+        </div>
         <form class="settings-form" id="rec-form">
           <label class="toggle-label"><input type="checkbox" id="rec-enabled"> Terminal-Sitzungen aufzeichnen</label>
           <div class="form-grid">

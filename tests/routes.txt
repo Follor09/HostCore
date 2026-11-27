@@ -184,6 +184,7 @@ GET    /api/system  perm=public-view (default)  remote
 GET    /api/tasks  perm=system.view  remote
 GET    /api/tasks/{task_id}  perm=system.view  remote
 GET    /api/tasks/{task_id}/log  perm=system.view  remote
+GET    /api/terminal/admin/sessions  perm=users.manage  remote
 GET    /api/terminal/recordings  perm=users.manage  remote
 GET    /api/terminal/recordings/search  perm=users.manage  remote
 GET    /api/terminal/recordings/{sid}  perm=users.manage  remote
@@ -505,6 +506,7 @@ POST   /api/suppliers/{sid}  perm=notes.edit  local  audit=Dienstleister-Registe
 POST   /api/suppliers/{sid}/delete  perm=notes.edit  local  audit=Dienstleister-Register geändert
 POST   /api/suppliers/{sid}/review  perm=notes.edit  local  audit=Dienstleister-Register geändert
 POST   /api/tasks/{task_id}/cancel  perm=services.control  remote  audit=Aufgabe abgebrochen
+POST   /api/terminal/admin/sessions/{sid}/kill  perm=users.manage  remote  audit=Terminal-Sitzung durch Admin beendet
 POST   /api/terminal/recordings/{sid}/delete  perm=users.manage  remote  audit=Terminal-Mitschnitt gelöscht
 POST   /api/terminal/resume  perm=terminal  remote  audit=Terminal wieder verbunden
 POST   /api/terminal/sessions/{sid}/close  perm=terminal  remote  audit=Terminal-Sitzung beendet

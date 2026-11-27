@@ -279,6 +279,19 @@ def close_session(sid: str) -> None:
     _tmux(["kill-session", "-t", sid])
 
 
+def kill_session(sid: str, by: str) -> Dict[str, Any]:
+    """An admin ends any running session (also another user's): whoever is connected is told
+    why, the shell and every program in it end. Returns the session as it was."""
+    s = session(sid)
+    if not s:
+        raise TerminalError("Sitzung nicht gefunden.")
+    for c in (_attached.get(sid) or {}).values():
+        c["kicked"] = f"Die Sitzung wurde von {by} beendet." if by and by != s["user"] else "Die Sitzung wurde beendet."
+    _tmux(["kill-session", "-t", sid])
+    logger.info(f"Terminal session {sid} of '{s['user']}' ended by '{by}'")
+    return s
+
+
 def cleanup() -> None:
     """End sessions nobody has looked at for DETACHED_TTL."""
     now = time.time()
@@ -451,7 +464,7 @@ async def _bridge(websocket, username: str, client: str, rows: int, cols: int, c
             ended = "shell" if tasks[0] in done else "idle"
             if ended == "shell" and sid and await asyncio.to_thread(session, sid):
                 ended = "detached"   # the tmux client went away, the session did not (closed elsewhere?)
-            reason = {"shell": "Shell beendet.", "detached": conn.get("kicked") or "Verbindung zur Sitzung getrennt.",
+            reason = conn.get("kicked") or {"shell": "Shell beendet.", "detached": "Verbindung zur Sitzung getrennt.",
                       "idle": "Wegen Inaktivität getrennt (30 Min.)." + (" Die Sitzung läuft weiter." if sid else "")}[ended]
             if conn.get("kicked"):
                 ended = "kicked"

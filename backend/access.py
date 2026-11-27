@@ -246,7 +246,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/tools/(firewall|fail2ban/unban|geoblock|geoip/download|geoip/remove)$", "firewall.manage"),
 
     # --- Terminal
-    ("*", r"^/api/terminal/recordings(/.*)?$", "users.manage"),   # recordings: admins only
+    ("*", r"^/api/terminal/(recordings|admin)(/.*)?$", "users.manage"),   # recordings, all users' sessions: admins only
     ("*", r"^/api/terminal.*$", "terminal"),
 ]
 _COMPILED = [(m, re.compile(rx), perm) for m, rx, perm in RULES]

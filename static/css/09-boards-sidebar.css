@@ -1647,6 +1647,8 @@ body.has-task-dock.task-dock-open .toast-container { bottom: calc(var(--task-doc
 /* Settings: terminal recordings player */
 .rec-empty { caption-side: top; text-align: left; padding: 6px 0; }
 .rec-live { margin-left: 6px; }
+.rec-live-box { margin: 8px 0 18px; }
+.rec-live-box .section-head { margin-bottom: 4px; }
 .rec-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 14px 0 6px; }
 .rec-search input[type="search"] { flex: 1; min-width: 220px; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-main); background: var(--bg-input, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px; }
 .rec-hit-row td { padding-top: 0; }
