@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.10.1 – 2026-11-27
+
+### Changed
+- **Speed test as a task:** starting a speed test opens a task in the task bar at the bottom; its log shows each step (test server and provider, ping, download, upload, result), it can be cancelled like any task, and the page shows the result when it ends. Measuring on several servers is one task on the main dashboard that logs every server's result in turn. Only one speed test runs per server at a time – also between the page and a task.
+
 ## v1.10.0 – 2026-11-27
 
 ### New

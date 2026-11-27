@@ -8,7 +8,10 @@ share it during the measurement.
 """
 
 import asyncio
+import os
 import platform
+import sys
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -16,6 +19,9 @@ from fastapi import APIRouter, HTTPException, Request
 import fleet
 import remotes
 import speedtest
+import tasks
+
+SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "speedtest.py")
 
 router = APIRouter()
 
@@ -25,8 +31,23 @@ async def api_speedtest_history():
     return speedtest.history()
 
 
+def _start_task(title: str, args: list, user: str, key: str) -> dict:
+    try:
+        return tasks.start("speedtest", title, [{"argv": [sys.executable, SCRIPT, *args], "show": title}], user=user, key=key,
+                           timeout=60 + 60 * max(1, len(args) - 1), env={"HC_TASK_USER": user})
+    except tasks.TaskError as e:
+        raise HTTPException(status_code=400, detail="Es läuft schon ein Speedtest." if "läuft schon" in str(e) else str(e))
+
+
 @router.post("/api/tools/speedtest")
-async def api_speedtest_run(request: Request):
+async def api_speedtest_run(request: Request, payload: Optional[dict] = None):
+    """As a task (the dock at the bottom shows it, the log the progress) - or, with {"wait": true},
+    measured right away (the main dashboard's test on several servers asks its agents like that)."""
+    if not (payload or {}).get("wait"):
+        if speedtest.is_running():
+            raise HTTPException(status_code=400, detail="Es läuft schon ein Speedtest.")
+        request.state.audit_detail = "als Aufgabe gestartet"
+        return {"task": _start_task("Speedtest", ["run"], request.state.user or "", "speedtest")}
     try:
         r = await asyncio.to_thread(speedtest.run)
     except speedtest.SpeedtestError as e:
@@ -65,27 +86,12 @@ async def api_speedtest_fleet():
 
 @router.post("/api/speedtest/fleet")
 async def api_speedtest_fleet_run(payload: dict, request: Request):
+    """One task on this dashboard that measures the chosen servers one after the other."""
     known = {r["id"]: r["name"] for r in remotes.all_remotes()}
     known[LOCAL_ID] = platform.node() or "Dieser Server"
     ids = [str(i) for i in dict.fromkeys(payload.get("servers") or []) if str(i) in known]
     if not ids:
         raise HTTPException(status_code=400, detail="Bitte mindestens einen Server wählen.")
-    results = []
-    for sid in ids:                      # one after the other: servers behind one line would share it
-        try:
-            if sid == LOCAL_ID:
-                r = await asyncio.to_thread(speedtest.run)
-            else:
-                r = (await fleet._call(sid, "POST", "/api/tools/speedtest", {}, request.state.user or "", timeout=180.0)).get("result")
-            results.append({"id": sid, "name": known[sid], "ok": True, "result": _short(r)})
-        except speedtest.SpeedtestError as e:
-            results.append({"id": sid, "name": known[sid], "ok": False, "message": str(e)})
-        except ValueError as e:
-            msg = str(e)
-            results.append({"id": sid, "name": known[sid], "ok": False,
-                            "message": "Agent zu alt – dort HostCore aktualisieren." if "404" in msg or "Not Found" in msg else msg})
-        except httpx.HTTPError as e:
-            results.append({"id": sid, "name": known[sid], "ok": False, "message": f"Nicht erreichbar ({type(e).__name__})"})
-    request.state.audit_detail = ", ".join(f"{x['name']}: {x['result']['down']}/{x['result']['up']} Mbit/s" if x["ok"] else f"{x['name']}: Fehler"
-                                           for x in results)[:250]
-    return {"results": results}
+    title = f"Speedtest auf {len(ids)} Servern" if len(ids) > 1 else f"Speedtest: {known[ids[0]]}"
+    request.state.audit_detail = ", ".join(known[i] for i in ids)[:250]
+    return {"task": _start_task(title, ["fleet", *ids], request.state.user or "", "speedtest-fleet"), "servers": [known[i] for i in ids]}

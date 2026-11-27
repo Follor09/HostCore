@@ -45,3 +45,4 @@ vms/
 offsite/
 .pytest_cache/
 .ruff_cache/
+.speedtest.lock

@@ -2519,39 +2519,65 @@
     });
   }
 
+  // A started test runs as a task: the dock at the bottom shows it, its log the progress.
+  // The page waits for it to end and then shows the result.
+  async function waitForTask(task) {
+    if (window.PiTasks) window.PiTasks.refresh();
+    const until = Date.now() + 15 * 60 * 1000;
+    while (Date.now() < until) {
+      await new Promise(r => setTimeout(r, 2500));
+      try {
+        const tk = await api(`/api/tasks/${encodeURIComponent(task.id)}`);
+        if (tk.state !== 'running') return tk;
+      } catch (e) { /* keep waiting */ }
+    }
+    return null;
+  }
+
+  function speedButtons(disabled) {
+    $('speedtest-run').disabled = disabled;
+    $('speedtest-fleet-run').disabled = disabled;
+  }
+
   async function runSpeedFleet() {
     const ids = [...$('speedtest-servers').querySelectorAll('input:checked')].map(i => i.value);
     if (!ids.length) { toast('Bitte mindestens einen Server wählen.', 'error'); return; }
-    const btn = $('speedtest-fleet-run');
-    btn.disabled = true;
-    $('speedtest-run').disabled = true;
-    $('speedtest-status').textContent = `Messe nacheinander auf ${ids.length} Servern … (etwa ${ids.length * 20} Sekunden)`;
+    speedButtons(true);
     try {
       const r = await api('/api/speedtest/fleet', { servers: ids });
-      r.results.forEach(x => toast(x.ok ? `${x.name}: ↓ ${mbit(x.result.down)} · ↑ ${mbit(x.result.up)} Mbit/s · ${mbit(x.result.ping)} ms` : `${x.name}: ${x.message}`,
-        x.ok ? 'success' : 'error'));
+      $('speedtest-status').textContent = `Läuft als Aufgabe auf dem Haupt-Dashboard – nacheinander auf ${ids.length} Servern (etwa ${ids.length * 20} Sekunden). Fortschritt unten in der Aufgaben-Leiste.`;
+      const tk = await waitForTask(r.task);
+      if (tk && tk.state !== 'cancelled') toast(tk.state === 'ok' ? 'Speedtest auf allen gewählten Servern fertig.' : 'Speedtest: nicht auf allen Servern gelungen – Details im Protokoll der Aufgabe.',
+        tk.state === 'ok' ? 'success' : 'error');
     } catch (err) {
       toast(err.message, 'error');
     } finally {
-      btn.disabled = false;
-      $('speedtest-run').disabled = false;
+      speedButtons(false);
       load('speedtest');
     }
   }
 
   async function runSpeedtest() {
-    const btn = $('speedtest-run');
-    btn.disabled = true;
-    $('speedtest-status').textContent = 'Messe Ping, Download und Upload … (etwa 20 Sekunden)';
+    speedButtons(true);
     try {
       const r = await api('/api/tools/speedtest', {});
-      renderSpeedtest(r);
-      toast(`Speedtest: ↓ ${mbit(r.result.down)} · ↑ ${mbit(r.result.up)} Mbit/s · ${mbit(r.result.ping)} ms`, 'success');
+      if (r.result) {            // an agent that still measures right away (older version)
+        renderSpeedtest(r);
+        toast(`Speedtest: ↓ ${mbit(r.result.down)} · ↑ ${mbit(r.result.up)} Mbit/s · ${mbit(r.result.ping)} ms`, 'success');
+        return;
+      }
+      $('speedtest-status').textContent = 'Läuft als Aufgabe (etwa 20 Sekunden) – Fortschritt unten in der Aufgaben-Leiste.';
+      const tk = await waitForTask(r.task);
+      const h = await api('/api/tools/speedtest');
+      renderSpeedtest(h);
+      const x = h.results[0];
+      if (tk && tk.state === 'ok' && x) toast(`Speedtest: ↓ ${mbit(x.down)} · ↑ ${mbit(x.up)} Mbit/s · ${mbit(x.ping)} ms`, 'success');
+      else if (tk && tk.state !== 'ok' && tk.state !== 'cancelled') toast('Speedtest fehlgeschlagen – Details im Protokoll der Aufgabe.', 'error');
     } catch (err) {
       $('speedtest-status').textContent = err.message;
       toast(err.message, 'error');
     } finally {
-      btn.disabled = false;
+      speedButtons(false);
     }
   }
 

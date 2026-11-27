@@ -99,17 +99,76 @@ def test_fleet_overview(admin, two_agents):
     assert "zu alt" in by["bb22"]["error"]
 
 
-def test_fleet_run_one_after_the_other(admin, two_agents, monkeypatch):
+def test_fleet_run_starts_one_task_in_order(admin, two_agents, monkeypatch):
+    import tasks
     import websec
     monkeypatch.setattr(websec, "needs_reauth", lambda *a, **k: False)
-    r = admin.post("/api/speedtest/fleet", json={"servers": ["aa11", "local", "bb22", "nope"]})
-    assert r.status_code == 200
-    res = {x["id"]: x for x in r.json()["results"]}
-    assert res["aa11"]["ok"] and res["aa11"]["result"]["down"] == 900.0
-    assert res["local"]["ok"] and res["local"]["result"]["isp"] == "Zuhause"
-    assert not res["bb22"]["ok"] and "zu alt" in res["bb22"]["message"]
-    assert "nope" not in res
-    assert two_agents == [("aa11", "POST"), ("local", "POST")]            # in the chosen order, one by one
+    started = {}
+
+    def start(kind, title, steps, **kw):
+        started.update(kind=kind, title=title, argv=steps[0]["argv"], key=kw.get("key"))
+        return {"id": "t1", "state": "running"}
+    monkeypatch.setattr(tasks, "start", start)
+    r = admin.post("/api/speedtest/fleet", json={"servers": ["aa11", "local", "nope"]})
+    assert r.status_code == 200 and r.json()["task"]["id"] == "t1"
+    assert started["argv"][-3:] == ["fleet", "aa11", "local"] and started["key"] == "speedtest-fleet"
+    assert started["title"] == "Speedtest auf 2 Servern"
+
+
+def test_single_test_starts_a_task(admin, monkeypatch):
+    import tasks
+    monkeypatch.setattr(speedtest, "is_running", lambda: False)
+    monkeypatch.setattr(tasks, "start", lambda kind, title, steps, **kw: {"id": "t2", "argv": steps[0]["argv"], "key": kw.get("key")})
+    r = admin.post("/api/tools/speedtest", json={})
+    assert r.status_code == 200 and r.json()["task"]["argv"][-1] == "run" and r.json()["task"]["key"] == "speedtest"
+
+
+def test_wait_measures_right_away(admin, monkeypatch, clean_history):
+    monkeypatch.setattr(speedtest, "run", lambda: {"ts": 5, "down": 1.0, "up": 2.0, "ping": 3.0, "jitter": 0.1})
+    r = admin.post("/api/tools/speedtest", json={"wait": True})
+    assert r.status_code == 200 and r.json()["result"]["up"] == 2.0
+
+
+def test_task_script_measures_one_after_the_other(two_agents, monkeypatch, capsys):
+    order = []
+    monkeypatch.setattr(speedtest, "run", lambda say=None: order.append("local") or {"down": 1, "up": 2, "ping": 3, "jitter": 0})
+
+    def remote(rem, transport=None):
+        order.append(rem["id"])
+        if rem["id"] == "bb22":
+            raise speedtest.SpeedtestError("Agent zu alt – dort HostCore aktualisieren.")
+        return {"down": 900, "up": 400, "ping": 4, "jitter": 0.5}
+    monkeypatch.setattr(speedtest, "_remote_run", remote)
+    code = speedtest.main(["fleet", "aa11", "local", "bb22"])
+    out = capsys.readouterr().out
+    assert order == ["aa11", "local", "bb22"] and code == 1         # one failed -> the task shows an error
+    assert "✅ rz-server: ↓ 900" in out and "❌ pi-alt: Agent zu alt" in out
+
+
+def test_remote_run_asks_the_agent_to_wait():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        seen["auth"] = request.headers["authorization"]
+        return httpx.Response(200, json={"result": {"down": 50.0}})
+    r = speedtest._remote_run({"id": "x", "url": "http://agent", "token": "t" * 40}, transport=httpx.MockTransport(handler))
+    assert r == {"down": 50.0} and seen["body"] == {"wait": True} and seen["auth"] == "Bearer " + "t" * 40
+
+
+def test_lock_works_across_processes(tmp_path, monkeypatch, clean_history):
+    import fcntl
+    import os
+    monkeypatch.setattr(speedtest, "LOCK_FILE", str(tmp_path / "lock"))
+    fd = os.open(speedtest.LOCK_FILE, os.O_RDWR | os.O_CREAT)
+    fcntl.flock(fd, fcntl.LOCK_EX)              # held by "another process" (a running task)
+    try:
+        assert speedtest.is_running()
+        with pytest.raises(speedtest.SpeedtestError, match="läuft schon"):
+            speedtest.run(base="https://cf.test", transport=fake_cloudflare([]), duration=0.1, cap=100_000)
+    finally:
+        os.close(fd)
+    assert not speedtest.is_running()
 
 
 def test_fleet_needs_a_server(admin):
