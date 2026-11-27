@@ -510,14 +510,45 @@
     shareTarget = x;
     $('cloud-share-what').textContent = `${spaceLabel(x.space)} / ${x.path}`;
     $('cloud-share-result').hidden = true;
+    $('cloud-share-pw-note').hidden = true;
+    $('cloud-share-max').value = '0';
+    $('cloud-share-pw-on').checked = false;
+    $('cloud-share-pw').value = '';
+    $('cloud-share-pw-box').hidden = true;
+    const m = (state.info && state.info.mail) || {};
+    const ready = m.smtp && m.email;
+    $('cloud-share-notify').checked = false;
+    $('cloud-share-notify').disabled = !ready;
+    $('cloud-share-notify-hint').hidden = false;
+    $('cloud-share-notify-hint').textContent = ready ? `${t('Geht an')} ${m.email}`
+      : !m.smtp ? t('Dafür muss ein Administrator unter Einstellungen → E-Mail einen Mailserver eintragen.')
+        : t('Dafür unter Einstellungen → Konto eine E-Mail-Adresse hinterlegen.');
     openModal('cloud-share');
   }
+  function randomPassword() {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const buf = new Uint32Array(12);
+    crypto.getRandomValues(buf);
+    return [...buf].map(n => chars[n % chars.length]).join('');
+  }
+  $('cloud-share-pw-on').addEventListener('change', () => {
+    const on = $('cloud-share-pw-on').checked;
+    $('cloud-share-pw-box').hidden = !on;
+    if (on && !$('cloud-share-pw').value) $('cloud-share-pw').value = randomPassword();
+    if (on) $('cloud-share-pw').select();
+  });
+  $('cloud-share-pw-gen').addEventListener('click', () => { $('cloud-share-pw').value = randomPassword(); $('cloud-share-pw').select(); });
   $('cloud-share-create').addEventListener('click', async () => {
     if (!shareTarget) return;
+    const password = $('cloud-share-pw-on').checked ? $('cloud-share-pw').value : '';
+    if ($('cloud-share-pw-on').checked && password.length < 4) { toast(t('Passwort: mindestens 4 Zeichen.'), 'error'); return; }
     try {
-      const r = await api('/api/cloud/shares', { space: shareTarget.space, path: shareTarget.path, hours: Number($('cloud-share-hours').value) });
+      const r = await api('/api/cloud/shares', { space: shareTarget.space, path: shareTarget.path, hours: Number($('cloud-share-hours').value),
+        max_downloads: Number($('cloud-share-max').value), password, notify: $('cloud-share-notify').checked });
       $('cloud-share-url').value = `${location.origin}/s/c/${r.token}`;
       $('cloud-share-result').hidden = false;
+      $('cloud-share-pw-note').hidden = !password;
+      if (password) $('cloud-share-pw-note').textContent = `${t('Passwort')}: ${password} – ${t('am besten auf anderem Weg mitteilen als den Link.')}`;
       $('cloud-share-url').select();
     } catch (err) { toast(err.message, 'error'); }
   });
@@ -688,12 +719,21 @@
     return { tbl, body: tbl.createTBody() };
   }
 
+  const fmtFull = ts => new Date(ts * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  function shortAgent(ua) {
+    if (!ua) return '–';
+    const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome'
+      : /Safari\//.test(ua) ? 'Safari' : /curl|wget|python|httpx|Go-http/i.test(ua) ? ua.split('/')[0] : '';
+    const os = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
+    return [browser, os].filter(Boolean).join(' · ') || ua.slice(0, 60);
+  }
+
   function renderShares(shares) {
     const box = $('cloud-content');
     box.className = 'cloud-content plain';
     box.innerHTML = '';
     if (!shares.length) { box.appendChild(el('p', 'field-hint cloud-empty', t('Keine aktiven Freigabe-Links.'))); return; }
-    const { tbl, body } = table(['Datei', 'Ort', 'Gültig bis', 'Abrufe', '']);
+    const { tbl, body } = table(['Datei', 'Ort', 'Gültig bis', 'Downloads', 'Schutz', '']);
     shares.forEach(s => {
       const row = body.insertRow();
       row.insertCell().appendChild(raw('span', '', `${s.type === 'dir' ? '📁 ' : ''}${s.name}`));
@@ -701,9 +741,39 @@
       where.appendChild(raw('span', 'field-hint', `${spaceLabel(s.space)} / ${s.path}`));
       if (s.user && state.info && s.user !== state.info.user) where.appendChild(raw('div', 'field-hint', `${t('von')} ${s.user}`));
       row.insertCell().textContent = new Date(s.expires * 1000).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-      row.insertCell().textContent = s.downloads || 0;
+      const dl = row.insertCell();
+      dl.textContent = s.max_downloads ? `${s.downloads || 0} / ${s.max_downloads}` : `${s.downloads || 0}`;
+      if (s.max_downloads && s.downloads >= s.max_downloads) dl.appendChild(el('div', 'field-hint', t('aufgebraucht')));
+      const prot = row.insertCell();
+      if (s.password) prot.appendChild(el('span', 'health-tag', t('Passwort')));
+      if (s.notify) prot.appendChild(el('span', 'health-tag', t('Mail')));
+      if (!s.password && !s.notify) prot.appendChild(el('span', 'field-hint', '–'));
       const act = row.insertCell();
       act.className = 'row-action';
+      const logRow = body.insertRow();
+      logRow.className = 'cloud-log-row';
+      logRow.hidden = true;
+      const cell = logRow.insertCell();
+      cell.colSpan = 6;
+      const fails = (s.log || []).filter(x => !x.ok).length;
+      const logBtn = button(`${t('Protokoll')} (${(s.log || []).length})`, 'text-btn', () => { logRow.hidden = !logRow.hidden; });
+      if (fails) logBtn.title = `${fails} ${t('falsche Passwort-Eingaben')}`;
+      act.appendChild(logBtn);
+      if (!(s.log || []).length) cell.appendChild(el('p', 'field-hint', t('Noch keine Abrufe.')));
+      else {
+        const list = el('div', 'cloud-log');
+        s.log.forEach(x => {
+          const line = el('div', `cloud-log-line${x.ok ? '' : ' fail'}`);
+          line.appendChild(el('span', 'cloud-log-ts', fmtFull(x.ts)));
+          line.appendChild(el('span', '', t(x.ok ? 'Heruntergeladen' : 'Falsches Passwort')));
+          line.appendChild(raw('span', 'cloud-log-ip', x.ip || ''));
+          const ag = raw('span', 'field-hint', shortAgent(x.agent));
+          ag.title = x.agent || '';
+          line.appendChild(ag);
+          list.appendChild(line);
+        });
+        cell.appendChild(list);
+      }
       act.appendChild(button(t('Link kopieren'), 'btn-secondary', async () => {
         const url = `${location.origin}/s/c/${s.token}`;
         try { await navigator.clipboard.writeText(url); toast(t('Link kopiert.'), 'success'); } catch (e) { prompt(t('Link:'), url); }

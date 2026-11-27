@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.11.1 – 2026-11-27
+
+### Added
+- **Share links of the files page with limits, password and download log:** when creating a link, choose how often it may be downloaded (once to 100 times, or unlimited) and whether a password protects it (generated on request; the link then shows a small password page, 10 wrong tries per 15 minutes and address). Every download and every wrong password is logged per link with time, address and browser – *Freigaben* shows downloads as "1 / 3", the protection and the log. Optionally a mail goes to the creator on every download (time, address, browser, downloads left), when a mail server is set up and the account has an e-mail address.
+
 ## v1.11.0 – 2026-11-27
 
 ### Added

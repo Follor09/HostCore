@@ -10,7 +10,8 @@ drive in the settings):
 Paths from the browser are relative to a space; every one is resolved with realpath and must
 stay inside its space (no "..", no symlinks leading out). Deleting moves into a recycle bin
 per space (.trash/, emptied after trash_days). Share links (/s/c/<token>) hand out one file,
-or a folder as ZIP, without login until they expire. Favorites per user. An optional quota
+or a folder as ZIP, without login until they expire - optionally only so many times, behind a
+password, and with a mail to the creator on each download; every attempt is logged per link. Favorites per user. An optional quota
 limits each user's own space. The private folders are hidden from the server file explorer
 (files.is_denied), so files.read does not reach them.
 
@@ -678,15 +679,41 @@ def _shares() -> Dict[str, Dict[str, Any]]:
     return live
 
 
-def create_share(key: str, rel: str, hours: int, user: str) -> Dict[str, Any]:
+MAX_DOWNLOADS = 1000
+SHARE_LOG = 200
+PW_MIN = 4
+
+
+def _pw_hash(password: str, salt: bytes) -> str:
+    import hashlib
+    return hashlib.scrypt(password.encode(), salt=salt, n=2 ** 14, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32).hex()
+
+
+def create_share(key: str, rel: str, hours: int, user: str, max_downloads: int = 0, password: str = "",
+                 notify: bool = False) -> Dict[str, Any]:
+    """max_downloads: the link stops after that many downloads (0 = no limit); password: asked on
+    the link's page; notify: a mail to the creator on every download."""
     real, rel = resolve(key, rel)
     if not rel or not os.path.lexists(real):
         raise CloudError("Nicht gefunden.")
     if hours not in SHARE_HOURS:
         raise CloudError("Gültigkeit: 1 Std., 24 Std., 7 oder 30 Tage.")
+    try:
+        max_downloads = int(max_downloads or 0)
+    except (TypeError, ValueError):
+        raise CloudError("Anzahl Downloads: keine Zahl.")
+    if not 0 <= max_downloads <= MAX_DOWNLOADS:
+        raise CloudError(f"Anzahl Downloads: 0 (unbegrenzt) bis {MAX_DOWNLOADS}.")
+    password = str(password or "")
+    if password and not PW_MIN <= len(password) <= 200:
+        raise CloudError(f"Passwort: {PW_MIN} bis 200 Zeichen.")
     token = secrets.token_urlsafe(24)
     entry = {"key": key, "path": rel, "name": os.path.basename(real), "type": "dir" if os.path.isdir(real) else "file",
-             "created": int(time.time()), "expires": int(time.time() + hours * 3600), "user": user, "downloads": 0}
+             "created": int(time.time()), "expires": int(time.time() + hours * 3600), "user": user, "downloads": 0,
+             "max_downloads": max_downloads, "notify": bool(notify), "log": []}
+    if password:
+        salt = secrets.token_bytes(16)
+        entry.update(pw_salt=salt.hex(), pw_hash=_pw_hash(password, salt))
 
     def change(items):
         items = {t: s for t, s in (items or {}).items() if s.get("expires", 0) > time.time()}
@@ -695,14 +722,21 @@ def create_share(key: str, rel: str, hours: int, user: str) -> Dict[str, Any]:
         items[token] = entry
         return items
     settings_store.update("cloud_shares", change, {})
-    return {"token": token, **entry}
+    return {"token": token, **_public_share(entry)}
+
+
+def _public_share(s: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: v for k, v in s.items() if k not in ("key", "pw_salt", "pw_hash", "log")}
+    out["password"] = bool(s.get("pw_hash"))
+    out["log"] = list(reversed(s.get("log") or []))[:100]
+    return out
 
 
 def list_shares(user: str, admin: bool) -> List[Dict[str, Any]]:
     out = []
     for t, s in _shares().items():
         if s["user"] == user or admin:
-            out.append({"token": t, **{k: v for k, v in s.items() if k != "key"}, "space": key_space(s["key"], user)})
+            out.append({"token": t, **_public_share(s), "space": key_space(s["key"], user)})
     return sorted(out, key=lambda s: -s["created"])
 
 
@@ -717,26 +751,110 @@ def delete_share(token: str, user: str, admin: bool) -> None:
     settings_store.update("cloud_shares", change, {})
 
 
-def shared(token: str) -> Dict[str, Any]:
-    """What a public link hands out - checked again on every download."""
+def share_info(token: str) -> Dict[str, Any]:
+    """A link that can still be used (not expired, limit not reached, target still there)."""
     if not TOKEN_RE.match(token or ""):
         raise CloudError("Link ungültig.")
     s = _shares().get(token)
     if not s:
         raise CloudError("Link abgelaufen oder ungültig.")
-    real, rel = resolve(s["key"], s["path"])
+    if s.get("max_downloads") and s.get("downloads", 0) >= s["max_downloads"]:
+        raise CloudError("Dieser Link wurde bereits so oft heruntergeladen wie erlaubt.")
+    real, _ = resolve(s["key"], s["path"])
     if not os.path.lexists(real):
         raise CloudError("Die Datei gibt es nicht mehr.")
+    size = tree_size(real) if s["type"] == "file" else None
+    return {**s, "real": real, "size": size}
 
-    def count(items):
+
+def check_password(s: Dict[str, Any], password: str) -> bool:
+    import hmac
+    if not s.get("pw_hash"):
+        return True
+    return hmac.compare_digest(_pw_hash(str(password or "")[:200], bytes.fromhex(s["pw_salt"])), s["pw_hash"])
+
+
+def _log(token: str, entry: Dict[str, Any], count: bool) -> Optional[Dict[str, Any]]:
+    """Add to the link's log (and count a download, refusing one over the limit). Returns the link."""
+    result: Dict[str, Any] = {}
+
+    def change(items):
         items = dict(items or {})
-        if token in items:
-            items[token] = {**items[token], "downloads": items[token].get("downloads", 0) + 1}
+        s = items.get(token)
+        if not s:
+            raise CloudError("Link abgelaufen oder ungültig.")
+        s = dict(s)
+        if count:
+            if s.get("max_downloads") and s.get("downloads", 0) >= s["max_downloads"]:
+                raise CloudError("Dieser Link wurde bereits so oft heruntergeladen wie erlaubt.")
+            s["downloads"] = s.get("downloads", 0) + 1
+        s["log"] = (list(s.get("log") or []) + [entry])[-SHARE_LOG:]
+        items[token] = s
+        result.update(s)
         return items
-    settings_store.update("cloud_shares", count, {})
-    if os.path.isdir(real):
-        return {"type": "dir", **zip_entries(s["key"], [rel]), "path": real}
-    return {"type": "file", "path": real, "name": os.path.basename(real)}
+    settings_store.update("cloud_shares", change, {})
+    return result
+
+
+def record_failed(token: str, ip: str, agent: str) -> None:
+    try:
+        _log(token, {"ts": int(time.time()), "ip": ip, "agent": agent[:160], "ok": False}, count=False)
+    except CloudError:
+        pass
+
+
+def take_download(token: str, ip: str, agent: str) -> Dict[str, Any]:
+    """Count one download (atomically against the limit), log it, and say what to send."""
+    s = share_info(token)
+    now = int(time.time())
+    after = _log(token, {"ts": now, "ip": ip, "agent": agent[:160], "ok": True}, count=True)
+    _notify_download(after, ip, agent, now)
+    if s["type"] == "dir":
+        return {"type": "dir", **zip_entries(s["key"], [s["path"]]), "path": s["real"]}
+    return {"type": "file", "path": s["real"], "name": os.path.basename(s["real"])}
+
+
+def mail_possible(user: str) -> Dict[str, Any]:
+    """Whether a download mail can reach this user: SMTP set up and an address in their account."""
+    import auth
+    import notify
+    c = notify.config()
+    info = auth.user_info(user) or {}
+    return {"smtp": bool(c.get("host") and c.get("sender")), "email": info.get("email", "")}
+
+
+def _notify_download(s: Dict[str, Any], ip: str, agent: str, ts: int) -> None:
+    if not s.get("notify"):
+        return
+    m = mail_possible(s.get("user", ""))
+    if not m["smtp"] or not m["email"]:
+        return
+    def run():
+        import notify
+        limit = f" von {s['max_downloads']}" if s.get("max_downloads") else ""
+        left = ""
+        if s.get("max_downloads"):
+            rest = s["max_downloads"] - s["downloads"]
+            left = "\nDer Link ist damit aufgebraucht.\n" if rest <= 0 else f"\nNoch {rest} Download(s) möglich.\n"
+        text = (f"Hallo {s['user']},\n\n„{s['name']}“ wurde über deinen Freigabe-Link heruntergeladen.\n\n"
+                f"Zeit:      {time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(ts))}\n"
+                f"Adresse:   {ip}\n"
+                f"Browser:   {agent[:160] or '–'}\n"
+                f"Download:  {s['downloads']}{limit}\n"
+                f"Gültig bis {time.strftime('%d.%m.%Y %H:%M', time.localtime(s['expires']))}\n{left}\n"
+                "Alle Abrufe stehen auf der Seite Dateien unter „Freigaben“.\n")
+        try:
+            notify.send(f"[HostCore] Heruntergeladen: {s['name']}", text, None, to=[m["email"]])
+        except notify.NotifyError as e:
+            import logging
+            logging.getLogger("pi_dashboard.cloud").warning(f"Download mail failed: {e}")
+    _background(run)
+
+
+def _background(fn) -> None:
+    """The mail goes out beside the download, never delaying it."""
+    import threading
+    threading.Thread(target=fn, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -746,7 +864,7 @@ def overview(user: str, admin: bool) -> Dict[str, Any]:
     own = usage(f"u/{user}")
     out = {"user": user, "admin": admin, "own": own, "shared": usage("s"), "quota": config()["quota_mb"] * 1024 * 1024,
            "free": disk_free(), "config": config() if admin else None, "default_root": DEFAULT_ROOT if admin else None,
-           "share_hours": list(SHARE_HOURS)}
+           "share_hours": list(SHARE_HOURS), "mail": mail_possible(user)}
     if admin:
         users_dir = os.path.join(root(), "users")
         out["users"] = sorted(({"name": n, "size": usage(f"u/{n}")} for n in (os.listdir(users_dir) if os.path.isdir(users_dir) else [])

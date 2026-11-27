@@ -148,3 +148,15 @@ span.cloud-crumb.current { cursor: default; }
 }
 .cloud-preview-actions a, .cloud-content a.btn-secondary { text-decoration: none; }
 .cloud-view-toggle[hidden] { display: none; }
+.cloud-share-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cloud-share-form select { width: 100%; }
+.cloud-share-pw { display: flex; gap: 8px; }
+.cloud-share-pw[hidden] { display: none; }
+.cloud-share-pw input { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-main); background: var(--bg-input, rgba(var(--ink-rgb), 0.04)); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 7px 10px; }
+.cloud-log-row td { padding-top: 0; }
+.cloud-log { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 8px 10px; border-left: 2px solid var(--accent-cyan); max-height: 260px; overflow: auto; }
+.cloud-log-line { display: grid; grid-template-columns: 150px 130px 130px minmax(0, 1fr); gap: 10px; font-size: 0.8rem; align-items: baseline; }
+.cloud-log-line .field-hint { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-log-line.fail { color: var(--accent-rose); }
+.cloud-log-ts, .cloud-log-ip { font-family: var(--font-mono); font-size: 0.75rem; }
+td .health-tag + .health-tag { margin-left: 4px; }

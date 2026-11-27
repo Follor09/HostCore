@@ -10,7 +10,7 @@ import secrets
 import time
 from html import escape as html_escape
 from typing import List
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -178,6 +178,9 @@ class ShareRequest(BaseModel):
     space: str
     path: str
     hours: int = 168
+    max_downloads: int = 0
+    password: str = ""
+    notify: bool = False
 
 
 class TrashRequest(BaseModel):
@@ -287,8 +290,10 @@ async def api_cloud_shares(request: Request):
 @router.post("/api/cloud/shares")
 async def api_cloud_share_create(req: ShareRequest, request: Request):
     key = await _key(request, req.space)
-    request.state.audit_detail = f"{req.space}:{req.path} · {req.hours} Std."[:250]
-    return await asyncio.to_thread(_call, cloud.create_share, key, req.path, req.hours, request.state.user or "")
+    extra = [f"max. {req.max_downloads}×" if req.max_downloads else "", "Passwort" if req.password else "", "Mail" if req.notify else ""]
+    request.state.audit_detail = " · ".join([f"{req.space}:{req.path}", f"{req.hours} Std.", *[x for x in extra if x]])[:250]
+    return await asyncio.to_thread(_call, cloud.create_share, key, req.path, req.hours, request.state.user or "",
+                                   req.max_downloads, req.password, req.notify)
 
 
 @router.post("/api/cloud/shares/{token}/delete")
@@ -304,18 +309,87 @@ async def api_cloud_settings(payload: dict, request: Request):
     return await asyncio.to_thread(_call, cloud.save, payload)
 
 
-@router.get("/s/c/{token}")
-async def public_cloud_share(token: str, request: Request):
-    """Public download for a cloud share link (no login): one file, or a folder as ZIP."""
-    try:
-        s = await asyncio.to_thread(cloud.shared, token)
-    except cloud.CloudError as e:
-        return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Link ungültig</title>"
-                            f"<body style='font-family:sans-serif;padding:40px'><h2>{html_escape(str(e))}</h2>"
-                            f"<p>Bitte bei der Person nachfragen, die dir den Link geschickt hat.</p>", status_code=404)
+_SHARE_FAILS: dict = {}          # ip -> [timestamps of wrong passwords]
+FAIL_WINDOW, FAIL_MAX = 900, 10
+
+
+def _share_page(title: str, body: str, status: int = 200) -> HTMLResponse:
+    return HTMLResponse(
+        "<!doctype html><html lang=de><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+        f"<title>{html_escape(title)}</title><meta name=robots content=noindex>"
+        "<style>body{font-family:system-ui,sans-serif;background:#0b0e14;color:#e5e7eb;display:flex;min-height:100vh;"
+        "align-items:center;justify-content:center;margin:0;padding:20px}main{background:#141925;border:1px solid #262d3d;"
+        "border-radius:16px;padding:28px;max-width:420px;width:100%}h1{font-size:1.15rem;margin:0 0 4px;word-break:break-word}"
+        "p{color:#94a3b8;font-size:.9rem;margin:6px 0 16px}input{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;"
+        "border:1px solid #334155;background:#0b0e14;color:#e5e7eb;font-size:1rem;margin-bottom:12px}button{width:100%;padding:11px;"
+        "border:0;border-radius:10px;background:#00c8d7;color:#04121a;font-weight:600;font-size:1rem;cursor:pointer}"
+        ".err{color:#ff6b8a}</style><main>" + body + "</main></html>", status_code=status)
+
+
+def _invalid(e: Exception) -> HTMLResponse:
+    return _share_page("Link ungültig", f"<h1>{html_escape(str(e))}</h1>"
+                                        "<p>Bitte bei der Person nachfragen, die dir den Link geschickt hat.</p>", 404)
+
+
+def _fmt(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}".replace(".", ",")
+        n /= 1024
+    return ""
+
+
+def _password_form(s: dict, error: str = "", status: int = 200) -> HTMLResponse:
+    size = f" · {_fmt(s['size'])}" if s.get("size") is not None else " · Ordner als ZIP"
+    err = f"<p class=err>{html_escape(error)}</p>" if error else ""
+    return _share_page(s["name"], f"<h1>{html_escape(s['name'])}</h1><p>Geschützter Download{size}</p>{err}"
+                                  "<form method=post><input type=password name=password placeholder='Passwort' autofocus required "
+                                  "autocomplete=current-password aria-label=Passwort><button type=submit>Herunterladen</button></form>", status)
+
+
+async def _send_share(token: str, request: Request):
     ip = websec.client_ip(request)
+    agent = request.headers.get("user-agent", "")
+    try:
+        s = await asyncio.to_thread(cloud.take_download, token, ip, agent)
+    except cloud.CloudError as e:
+        return _invalid(e)
     await asyncio.to_thread(audit.record, "Freigabe-Link", ip, "GET", "/s/c/", 200, s["path"])
     if s["type"] == "dir":
         return StreamingResponse(files.zip_stream(s["files"]), media_type="application/zip", headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(s['name'])}", "Cache-Control": "no-store"})
-    return FileResponse(s["path"], filename=s["name"], headers={"X-Content-Type-Options": "nosniff"})
+    return FileResponse(s["path"], filename=s["name"], headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
+
+
+@router.get("/s/c/{token}")
+async def public_cloud_share(token: str, request: Request):
+    """Public link (no login): downloads at once - or, with a password, shows the form first."""
+    try:
+        s = await asyncio.to_thread(cloud.share_info, token)
+    except cloud.CloudError as e:
+        return _invalid(e)
+    if s.get("pw_hash"):
+        return _password_form(s)
+    return await _send_share(token, request)
+
+
+@router.post("/s/c/{token}")
+async def public_cloud_share_password(token: str, request: Request):
+    try:
+        s = await asyncio.to_thread(cloud.share_info, token)
+    except cloud.CloudError as e:
+        return _invalid(e)
+    ip = websec.client_ip(request)
+    now = time.time()
+    fails = [t for t in _SHARE_FAILS.get(ip, []) if now - t < FAIL_WINDOW]
+    _SHARE_FAILS[ip] = fails
+    if len(fails) >= FAIL_MAX:
+        return _password_form(s, "Zu viele falsche Versuche – bitte in 15 Minuten erneut.", 429)
+    body = (await request.body())[:4096].decode("utf-8", "replace")
+    password = (parse_qs(body).get("password") or [""])[0]
+    if not await asyncio.to_thread(cloud.check_password, s, password):
+        fails.append(now)
+        await asyncio.to_thread(cloud.record_failed, token, ip, request.headers.get("user-agent", ""))
+        await asyncio.to_thread(audit.record, "Freigabe-Link", ip, "POST", "/s/c/", 403, f"Falsches Passwort · {s['name']}")
+        return _password_form(s, "Falsches Passwort.", 403)
+    return await _send_share(token, request)

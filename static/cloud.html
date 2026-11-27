@@ -115,20 +115,41 @@
     <div class="modal-card sheet-card cloud-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-share-title">
       <div class="sheet-head"><h3 id="cloud-share-title">Freigabe-Link</h3><button type="button" class="mini-icon-btn" data-close title="Schließen" aria-label="Schließen">✕</button></div>
       <p class="field-hint" id="cloud-share-what" data-no-i18n></p>
-      <p class="field-hint">Wer den Link hat, kann ohne Anmeldung herunterladen – Ordner als ZIP. Jeder Abruf steht im Aktivitätsprotokoll.</p>
-      <div class="inline-form">
-        <select id="cloud-share-hours" aria-label="Gültigkeit">
-          <option value="1">1 Stunde</option>
-          <option value="24">24 Stunden</option>
-          <option value="168" selected>7 Tage</option>
-          <option value="720">30 Tage</option>
-        </select>
-        <button type="button" class="btn-primary" id="cloud-share-create">Link erstellen</button>
+      <p class="field-hint">Wer den Link hat, kann ohne Anmeldung herunterladen – Ordner als ZIP. Jeder Abruf wird protokolliert (Zeit, Adresse, Browser) und steht unter „Freigaben“.</p>
+      <div class="cloud-share-form">
+        <label class="login-field"><span>Gültig</span>
+          <select id="cloud-share-hours">
+            <option value="1">1 Stunde</option>
+            <option value="24">24 Stunden</option>
+            <option value="168" selected>7 Tage</option>
+            <option value="720">30 Tage</option>
+          </select>
+        </label>
+        <label class="login-field"><span>Downloads</span>
+          <select id="cloud-share-max">
+            <option value="0" selected>unbegrenzt</option>
+            <option value="1">1-mal</option>
+            <option value="3">3-mal</option>
+            <option value="5">5-mal</option>
+            <option value="10">10-mal</option>
+            <option value="25">25-mal</option>
+            <option value="100">100-mal</option>
+          </select>
+        </label>
       </div>
+      <label class="toggle-label"><input type="checkbox" id="cloud-share-pw-on"> Mit Passwort schützen</label>
+      <div class="cloud-share-pw" id="cloud-share-pw-box" hidden>
+        <input type="text" id="cloud-share-pw" autocomplete="off" spellcheck="false" placeholder="Passwort (mind. 4 Zeichen)" aria-label="Passwort">
+        <button type="button" class="btn-secondary" id="cloud-share-pw-gen">Erzeugen</button>
+      </div>
+      <label class="toggle-label"><input type="checkbox" id="cloud-share-notify"> Mail an mich bei jedem Download</label>
+      <p class="field-hint" id="cloud-share-notify-hint" hidden></p>
+      <div class="form-actions"><button type="button" class="btn-primary" id="cloud-share-create">Link erstellen</button></div>
       <div class="cloud-share-result" id="cloud-share-result" hidden>
         <input type="text" id="cloud-share-url" readonly aria-label="Link">
         <button type="button" class="btn-secondary" id="cloud-share-copy">Kopieren</button>
       </div>
+      <p class="field-hint" id="cloud-share-pw-note" hidden>Das Passwort am besten auf anderem Weg mitteilen als den Link.</p>
     </div>
   </div>
 

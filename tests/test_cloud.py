@@ -146,3 +146,50 @@ def test_builtin_group_saved_before_gets_new_permission(app_module):
     assert "cloud" in groups["user"]["perms"]                             # never had the choice
     groups = auth.all_groups({**cfg, "groups": {"user": {"name": "Benutzer", "perms": ["system.view"], "seen": auth.ALL_PERMISSIONS}}})
     assert "cloud" not in groups["user"]["perms"]                         # removed on purpose
+
+
+def _share(c, name, **opts):
+    put(c, name, b"daten")
+    r = c.post("/api/cloud/shares", json={"space": "me", "path": name, "hours": 24, **opts})
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+def test_share_link_download_limit(users, anon):
+    token = _share(users["bob"], "einmal.txt", max_downloads=2)
+    assert anon.get(f"/s/c/{token}").status_code == 200
+    assert anon.get(f"/s/c/{token}").status_code == 200
+    third = anon.get(f"/s/c/{token}")
+    assert third.status_code == 404 and "so oft" in third.text
+    s = next(x for x in users["bob"].get("/api/cloud/shares").json()["shares"] if x["token"] == token)
+    assert s["downloads"] == 2 and len(s["log"]) == 2 and all(e["ok"] for e in s["log"])
+    assert "pw_hash" not in s and "key" not in s
+
+
+def test_share_link_password(users, anon):
+    token = _share(users["bob"], "geschuetzt.txt", password="Sesam-123")
+    page = anon.get(f"/s/c/{token}")
+    assert page.status_code == 200 and "<form" in page.text and "daten" not in page.text   # only the form
+    wrong = anon.post(f"/s/c/{token}", data={"password": "falsch"})
+    assert wrong.status_code == 403 and "Falsches Passwort" in wrong.text
+    ok = anon.post(f"/s/c/{token}", data={"password": "Sesam-123"})
+    assert ok.status_code == 200 and ok.content == b"daten"
+    s = next(x for x in users["bob"].get("/api/cloud/shares").json()["shares"] if x["token"] == token)
+    assert s["password"] and s["downloads"] == 1
+    assert [e["ok"] for e in s["log"]] == [True, False]                   # newest first
+    assert users["bob"].post("/api/cloud/shares", json={"space": "me", "path": "geschuetzt.txt", "hours": 24,
+                                                        "password": "abc"}).status_code == 400   # too short
+
+
+def test_share_link_mail_to_creator(users, anon, monkeypatch):
+    import notify
+    sent = []
+    monkeypatch.setattr(notify, "config", lambda: {"host": "smtp.test", "sender": "hc@test"})
+    monkeypatch.setattr(notify, "send", lambda subject, text, html=None, cfg=None, to=None: sent.append((subject, to, text)))
+    auth.set_email("bob", "bob@example.org")
+    monkeypatch.setattr(cloud, "_background", lambda fn: fn())      # send inline
+    token = _share(users["bob"], "melden.txt", notify=True, max_downloads=3)
+    assert anon.get(f"/s/c/{token}", headers={"User-Agent": "TestBrowser/1.0"}).status_code == 200
+    assert len(sent) == 1
+    subject, to, text = sent[0]
+    assert to == ["bob@example.org"] and "melden.txt" in subject and "TestBrowser" in text and "Noch 2" in text
