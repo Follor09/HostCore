@@ -91,7 +91,7 @@ def test_locate_reports_the_telling_error_and_stops_on_a_wrong_token(monkeypatch
 
     async def wrong_token(url, token, trust="", cert=""):
         tried.append(url)
-        raise remotes.RemoteError("Token falsch.")
+        raise remotes.AgentRefused("Token falsch.")
     monkeypatch.setattr(remotes, "_connect", wrong_token)
     with pytest.raises(remotes.RemoteError, match="Token falsch"):
         asyncio.run(remotes.locate("example.org", "t" * 40))
@@ -120,3 +120,39 @@ def test_agent_allow_list_takes_domains(monkeypatch):
     del addr["dash.example.org"]
     agent._refresh("dash.example.org")
     assert agent.allowed("203.0.113.7")
+
+
+@pytest.mark.parametrize("status,detail,message,final", [
+    (401, "Agent: Token fehlt oder falsch.", "Token falsch", True),
+    (403, "Agent: diese Adresse (203.0.113.9) ist nicht freigegeben (./agent.sh allow).", "er sieht 203.0.113.9", True),
+    (401, "Nicht angemeldet.", "etwas mit Anmeldung", False),        # a normal dashboard on 443
+    (403, None, "etwas mit Anmeldung", False),                       # a proxy with its own login page
+])
+def test_probe_tells_the_agent_apart_from_other_logins(monkeypatch, status, detail, message, final):
+    import asyncio
+
+    import httpx
+
+    def handler(request):
+        if detail is None:
+            return httpx.Response(status, text="<html>Login</html>")
+        return httpx.Response(status, json={"detail": detail})
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **k: real(transport=httpx.MockTransport(handler)))
+    with pytest.raises(remotes.RemoteError, match=message) as e:
+        asyncio.run(remotes.probe("https://agent.example.org", "t" * 40))
+    assert isinstance(e.value, remotes.AgentRefused) == final
+
+
+def test_locate_goes_on_after_a_login_page_on_443(monkeypatch):
+    import asyncio
+    tried = []
+
+    async def connect(url, token, trust="", cert=""):
+        tried.append(url)
+        if url == "https://agent.example.org":
+            raise remotes.RemoteError("Dort antwortet kein HostCore-Agent, sondern etwas mit Anmeldung (Antwort 401) – …")
+        return {"agent": True, "hostname": "garage"}, ""
+    monkeypatch.setattr(remotes, "_connect", connect)
+    url, _, _ = asyncio.run(remotes.locate("agent.example.org", "t" * 40))
+    assert url == "http://agent.example.org:8000"

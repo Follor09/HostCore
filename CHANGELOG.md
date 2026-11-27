@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.12.1 – 2026-11-27
+
+### Fixed
+- **Adding an agent by domain said "Token falsch":** any 401/403 counted as a wrong token and ended the search – so a login page on https/443 (a normal dashboard, a proxy with Cloudflare Access or basic auth) stopped it before port 8000 was tried. Now only the agent's own answers count: a wrong token says so, an address refused by `./agent.sh allow` says that (with the address the agent sees), and anything else with a login is reported as "kein HostCore-Agent" while the next address is tried.
+
 ## v1.12.0 – 2026-11-27
 
 ### Added

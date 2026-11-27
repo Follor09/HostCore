@@ -5005,6 +5005,9 @@
   const tr = s => (DICT[s] !== undefined ? DICT[s] : translateDynamic(s) ?? s);
   const plural = (n, one, many) => (Number(n) === 1 ? one : many);
   const PATTERNS = [
+    [/^Dort antwortet kein HostCore-Agent, sondern etwas mit Anmeldung \(Antwort (\d+)\) – ein normales Dashboard oder ein Proxy mit Login\?$/, 'No HostCore agent answers there but something with a login (status $1) – a normal dashboard or a proxy with a login?'],
+    [/^Der Agent lehnt die Adresse dieses Dashboards ab \(er sieht ([^)]+)\) – auf dem Agent mit \.\/agent\.sh allow freigeben\.$/, 'The agent refuses the address of this dashboard (it sees $1) – allow it on the agent with ./agent.sh allow.'],
+    [/^Der Agent lehnt die Adresse dieses Dashboards ab – auf dem Agent mit \.\/agent\.sh allow freigeben\.$/, 'The agent refuses the address of this dashboard – allow it on the agent with ./agent.sh allow.'],
     [/^Anzahl Downloads: 0 \(unbegrenzt\) bis (\d+)\.$/, 'Number of downloads: 0 (unlimited) to $1.'],
     [/^Passwort: (\d+) bis 200 Zeichen\.$/, 'Password: $1 to 200 characters.'],
     [/^„(.+)“ gibt es dort schon\.$/, '“$1” already exists there.'],

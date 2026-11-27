@@ -34,6 +34,11 @@ class RemoteError(Exception):
     pass
 
 
+class AgentRefused(RemoteError):
+    """The agent itself answered and refused (wrong token, address not allowed): it is found,
+    trying other addresses would not help."""
+
+
 class UntrustedCert(RemoteError):
     """The agent answers with https and a certificate no authority vouches for (./agent.sh tls on).
     It is trusted only after the user compared the fingerprint with the one the agent shows."""
@@ -255,9 +260,9 @@ async def locate(raw: str, token: str, trust: str = "") -> tuple:
             return url, info, cert
         except UntrustedCert as e:
             untrusted = untrusted or e
+        except AgentRefused:
+            raise                           # the agent is there and said no
         except RemoteError as e:
-            if str(e) == "Token falsch.":
-                raise                       # the agent is there - the token is wrong
             errors.append(e)
     if untrusted:
         raise untrusted
@@ -286,7 +291,21 @@ async def probe(url: str, token: str, cert: str = "") -> Dict[str, Any]:
             raise RemoteError("Keine Antwort über http – spricht der Agent https? Dann https:// angeben.")
         raise RemoteError(f"Nicht erreichbar ({type(e).__name__}) – Adresse, Port und Firewall prüfen.")
     if res.status_code in (401, 403):
-        raise RemoteError("Token falsch.")
+        try:
+            detail = str(res.json().get("detail", ""))
+        except ValueError:
+            detail = ""
+        # Only the agent's own answers say "Agent: …" - anything else with a login (a normal
+        # dashboard, a proxy with Cloudflare Access / basic auth) is not the agent at all
+        if detail.startswith("Agent: Token"):
+            raise AgentRefused("Token falsch.")
+        if detail.startswith("Agent: diese Adresse"):
+            seen = re.search(r"\(([0-9a-fA-F:.]+)\)", detail)
+            raise AgentRefused("Der Agent lehnt die Adresse dieses Dashboards ab"
+                               + (f" (er sieht {seen.group(1)})" if seen else "")
+                               + " – auf dem Agent mit ./agent.sh allow freigeben.")
+        raise RemoteError(f"Dort antwortet kein HostCore-Agent, sondern etwas mit Anmeldung (Antwort {res.status_code}) – "
+                          "ein normales Dashboard oder ein Proxy mit Login?")
     if res.status_code == 404:
         raise RemoteError("Dort läuft kein HostCore-Agent (oder eine zu alte Version).")
     if res.status_code != 200:

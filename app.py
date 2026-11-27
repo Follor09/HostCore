@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.12.0", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.12.1", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -294,8 +294,9 @@ async def require_login(request: Request, call_next):
         if path.startswith("/api/"):
             if not agent.check(request.headers.get("authorization", "")):
                 return JSONResponse({"detail": "Agent: Token fehlt oder falsch."}, status_code=401)
-            if not agent.allowed(websec.client_ip(request)):
-                return JSONResponse({"detail": "Agent: diese Adresse ist nicht freigegeben (./agent.sh allow)."}, status_code=403)
+            ip = websec.client_ip(request)
+            if not agent.allowed(ip):
+                return JSONResponse({"detail": f"Agent: diese Adresse ({ip}) ist nicht freigegeben (./agent.sh allow)."}, status_code=403)
             request.state.user = agent.remote_user(request.headers)
             request.state.audit_user = request.state.user
             return await call_next(request)
