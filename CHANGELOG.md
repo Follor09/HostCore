@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.8 – 2026-11-27
+
+### Changed
+- **English interface complete:** the 301 texts the translation check had found without English translation are translated – backend error messages (backups, VMs, SSO, passkeys, change management …), help texts of the pages (compliance, GitOps, emergency handbook, off-site backup …), toasts and tooltips, plus five sentence fragments next to code and links.
+
 ## v1.9.7 – 2026-11-26
 
 ### Fixed
