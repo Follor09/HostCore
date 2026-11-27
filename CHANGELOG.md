@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.13.0 – 2026-11-27
+
+### Added
+- **`doctor.sh` – troubleshooting for known problems:** checks the installation and shows the command for each problem; `--fix` repairs, asking before every step. Recognises above all Docker missing in the dashboard because the user joined the `docker` group after the dashboard started (compares `/etc/group` with the groups of the running service and of the user's systemd manager for tasks/terminal, restarts only what needs it), the user not in the group at all, Docker from snap without a `docker` group, a stopped Docker daemon; also system-log/libvirt/kvm groups, kubeconfig, stopped service with its last log lines, port 8000 taken, broken venv, root copy / sudo rules / update timer, lingering, files owned by root, NTP, disk, missing login. Also the less obvious ones: updates silently stuck (release not signed by a trusted key, expired GitHub token, DNS, failed or hanging update run, service running from another folder than the updated one, interrupted dpkg, apt held by unattended-upgrades), restart loop, out-of-memory kills, settings.json restored from its backup, read-only file system and I/O errors, no free inodes, Raspberry Pi under-voltage/throttling, snap Docker reading only below /home, another Docker context / DOCKER_HOST, only rootless Docker, podman; locked out by fail2ban or country blocking (own ssh address, logged-in users, `--ip <addr>`; unban / clear offered) and an agent refusing a not-allowed address with a valid token. Repairs run as root from the root copy only. The check mode changes nothing; `--fix --yes` applies only harmless steps – restarting Docker (all containers restart), restarting the user's systemd manager (not at all while tasks run), stopping a hanging update and lifting country blocking always need a confirmation at the terminal. Files of other users in the dashboard folder (often container data) are only reported; only root's files are given back. Pending dpkg entries are not reported as interrupted while apt is running.
+
 ## v1.12.2 – 2026-11-27
 
 ### Fixed

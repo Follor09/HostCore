@@ -494,6 +494,28 @@ Dann auf dem Server:
 
 Der Token wird geprüft und in `.git/github-credentials` gespeichert (nur für deinen Benutzer lesbar, wird nie committed). `install.sh` fragt automatisch danach, falls das Repo nicht lesbar ist. Bei abgelaufenem Token einfach `set-token.sh` erneut ausführen.
 
+### 🩺 Fehlerbehebung: `doctor.sh`
+
+Bekannte Probleme auf dem Server finden und beheben – auch wenn das Dashboard selbst nicht mehr läuft:
+```bash
+~/pi-dashboard/doctor.sh          # nur prüfen, zeigt zu jedem Problem den Befehl
+~/pi-dashboard/doctor.sh --fix    # beheben, fragt vor jedem Schritt (--fix --yes: harmlose Schritte ohne Nachfrage)
+~/pi-dashboard/doctor.sh --ip 203.0.113.7   # ist dieses Gerät ausgesperrt (fail2ban, Ländersperre)?
+```
+
+Typischer Fall: **Docker wird nicht angezeigt**, obwohl es läuft. Gruppen gelten nur für neu gestartete Prozesse – wurde der Dashboard-Benutzer erst nach der Installation in die Gruppe `docker` aufgenommen, hat der laufende Dienst sie noch nicht. `doctor.sh` vergleicht die Gruppen in `/etc/group` mit denen des laufenden Dienstes (und des systemd-Benutzerdienstes für Aufgaben und Web-Terminal) und startet nur neu, was nötig ist. Außerdem erkannt: Benutzer gar nicht in der Gruppe (alter Hinweis vor v1.12.2 hat root eingetragen), Docker aus snap ohne Gruppe `docker`, Docker-Daemon gestoppt, fehlender Zugriff auf System-Logs, libvirt/kvm und kubeconfig, gestoppter Dienst (mit den letzten Log-Zeilen), belegter Port 8000, kaputtes venv, fehlende Root-Kopie, sudo-Regeln oder Update-Timer, Lingering aus, Dateien, die nach `sudo git pull` root gehören, Uhrzeit, volles Laufwerk, kein Login.
+
+Dazu Dinge, die man selten sofort vermutet:
+- **Updates bleiben still stehen:** Release nicht mit einem vertrauten Schlüssel signiert, GitHub-Token abgelaufen, DNS kaputt, Update-Lauf fehlgeschlagen oder hängt, Dienst läuft aus einem anderen Ordner als dem, der aktualisiert wird, dpkg unterbrochen, apt seit langem durch `unattended-upgrades` belegt.
+- **Abstürze:** Startschleife, Speichermangel (OOM-Kill), `settings.json` war kaputt und kam aus dem Backup.
+- **Hardware:** Dateisystem nur noch lesbar und Lese-/Schreibfehler (SD-Karte), keine freien Inodes, Unterspannung oder Drosselung des Raspberry Pi.
+- **Docker:** Docker aus snap liest nur unter `/home` (Compose-Projekte in `/opt` oder `/srv` scheitern mit „no such file or directory“), anderer Docker-Kontext oder `DOCKER_HOST`, nur rootless Docker, podman statt Docker.
+- **Ausgesperrt:** eigene Adresse (SSH-Sitzung, angemeldete Benutzer, `--ip`) von fail2ban gesperrt oder in einem gesperrten Land; Agent lehnt die neue Adresse des Haupt-Dashboards ab.
+
+Der Prüfmodus ändert nichts. Bei `--fix` fragt das Skript vor jedem Schritt; was etwas Laufendes unterbricht oder den Schutz lockert (Docker neu starten – dabei starten alle Container neu –, Benutzerdienst neu starten, hängendes Update abbrechen, Ländersperre aufheben), macht auch `--yes` nie ohne Rückfrage. Den Benutzerdienst startet es nicht neu, solange Aufgaben laufen, und Dateien anderer Benutzer im Dashboard-Ordner (oft Daten eines Containers) werden nur gemeldet, nie umgeschrieben – nur root-Dateien.
+
+Reparaturen laufen als root aus der Root-Kopie (`/var/lib/pi-dashboard/src/doctor.sh`), nie aus dem Dashboard-Ordner – `--fix` wechselt selbst dorthin.
+
 ---
 
 ## 📄 Lizenz & Sicherheit

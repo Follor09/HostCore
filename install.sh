@@ -140,7 +140,7 @@ if ! as_owner "$DIR/venv/bin/python" -m pip --version >/dev/null 2>&1; then
     as_owner python3 -m venv "$DIR/venv"
 fi
 as_owner "$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
-as_owner chmod +x "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/set-password.sh" "$DIR/agent.sh"
+as_owner chmod +x "$DIR/start.sh" "$DIR/set-token.sh" "$DIR/set-password.sh" "$DIR/agent.sh" "$DIR/doctor.sh"
 
 # Agent mode: agent.json in the dashboard folder (kept across updates)
 AGENT_TOKEN=""
