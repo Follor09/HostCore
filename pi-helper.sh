@@ -30,6 +30,8 @@
 #   pi-helper.sh malware-scan rkhunter-baseline rkhunter's reference after system updates
 #   pi-helper.sh offsite <backup|snapshots|check> < spec      off-site backup with restic (backend/offsitetool.py checks everything)
 #   pi-helper.sh offsite restore <snapshot> [<path>] < spec   into /var/lib/pi-dashboard/restore/ (root only)
+#   pi-helper.sh cleanup sizes                 storage cleanup: what can be freed (backend/cleanuptool.py decides the files)
+#   pi-helper.sh cleanup run <item>            snap|autoremove|varlog|docker_logs|crash|k3s_images
 #   pi-helper.sh falco-setup                    Falco from its signed package source, modern eBPF, JSON output
 #   pi-helper.sh f2b-banned
 #   pi-helper.sh f2b-unban <ip>
@@ -415,6 +417,14 @@ case "$CMD" in
         case "${1:-}" in backup|snapshots|check|restore) ;; *) die "Unbekannter Befehl." ;; esac
         [ $# -le 3 ] || die "Zu viele Angaben."
         exec python3 -I "$(dirname "$(readlink -f "$0")")/backend/offsitetool.py" "$@"
+        ;;
+    cleanup)
+        case "${1:-}" in
+            sizes) [ $# -eq 1 ] || die "Zu viele Angaben." ;;
+            run) [ $# -eq 2 ] && [[ "$2" =~ ^(snap|autoremove|varlog|docker_logs|crash|k3s_images)$ ]] || die "Unbekannter Eintrag." ;;
+            *) die "Unbekannter Befehl." ;;
+        esac
+        exec nice -n 10 python3 -I "$(dirname "$(readlink -f "$0")")/backend/cleanuptool.py" "$@"
         ;;
     malware-scan)
         kind="${1:-}"

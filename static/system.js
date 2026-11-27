@@ -351,6 +351,36 @@
   // ---------------------------------------------------------------------------
   // Storage cleanup
   // ---------------------------------------------------------------------------
+  // Ticked items for "Ausgewählte aufräumen": kept across reloads, careful ones start unticked
+  const cleanupPicked = new Map();
+
+  function cleanupDetail(item) {
+    const parts = [];
+    if (item.count != null) parts.push(item.id === 'docker_logs' ? `${item.count} Container` : `${item.count} Dateien`);
+    if (item.kernels) parts.push(`davon ${item.kernels} alte Kernel`);
+    if (!item.names || !item.names.length) return parts.length ? el('span', 'workload-sub', parts.join(' · ')) : null;
+    const box = el('span', 'workload-sub');
+    if (parts.length) box.append(el('span', '', parts.join(' · ')), ' · ');
+    const shown = item.names.slice(0, 8).join(', ') + (item.names.length > 8 ? ` +${item.names.length - 8}` : '');
+    const names = el('span', 'mono', shown);
+    names.setAttribute('data-no-i18n', '');
+    names.title = item.names.join('\n');
+    box.appendChild(names);
+    return box;
+  }
+
+  function cleanupSelection() {
+    return (cache.cleanup?.items || []).filter(i => i.size !== 0 && cleanupPicked.get(i.id));
+  }
+
+  function updateCleanupButton() {
+    const picked = cleanupSelection();
+    const btn = $('cleanup-all');
+    btn.disabled = !picked.length;
+    const known = picked.reduce((sum, i) => sum + (i.size_is_total ? 0 : i.size || 0), 0);
+    $('cleanup-picked').textContent = picked.length ? `${picked.length} ausgewählt · bis zu ${fmtBytes(known)}` : '';
+  }
+
   function renderCleanup(c) {
     $('cleanup-free').textContent = `${fmtBytes(c.free_bytes)} frei`;
     const list = $('cleanup-items');
@@ -358,7 +388,21 @@
     if (!c.items.length) list.appendChild(emptyRow('Nichts zum Aufräumen gefunden.'));
     c.items.forEach(item => {
       const size = item.size == null ? 'unbekannt' : `${item.size_is_total ? 'gesamt ' : ''}${fmtBytes(item.size)}`;
-      const row = infoRow(item.label, item.desc, [[item.size ? 'warning' : '', size]]);
+      const tags = [[item.size ? 'warning' : '', size]];
+      if (item.careful) tags.unshift(['', 'Vorsicht', 'Nicht vorausgewählt – erst prüfen, ob das weg darf.']);
+      const row = infoRow(item.label, item.desc, tags);
+      const detail = cleanupDetail(item);
+      if (detail) row.querySelector('.workload-main').appendChild(detail);
+      if (!cleanupPicked.has(item.id)) cleanupPicked.set(item.id, !item.careful);
+      const pick = el('input');
+      pick.type = 'checkbox';
+      pick.className = 'cleanup-pick';
+      pick.dataset.perm = 'system.config';
+      pick.checked = cleanupPicked.get(item.id) && item.size !== 0;
+      pick.disabled = item.size === 0;
+      pick.setAttribute('aria-label', item.label);
+      pick.addEventListener('change', () => { cleanupPicked.set(item.id, pick.checked); updateCleanupButton(); });
+      row.prepend(pick);
       const btn = el('button', 'btn-secondary', 'Aufräumen');
       btn.dataset.perm = 'system.config';
       btn.disabled = item.size === 0;
@@ -367,18 +411,21 @@
       row.querySelector('.iface-tags').appendChild(btn);
       list.appendChild(row);
     });
-    $('cleanup-all').disabled = !c.items.some(i => i.size !== 0);
+    $('cleanup-hint').textContent = c.hint || '';
+    $('cleanup-hint').hidden = !c.hint;
+    updateCleanupButton();
   }
 
   async function runCleanup(ids, btn) {
     const msg = $('cleanup-msg');
-    const buttons = [...document.querySelectorAll('#cleanup-items button'), $('cleanup-all')];
+    const buttons = [...document.querySelectorAll('#cleanup-items button, #cleanup-items input'), $('cleanup-all')];
     buttons.forEach(b => { b.disabled = true; });
     if (btn) btn.textContent = 'Läuft…';
     let freed = 0;
     const errors = [];
+    const labels = Object.fromEntries((cache.cleanup?.items || []).map(i => [i.id, i.label]));
     for (const id of ids) {
-      msg.textContent = `Räume auf: ${id}…`;
+      msg.textContent = `Räume auf: ${labels[id] || id}…`;
       msg.className = 'form-msg';
       try {
         freed += (await api('/api/tools/cleanup', { item: id })).freed;
@@ -2993,18 +3040,18 @@
     }));
     $('ssh-filter').addEventListener('change', () => cache.ssh && renderSshEvents(cache.ssh));
     ['log-unit', 'log-priority', 'log-since'].forEach(id => $(id).addEventListener('change', () => searchLogs()));
-    // "Alles aufräumen" needs a second click
+    // "Ausgewählte aufräumen" needs a second click
     $('cleanup-all').addEventListener('click', () => {
       const btn = $('cleanup-all');
       if (!btn.classList.contains('confirming')) {
         btn.classList.add('confirming');
-        btn.textContent = 'Wirklich alles?';
-        setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = 'Alles aufräumen'; }, 5000);
+        btn.textContent = 'Wirklich aufräumen?';
+        setTimeout(() => { btn.classList.remove('confirming'); btn.textContent = 'Ausgewählte aufräumen'; }, 5000);
         return;
       }
       btn.classList.remove('confirming');
-      btn.textContent = 'Alles aufräumen';
-      runCleanup((cache.cleanup.items || []).filter(i => i.size !== 0).map(i => i.id));
+      btn.textContent = 'Ausgewählte aufräumen';
+      runCleanup(cleanupSelection().map(i => i.id));
     });
 
     // Highlight the section currently in view

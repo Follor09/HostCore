@@ -960,11 +960,13 @@
           <h2>Speicher aufräumen</h2>
           <span class="health-tag" id="cleanup-free">– frei</span>
         </div>
-        <p class="section-desc">Gibt Speicherplatz frei, ohne Programme oder deine Daten anzufassen. Größen werden beim Öffnen neu berechnet.</p>
+        <p class="section-desc">Gibt Speicherplatz frei, ohne deine Daten anzufassen. Häkchen setzen und „Ausgewählte aufräumen“ – mit „Vorsicht“ markierte Punkte sind nicht vorausgewählt. Größen werden beim Öffnen neu berechnet.</p>
         <div class="iface-list" id="cleanup-items"></div>
+        <p class="field-hint" id="cleanup-hint" hidden></p>
         <div class="form-actions">
           <span class="form-msg" id="cleanup-msg" role="status"></span>
-          <button data-perm="system.config" class="btn-danger" id="cleanup-all">Alles aufräumen</button>
+          <span class="field-hint" id="cleanup-picked"></span>
+          <button data-perm="system.config" class="btn-danger" id="cleanup-all">Ausgewählte aufräumen</button>
         </div>
       </section>
       <!-- Schwachstellen -->

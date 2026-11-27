@@ -1814,3 +1814,10 @@ body.remote-host .host-switch-btn svg { color: var(--accent-amber); }
   .remote-banner { padding: 8px 16px; }
 }
 
+
+/* Storage cleanup: tick box in front of each item */
+#cleanup-items .iface-row { justify-content: flex-start; }
+#cleanup-items .workload-main { flex: 1; min-width: 0; }
+#cleanup-items .cleanup-pick { flex: none; width: 16px; height: 16px; accent-color: var(--accent, currentColor); }
+#cleanup-items .workload-sub .mono { font-size: 0.78rem; word-break: break-word; }
+@media (max-width: 720px) { #cleanup-items .iface-row { flex-direction: row; flex-wrap: wrap; } }

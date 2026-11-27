@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.15.0 – 2026-11-27
+
+### Added
+- **More to clean up, as a selection:** "Speicher aufräumen" now also offers rotated log files in `/var/log` (`syslog.1`, `*.gz`, `messages-YYYYMMDD`; never the journal folder or current logs), Docker container logs (rotated parts deleted, the live file emptied so running containers keep logging), unneeded packages and old kernels (`apt-get autoremove --purge`, package list and number of kernels shown), disabled snap revisions, Kubernetes images no k3s container uses (`crictl rmi --prune`, pinned images stay), crash reports and core dumps (`/var/crash`, `/var/lib/systemd/coredump`) and the npm cache. The root parts run through `pi-helper.sh cleanup` → `backend/cleanuptool.py` from the root copy; the dashboard only names an item, the tool decides which files or packages that means. Every item has a tick box; "Alles aufräumen" became "Ausgewählte aufräumen" with the selected size, and items marked "Vorsicht" (container logs, autoremove, k3s images, trash) are not preselected. If the helper is missing, the page says so and shows the other items.
+
 ## v1.14.0 – 2026-11-27
 
 ### Added

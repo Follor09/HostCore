@@ -598,6 +598,52 @@ def _docker_reclaimable() -> Optional[int]:
     return total
 
 
+# Items that need root: pi-helper.sh cleanup -> backend/cleanuptool.py decides the files.
+# careful = not ticked by default in "Ausgewählte aufräumen"
+ROOT_CLEANUP = {
+    "varlog": ("Alte Log-Dateien (/var/log)", "Rotierte und gepackte ältere Logs (syslog.1, kern.log.2.gz …). Die aktuellen Logs bleiben.", False),
+    "docker_logs": ("Container-Logs (Docker)", "Ältere Teile werden gelöscht, die laufende Log-Datei geleert. Container laufen weiter, bisherige Ausgaben sind danach weg.", True),
+    "autoremove": ("Unnötige Pakete & alte Kernel", "apt-get autoremove --purge: Pakete, die nichts mehr braucht. Der laufende Kernel bleibt immer.", True),
+    "snap": ("Alte Snap-Versionen", "Snap behält ältere Stände jedes Pakets zum Zurückrollen – nur die deaktivierten werden entfernt.", False),
+    "k3s_images": ("Kubernetes-Images (k3s)", "Images, die kein k3s-Container nutzt. Werden beim nächsten Start eines Pods neu geladen.", True),
+    "crash": ("Absturzberichte & Core-Dumps", "Aus /var/crash und /var/lib/systemd/coredump. Nur zur Fehlersuche nötig.", False),
+}
+USER_NPM = os.path.join(os.path.expanduser("~"), ".npm", "_cacache")
+_HELPER = "/var/lib/pi-dashboard/src/pi-helper.sh"
+
+
+def _cleanup_helper(*args: str, timeout: float = 60) -> str:
+    if not os.path.exists(_HELPER):
+        raise PermissionError("Helfer fehlt – install.sh auf dem Server erneut ausführen.")
+    res = subprocess.run(["sudo", "-n", _HELPER, "cleanup", *args], capture_output=True, text=True, timeout=timeout)
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "password" in err.lower() or "not allowed" in err.lower():
+            raise PermissionError("Keine Berechtigung – install.sh auf dem Server erneut ausführen.")
+        raise RuntimeError(err.splitlines()[-1][:200] if err else "Fehlgeschlagen.")
+    return res.stdout
+
+
+def _root_items() -> Dict[str, Any]:
+    if not IS_LINUX:
+        return {"items": []}
+    try:
+        data = _json.loads(_cleanup_helper("sizes", timeout=120) or "{}")
+    except (PermissionError, RuntimeError, ValueError, subprocess.SubprocessError, OSError) as e:
+        return {"items": [], "hint": f"Weitere Punkte (alte Logs, Snap, Kernel …) nicht verfügbar: {e}"}
+    items = []
+    for key, (label, desc, careful) in ROOT_CLEANUP.items():
+        info = data.get(key)
+        if not isinstance(info, dict):
+            continue
+        item = {"id": key, "label": label, "desc": desc, "size": info.get("size"), "careful": careful, "root": True}
+        for k in ("names", "count", "kernels"):
+            if k in info:
+                item[k] = info[k]
+        items.append(item)
+    return {"items": items}
+
+
 def cleanup_status() -> Dict[str, Any]:
     items = []
     if shutil.which("journalctl"):
@@ -615,9 +661,18 @@ def cleanup_status() -> Dict[str, Any]:
     if os.path.isdir(USER_CACHE):
         items.append({"id": "user_cache", "label": "Benutzer-Cache (~/.cache)", "desc": "Zwischenspeicher von Programmen (pip, Thumbnails …). Wird automatisch neu aufgebaut.",
                       "size": _tree_size(USER_CACHE)})
+    if os.path.isdir(USER_NPM):
+        items.append({"id": "npm_cache", "label": "npm-Cache (~/.npm)", "desc": "Heruntergeladene Node-Pakete. Werden bei Bedarf neu geladen.",
+                      "size": _tree_size(USER_NPM)})
     if os.path.isdir(USER_TRASH):
-        items.append({"id": "trash", "label": "Papierkorb", "desc": "Gelöschte Dateien im Papierkorb.", "size": _tree_size(USER_TRASH)})
-    return {"items": items, "free_bytes": shutil.disk_usage("/").free}
+        items.append({"id": "trash", "label": "Papierkorb", "desc": "Gelöschte Dateien im Papierkorb.", "size": _tree_size(USER_TRASH), "careful": True})
+    root = _root_items()
+    order = ["journal", "varlog", "docker_logs", "apt", "autoremove", "snap", "docker", "k3s_images", "user_cache", "npm_cache", "crash", "trash"]
+    items = sorted(items + root["items"], key=lambda i: order.index(i["id"]) if i["id"] in order else len(order))
+    res = {"items": items, "free_bytes": shutil.disk_usage("/").free}
+    if root.get("hint"):
+        res["hint"] = root["hint"]
+    return res
 
 
 def _empty_dir(path: str) -> None:
@@ -653,8 +708,12 @@ def cleanup_run(item: str) -> Dict[str, Any]:
                 raise RuntimeError(res.stderr.strip()[:200] or "docker prune fehlgeschlagen.")
     elif item == "user_cache":
         _empty_dir(USER_CACHE)
+    elif item == "npm_cache":
+        _empty_dir(USER_NPM)
     elif item == "trash":
         _empty_dir(USER_TRASH)
+    elif item in ROOT_CLEANUP:
+        _cleanup_helper("run", item, timeout=1500)
     else:
         raise ValueError("Unbekannter Eintrag.")
     return {"item": item, "freed": max(0, shutil.disk_usage("/").free - before)}
