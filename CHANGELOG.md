@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.13.1 – 2026-11-27
+
+### Fixed
+- **"Helfer fehlt – install.sh erneut ausführen" after blocking countries:** saving the country list ran `install -d -m 700` on `/var/lib/pi-dashboard` itself, which locked the folder; the dashboard user could no longer reach `pi-helper.sh`, so firewall, fail2ban and country blocking all reported the helper as missing – and re-running install.sh only helped until the next country change. The list is now written root-only without touching the folder, the updater sets the folder back to 755 on every server, and `doctor.sh` recognises and repairs it (also hands `--fix` over to sudo while the folder is locked).
+
 ## v1.13.0 – 2026-11-27
 
 ### Added

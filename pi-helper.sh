@@ -198,9 +198,10 @@ case "$CMD" in
         ipset swap picore-geo6-new picore-geo6
         ipset destroy picore-geo4-new
         ipset destroy picore-geo6-new
-        # Saved for boot (pi-dashboard-geoblock.service loads it before ufw starts)
-        install -d -m 700 "$(dirname "$GEO_FILE")"
-        ipset save picore-geo4 > "$GEO_FILE.tmp"
+        # Saved for boot (pi-dashboard-geoblock.service loads it before ufw starts). The file is
+        # root-only; its folder must stay 755 - the dashboard user reaches pi-helper.sh through it
+        # (an "install -d -m 700" here locked the folder and the helper looked missing)
+        ( umask 077; ipset save picore-geo4 > "$GEO_FILE.tmp" )
         ipset save picore-geo6 >> "$GEO_FILE.tmp"
         mv "$GEO_FILE.tmp" "$GEO_FILE"
         systemctl enable --quiet pi-dashboard-geoblock.service 2>/dev/null || true

@@ -66,7 +66,8 @@ fi
 
 # --- Root (and every repair) runs root's own copy only -------------------------------------
 if [ "$SELF" != "$SRC" ] && { [ -n "$FIX" ] || [ "$(id -u)" -eq 0 ]; }; then
-    if [ -x "$SRC/doctor.sh" ]; then
+    # A locked $STATE (700) hides the root copy from the user - sudo still finds it
+    if [ -x "$SRC/doctor.sh" ] || { [ -d "$STATE" ] && ! [ -x "$STATE" ]; }; then
         [ "$(id -u)" -eq 0 ] && exec "$SRC/doctor.sh" "$@"
         exec sudo "$SRC/doctor.sh" "$@"
     fi
@@ -247,7 +248,15 @@ fi
 # =============================================================================================
 section "Installation"
 # =============================================================================================
-if [ -d "$SRC/.git" ] && [ "$(stat -c %U "$SRC")" = root ]; then
+# The dashboard user reaches pi-helper.sh through $STATE - locked (700, country blocking before
+# v1.13.1) every helper call says "Helfer fehlt", although the helper is there
+if [ -d "$STATE" ] && [ "$(stat -c %a "$STATE")" != 755 ]; then
+    bad "$STATE hat die Rechte $(stat -c %a "$STATE") statt 755 – das Dashboard sieht pi-helper.sh nicht (\"Helfer fehlt\" bei Firewall, fail2ban, Ländersperre)"
+    fix "Rechte von $STATE auf 755 setzen" chmod 755 "$STATE"
+fi
+if [ -d "$STATE" ] && ! [ -x "$STATE" ]; then
+    info "Root-Kopie nicht prüfbar, solange $STATE gesperrt ist"
+elif [ -d "$SRC/.git" ] && [ "$(stat -c %U "$SRC")" = root ]; then
     ok "Root-Kopie $SRC vorhanden"
 else
     bad "Root-Kopie $SRC fehlt oder gehört nicht root – Updates, Firewall und Paketverwaltung gehen nicht"

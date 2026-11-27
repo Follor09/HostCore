@@ -21,6 +21,10 @@ if [ "$SELF" != "$SRC" ]; then
     exec "$SRC/update.sh" "$@"
 fi
 
+# The dashboard user must pass through $STATE to reach pi-helper.sh (sudo rule): country
+# blocking before v1.13.1 set it to 700, after which every helper call said "Helfer fehlt"
+[ "$(stat -c %a "$STATE")" = 755 ] || chmod 755 "$STATE"
+
 DIR="${PI_DASHBOARD_DIR:-$(cat "$STATE/dir" 2>/dev/null || true)}"
 [ -d "$DIR/.git" ] || { echo "❌ Dashboard folder unknown - run install.sh."; exit 1; }
 OWNER="$(stat -c %U "$DIR")"
