@@ -24,6 +24,12 @@ logger = logging.getLogger("pi_dashboard.homelab")
 IS_LINUX = platform.system() == "Linux"
 
 
+def _me() -> str:
+    """The user the dashboard runs as (systemd sets no $USER - the hint must name the real one)."""
+    import pwd
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
 def _run(cmd: List[str], timeout: float = 5, env: Optional[dict] = None) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
 
@@ -243,7 +249,7 @@ def _docker() -> Dict[str, Any]:
         err = res.stderr.strip()
         if "permission denied" in err.lower():
             return {"available": True, "error": "Keine Berechtigung für Docker.",
-                    "hint": f"sudo usermod -aG docker {os.environ.get('USER', '$USER')} && sudo systemctl restart raspberry-dashboard"}
+                    "hint": f"sudo usermod -aG docker {_me()} && sudo systemctl restart raspberry-dashboard"}
         return {"available": True, "error": err[:200] or "docker ps fehlgeschlagen"}
 
     containers = []

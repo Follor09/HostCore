@@ -17,6 +17,7 @@ Everything else comes with the command to run.
 import json
 import logging
 import os
+import pwd
 import re
 import shutil
 import sqlite3
@@ -309,13 +310,13 @@ def _env_checks() -> List[Dict[str, Any]]:
         denied = "permission denied" in (err or "").lower()
         out.append(_r("docker", g, "Docker-Zugriff", "ok" if rc == 0 else "warning",
                       "Docker erreichbar" if rc == 0 else ("Kein Zugriff auf den Docker-Socket – Container-Bereiche bleiben leer." if denied else f"Docker antwortet nicht: {(err or '').splitlines()[-1][:140] if err else rc}"),
-                      "sudo usermod -aG docker $USER && sudo systemctl restart raspberry-dashboard" if denied else ("sudo systemctl status docker" if rc else "")))
+                      f"sudo usermod -aG docker {pwd.getpwuid(os.getuid()).pw_name} && sudo systemctl restart raspberry-dashboard" if denied else ("sudo systemctl status docker" if rc else "")))
     if shutil.which("k3s") or shutil.which("kubectl"):
         import homelab
         env = homelab._kube_env()
         out.append(_r("kube", g, "Kubernetes-Zugriff", "ok" if env else "warning",
                       f"kubeconfig: {env['KUBECONFIG']}" if env else "Keine lesbare kubeconfig – Pods und Workloads fehlen.",
-                      "" if env else "mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $USER ~/.kube/config"))
+                      "" if env else f"mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown {pwd.getpwuid(os.getuid()).pw_name} ~/.kube/config"))
     return out
 
 

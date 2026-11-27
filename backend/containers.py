@@ -32,6 +32,12 @@ K8S_NAME = re.compile(r"^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$")
 KINDS = {"deployment": "Deployment", "statefulset": "StatefulSet", "daemonset": "DaemonSet"}
 
 
+def _me() -> str:
+    """The user the dashboard runs as (systemd sets no $USER - the hint must name the real one)."""
+    import pwd
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
 class ContainerError(Exception):
     pass
 
@@ -407,7 +413,7 @@ def _docker_list() -> Dict[str, Any]:
         err = res.stderr.strip()
         if "permission denied" in err.lower():
             return {"available": True, "containers": [], "error": "Keine Berechtigung für Docker.",
-                    "hint": f"sudo usermod -aG docker {os.environ.get('USER', '$USER')} && sudo systemctl restart raspberry-dashboard"}
+                    "hint": f"sudo usermod -aG docker {_me()} && sudo systemctl restart raspberry-dashboard"}
         return {"available": True, "containers": [], "error": err[:300] or "docker ps fehlgeschlagen"}
     containers = []
     for line in res.stdout.splitlines():

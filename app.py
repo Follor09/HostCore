@@ -12,6 +12,12 @@ import time
 from contextlib import asynccontextmanager
 import logging
 import os
+
+# systemd starts the service with a minimal PATH: add where snap (Docker from snap on Ubuntu) and
+# /usr/local put their programs, so docker, kubectl & co. are found like in a login shell
+for _extra in ("/usr/local/bin", "/snap/bin"):
+    if os.path.isdir(_extra) and _extra not in os.environ.get("PATH", "").split(":"):
+        os.environ["PATH"] = os.environ.get("PATH", "/usr/bin:/bin") + ":" + _extra
 import subprocess
 from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Request
@@ -143,7 +149,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.12.1", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.12.2", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 

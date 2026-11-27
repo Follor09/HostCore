@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.12.2 – 2026-11-27
+
+### Fixed
+- **Docker hint named the wrong user:** "Keine Berechtigung für Docker" suggested `sudo usermod -aG docker $USER` – systemd sets no `$USER`, so run as root it added root instead of the dashboard user (e.g. `hostcore` on a VPS set up with setup.sh). The hints for Docker, system logs and kubeconfig now name the real user.
+- **Docker from snap was not found:** the service's minimal PATH now also includes `/snap/bin` and `/usr/local/bin`, so Docker installed as a snap (common on Ubuntu VPS) is no longer shown as missing.
+
 ## v1.12.1 – 2026-11-27
 
 ### Fixed

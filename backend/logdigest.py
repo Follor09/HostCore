@@ -25,6 +25,13 @@ _NORM = [
 ]
 
 
+def _me() -> str:
+    """The user the dashboard runs as (systemd sets no $USER - the hint must name the real one)."""
+    import os
+    import pwd
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
 def normalise(msg: str) -> str:
     msg = msg.strip()[:400]
     for rx, rep in _NORM:
@@ -86,8 +93,7 @@ def digest(days: int = 7) -> Dict[str, Any]:
         g["first"], g["last"] = int(g["first"]), int(g["last"])
     hint = ""
     if not lines and ("insufficient permissions" in res.stderr.lower() or "not seeing messages" in res.stderr.lower()):
-        import os
-        hint = f"Keine Berechtigung für System-Logs: sudo usermod -aG systemd-journal {os.environ.get('USER', '$USER')} && sudo systemctl restart raspberry-dashboard"
+        hint = f"Keine Berechtigung für System-Logs: sudo usermod -aG systemd-journal {_me()} && sudo systemctl restart raspberry-dashboard"
     data = {"supported": True, "days": days, "total": total, "groups": items[:200], "group_count": len(items),
             "last_24h": last_24h,
             "truncated": len(lines) >= MAX_LINES, "hint": hint}
