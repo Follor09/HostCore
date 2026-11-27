@@ -79,9 +79,8 @@ async def api_remotes_add(req: RemoteRequest, request: Request):
 @router.post("/api/remotes/test")
 async def api_remotes_test(req: RemoteRequest):
     try:
-        url = remotes.normalize_url(req.url)
-        info, cert = await remotes._connect(url, req.token.strip(), req.trust)
-        return {**info, "insecure": await asyncio.to_thread(remotes.transport_risk, url),
+        url, info, cert = await remotes.locate(req.url, req.token.strip(), req.trust)
+        return {**info, "url": url, "insecure": await asyncio.to_thread(remotes.transport_risk, url),
                 "fingerprint": remotes.cert_fingerprint(cert) if cert else ""}
     except remotes.UntrustedCert as e:
         return _untrusted(e)

@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.12.0 – 2026-11-27
+
+### Added
+- **Add agents by domain:** under Settings → Remote-Server the address can now be a domain (`agent.example.com`), also with a path behind a reverse proxy (`https://example.com/agent`), and names with umlauts. Without protocol and port the dashboard tries the likely addresses in turn – for a domain https on 443 (reverse proxy with a real certificate) first, then the agent port 8000 with http and https; for an IP or LAN name port 8000 – and keeps the first one where a HostCore agent answers ("Verbindung testen" shows which). A wrong token stops the search at once; otherwise the most telling error is shown.
+- **Agent allow list with domains:** `./agent.sh allow dash.example.com` and `install.sh --agent --from dash.example.com` accept a host name besides IPs and networks – resolved in the background every 5 minutes (no request waits for DNS), the last known address stays valid for a day when DNS fails. Fits a main dashboard behind DynDNS. ufw is only given addresses (for a domain the port stays open and the agent checks the name itself).
+
 ## v1.11.1 – 2026-11-27
 
 ### Added

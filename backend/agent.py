@@ -5,7 +5,8 @@ its API calls, live data and terminal here, so every feature works on this serve
 
 Enabled by agent.json next to app.py (created by `./install.sh --agent` or
 `./agent.sh enable`, readable only by the dashboard user). Optionally only the main
-dashboard's address may connect ("allow": IPs / networks, `./agent.sh allow 192.168.1.10`) -
+dashboard's address may connect ("allow": IPs / networks / host names, `./agent.sh allow 192.168.1.10`
+or `./agent.sh allow dash.example.com` for a main dashboard behind DynDNS) -
 on top of the token, so a leaked token alone is not enough.
 """
 
@@ -13,8 +14,10 @@ import hmac
 import ipaddress
 import json
 import os
+import re
 import secrets
 import socket
+import time
 from typing import Any, Dict, Optional
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,8 +49,68 @@ def check(header: str) -> bool:
     return scheme.lower() == "bearer" and hmac.compare_digest(token.strip().encode(), str(_config["token"]).encode())
 
 
+HOST_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
+RESOLVE_TTL = 300
+_resolved: Dict[str, tuple] = {}      # name -> (checked, [ip networks], last successful lookup)
+
+
+def _lookup(name: str) -> Optional[list]:
+    try:
+        addrs = {a[4][0].split("%")[0] for a in socket.getaddrinfo(name, None, proto=socket.IPPROTO_TCP)}
+        return [ipaddress.ip_network(a) for a in addrs]
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def _refresh(name: str) -> None:
+    now = time.time()
+    nets = _lookup(name)
+    if nets is not None:
+        _resolved[name] = (now, nets, now)
+        return
+    _, old, ok = _resolved.get(name, (0, [], 0))
+    # Lookup failed: the last known addresses stay valid for a day after the last success
+    _resolved[name] = (now, old if now - ok < 86400 else [], ok)
+
+
+def _resolve(name: str) -> list:
+    """The addresses of a name in the allow list (main dashboard behind DynDNS). Looked up once,
+    then refreshed in the background every RESOLVE_TTL seconds - a request never waits for DNS
+    again; when lookups fail, the last known addresses stay valid for a day."""
+    hit = _resolved.get(name)
+    if hit is None:
+        _refresh(name)
+        hit = _resolved[name]
+    elif time.time() - hit[0] > RESOLVE_TTL and name not in _refreshing:
+        import threading
+        _refreshing.add(name)
+
+        def run():
+            try:
+                _refresh(name)
+            finally:
+                _refreshing.discard(name)
+        threading.Thread(target=run, daemon=True).start()
+    return hit[1]
+
+
+_refreshing: set = set()
+
+
+def _networks(entries: list) -> list:
+    out = []
+    for n in entries:
+        try:
+            out.append(ipaddress.ip_network(n, strict=False))
+        except ValueError:
+            out += _resolve(n)            # a host name
+    return out
+
+
 def allowed(ip: str) -> bool:
-    """Is this client address one the agent accepts? No list = any address (token only)."""
+    """Is this client address one the agent accepts? No list = any address (token only).
+    Entries are IPs, networks or host names (resolved, so a main dashboard with a changing
+    address behind DynDNS keeps working)."""
     if not enabled():
         return False
     nets = _config.get("allow") or []
@@ -61,21 +124,32 @@ def allowed(ip: str) -> bool:
         return True
     if getattr(addr, "ipv4_mapped", None):
         addr = addr.ipv4_mapped
-    return any(addr in ipaddress.ip_network(n, strict=False) for n in nets)
+    return any(addr in n for n in _networks(nets))
 
 
 def parse_allow(text: str) -> list:
-    """"192.168.1.10, 10.0.0.0/24" -> ["192.168.1.10/32", "10.0.0.0/24"]; "any" or "" -> [] (every address)."""
+    """"192.168.1.10, 10.0.0.0/24, dash.example.com" -> ["192.168.1.10/32", "10.0.0.0/24", "dash.example.com"];
+    "any" or "" -> [] (every address)."""
     text = (text or "").strip()
     if text.lower() in ("", "any", "alle"):
         return []
     out = []
     for part in text.replace(";", ",").replace(" ", ",").split(","):
-        if part:
-            try:
-                out.append(str(ipaddress.ip_network(part, strict=False)))
-            except ValueError:
-                raise ValueError(f"Keine gültige IP-Adresse oder Netz: {part}")
+        if not part:
+            continue
+        try:
+            out.append(str(ipaddress.ip_network(part, strict=False)))
+            continue
+        except ValueError:
+            pass
+        name = part.strip().lower().rstrip(".")
+        try:
+            name = name.encode("idna").decode("ascii")
+        except UnicodeError:
+            name = ""
+        if not HOST_RE.match(name):
+            raise ValueError(f"Keine gültige IP-Adresse, Netz oder Domain: {part}")
+        out.append(name)
     return out[:20]
 
 

@@ -400,13 +400,14 @@
         <h3 class="subhead">Server hinzufügen</h3>
         <form class="remote-form" id="remote-form" autocomplete="off">
           <label class="fw-field"><span>Name</span><input type="text" id="remote-name" maxlength="40" placeholder="z.B. Server Garage" required></label>
-          <label class="fw-field"><span>Adresse</span><input type="text" id="remote-url" placeholder="http://192.168.178.50:8000" spellcheck="false" required></label>
+          <label class="fw-field"><span>Adresse</span><input type="text" id="remote-url" placeholder="192.168.178.50 oder agent.example.com" spellcheck="false" required></label>
           <label class="fw-field remote-token"><span>Token</span><input type="password" id="remote-token" placeholder="vom Agent (./agent.sh token)" spellcheck="false" required autocomplete="new-password" data-lpignore="true" data-1p-ignore></label>
           <div class="remote-form-actions">
             <button type="button" class="btn-secondary" id="remote-test">Verbindung testen</button>
             <button type="submit" class="btn-primary">Hinzufügen</button>
           </div>
         </form>
+        <p class="field-hint">Als Adresse geht eine IP, ein Name im Heimnetz oder eine Domain – auch mit Pfad hinter einem Reverse-Proxy (<code>https://example.com/agent</code>). Ohne Angabe von Protokoll und Port probiert das Dashboard der Reihe nach https, dann den Agent-Port 8000 und nimmt die erste Adresse, an der ein Agent antwortet.</p>
         <p class="form-msg" id="remote-msg" role="status"></p>
         <details class="remote-howto">
           <summary>So wird ein Server zum Agent</summary>
@@ -415,6 +416,7 @@
             <li>Am Ende stehen Adresse und Token im Terminal – beides hier eintragen. Später zeigt <code>./agent.sh token</code> den Token wieder.</li>
             <li>Der Agent hat keine eigene Oberfläche und kein Login, aktualisiert sich aber wie dieses Dashboard automatisch von GitHub.</li>
             <li>Der Token wird im Klartext übertragen: Remote-Server am besten nur im Heimnetz oder über das VPN (NetBird) ansprechen. Neuer Token: <code>./agent.sh rotate</code>.</li>
+            <li>Über eine Domain im Internet: den Agent hinter einen Reverse-Proxy mit Zertifikat stellen (Caddy, nginx, Traefik → <code>http://127.0.0.1:8000</code>, gern mit Pfad wie <code>/agent</code>) oder <code>./agent.sh tls on</code> nutzen. Mit <code>./agent.sh allow dash.example.com</code> nimmt der Agent nur Anfragen von der Adresse dieser Domain an – praktisch, wenn dieses Dashboard über DynDNS erreichbar ist. Der Proxy muss <code>X-Forwarded-For</code> setzen – sonst kommt jede Anfrage scheinbar vom Proxy selbst, und die Adressprüfung greift nicht (der Token schützt weiter).</li>
           </ol>
         </details>
       </section>

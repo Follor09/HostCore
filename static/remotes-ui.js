@@ -98,7 +98,7 @@
       address.type = 'button';
       address.title = t('Neue Adresse oder https (./agent.sh tls on) – das Zertifikat wird dabei neu bestätigt');
       address.addEventListener('click', async () => {
-        const u = window.prompt(t('Adresse des Agents (z.B. https://192.168.178.50:8000)'), r.url);
+        const u = window.prompt(t('Adresse des Agents (z.B. 192.168.178.50, agent.example.com oder https://example.com/agent)'), r.url);
         if (!u || !u.trim()) return;
         try {
           await withTrust(trust => api(`/api/remotes/${r.id}/address`, { url: u.trim(), trust }));
@@ -145,8 +145,9 @@
       msg(t('Teste…'));
       try {
         const info = await withTrust(trust => api('/api/remotes/test', { ...form(), trust }));
-        if (info.insecure) msg(`${t('Verbunden mit')} ${info.hostname} – ${t(INSECURE)}`, 'warning');
-        else msg(`${t('Verbunden mit')} ${info.hostname}${info.model ? ` (${info.model})` : ''}.`, 'success');
+        const at = info.url ? ` ${t('über')} ${info.url}` : '';
+        if (info.insecure) msg(`${t('Verbunden mit')} ${info.hostname}${at} – ${t(INSECURE)}`, 'warning');
+        else msg(`${t('Verbunden mit')} ${info.hostname}${info.model ? ` (${info.model})` : ''}${at}.`, 'success');
       } catch (e) { msg(e.message, 'error'); }
     });
     $('remote-form').addEventListener('submit', async e => {

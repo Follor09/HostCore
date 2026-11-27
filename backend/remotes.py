@@ -169,18 +169,101 @@ def public(r: Dict[str, Any]) -> Dict[str, Any]:
             "fingerprint": cert_fingerprint(r["cert"]) if r.get("cert") else ""}
 
 
+ADDRESS_HINT = "Adresse wie 192.168.178.50, agent.example.com oder https://example.com/agent angeben."
+_HOST_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
+
+
+def _split(raw: str):
+    """(scheme or "", host, port or None, path) of what the user typed - a path prefix is allowed
+    (agent behind a reverse proxy at https://example.com/agent), query, fragment and user are not."""
+    raw = (raw or "").strip().rstrip("/")
+    if not raw or re.fullmatch(r"(?i)https?:?/*", raw):
+        raise RemoteError(ADDRESS_HINT)
+    m = re.match(r"(?i)^(https?)://", raw)
+    scheme = m.group(1).lower() if m else ""
+    p = urlparse(raw if scheme else "http://" + raw)
+    try:
+        port = p.port
+    except ValueError:
+        raise RemoteError("Ungültiger Port.")
+    if not p.hostname or p.query or p.fragment or p.username or p.password or "@" in p.netloc:
+        raise RemoteError(ADDRESS_HINT)
+    host = p.hostname.lower().rstrip(".")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            host = host.encode("idna").decode("ascii")    # Umlaut-Domains
+        except UnicodeError:
+            raise RemoteError("Ungültiger Name.")
+        if not _HOST_RE.match(host):
+            raise RemoteError("Ungültiger Name.")
+    path = re.sub(r"/{2,}", "/", p.path or "").rstrip("/")
+    if path and not re.fullmatch(r"(/[A-Za-z0-9._~%!$&'()*+,;=:@-]+)+", path):
+        raise RemoteError("Ungültiger Pfad in der Adresse.")
+    return scheme, host, port, path
+
+
+def _is_domain(host: str) -> bool:
+    """A public-looking name (agent.example.com) - not an IP, not a LAN name."""
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        return "." in host and not host.endswith(_LOCAL_SUFFIXES)
+
+
+def _url(scheme: str, host: str, port: Optional[int], path: str) -> str:
+    h = f"[{host}]" if ":" in host else host
+    default = {"http": 80, "https": 443}[scheme]
+    return f"{scheme}://{h}{'' if port in (None, default) else f':{port}'}{path}"
+
+
+def candidates(raw: str) -> List[str]:
+    """The addresses to try for what the user typed, most likely first. A bare domain is usually
+    an agent behind a reverse proxy with a real certificate (https on 443), else the agent's own
+    port 8000; an IP or LAN name is the agent itself on 8000 (http, or https after ./agent.sh tls on)."""
+    scheme, host, port, path = _split(raw)
+    if port:
+        schemes = [scheme] if scheme else ["http", "https"]
+        return [_url(s, host, port, path) for s in schemes]
+    if scheme == "https":
+        out = [_url("https", host, None, path), _url("https", host, 8000, path)]
+    elif scheme == "http":
+        out = [_url("http", host, 8000, path), _url("http", host, None, path)]
+    elif _is_domain(host) or path:
+        out = [_url("https", host, None, path), _url("http", host, 8000, path), _url("https", host, 8000, path), _url("http", host, None, path)]
+    else:
+        out = [_url("http", host, 8000, path), _url("https", host, 8000, path)]
+    return list(dict.fromkeys(out))
+
+
 def normalize_url(url: str) -> str:
-    url = (url or "").strip().rstrip("/")
-    if not url or re.fullmatch(r"(?i)https?:?/*", url):
-        raise RemoteError("Adresse wie http://192.168.178.50:8000 angeben.")
-    if not re.match(r"^https?://", url):
-        url = "http://" + url
-    p = urlparse(url)
-    if not p.hostname or p.path not in ("", "/") or p.query or p.username:
-        raise RemoteError("Adresse wie http://192.168.178.50:8000 angeben.")
-    if not p.port:
-        url = f"{p.scheme}://{p.hostname}:8000" if p.scheme == "http" else f"{p.scheme}://{p.hostname}"
-    return url
+    """The first candidate - for showing / comparing without contacting the agent."""
+    return candidates(url)[0]
+
+
+async def locate(raw: str, token: str, trust: str = "") -> tuple:
+    """Try the candidates for an address until one answers as a HostCore agent.
+    Returns (url, info, pinned certificate or ""). A self-signed certificate that was not
+    confirmed yet is raised (UntrustedCert) only when no other candidate works."""
+    errors: List[RemoteError] = []
+    untrusted: Optional[UntrustedCert] = None
+    for url in candidates(raw):
+        try:
+            info, cert = await _connect(url, token, trust)
+            return url, info, cert
+        except UntrustedCert as e:
+            untrusted = untrusted or e
+        except RemoteError as e:
+            if str(e) == "Token falsch.":
+                raise                       # the agent is there - the token is wrong
+            errors.append(e)
+    if untrusted:
+        raise untrusted
+    # The most telling message: something answered (not an agent, too old) beats "not reachable"
+    found = [e for e in errors if not str(e).startswith("Nicht erreichbar")]
+    raise (found or errors)[0]
 
 
 async def probe(url: str, token: str, cert: str = "") -> Dict[str, Any]:
@@ -232,13 +315,12 @@ async def add(name: str, url: str, token: str, trust: str = "") -> Dict[str, Any
     token = (token or "").strip()
     if len(token) < 32:
         raise RemoteError("Token fehlt oder ist zu kurz (auf dem Remote-Server: ./agent.sh token).")
-    url = normalize_url(url)
+    if len(_all()) >= 20:
+        raise RemoteError("Maximal 20 Remote-Server.")
+    url, info, cert = await locate(url, token, trust)
     items = _all()
     if any(r["url"] == url for r in items):
         raise RemoteError("Diesen Server gibt es schon.")
-    if len(items) >= 20:
-        raise RemoteError("Maximal 20 Remote-Server.")
-    info, cert = await _connect(url, token, trust)
     await asyncio.to_thread(transport_risk, url)
     rid = secrets.token_hex(4)
     items.append({"id": rid, "name": name, "url": url, "token": token, "added": int(time.time())})
@@ -269,10 +351,9 @@ async def change_address(remote_id: str, url: str, trust: str = "") -> Dict[str,
     r = get(remote_id)
     if not r:
         raise RemoteError("Nicht gefunden.")
-    url = normalize_url(url)
+    url, info, cert = await locate(url, r["token"], trust)
     if any(x["url"] == url and x["id"] != remote_id for x in _all()):
         raise RemoteError("Diesen Server gibt es schon.")
-    info, cert = await _connect(url, r["token"], trust)
     await asyncio.to_thread(transport_risk, url)
     items = _all()
     for x in items:

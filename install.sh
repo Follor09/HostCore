@@ -4,6 +4,7 @@
 # Usage (inside the cloned repo): ./install.sh                         normal dashboard
 #                                  ./install.sh --agent                 agent for a main dashboard (no own UI)
 #                                  ./install.sh --agent --from <ip>     agent that only accepts the main dashboard's address
+#                                                                       (also a domain, e.g. dash.example.com behind DynDNS)
 # Works on a Raspberry Pi as well as on Debian 12+ / Ubuntu 22.04+ machines and VMs (x86_64, arm64).
 #
 # Root never runs code from the dashboard folder: that folder belongs to the dashboard
@@ -20,7 +21,7 @@ SRC="$STATE/src"
 CRED="$STATE/github-credentials"
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Options: --agent, --from <ip|net>
+# Options: --agent, --from <ip|net|domain>
 AGENT_FROM=""
 ARGS=("$@")
 for i in "${!ARGS[@]}"; do
@@ -149,13 +150,15 @@ esac
 [ -z "$AGENT_TOKEN" ] && [ -f "$DIR/agent.json" ] && AGENT_TOKEN="$(as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" token || true)"
 if [ -n "$AGENT_TOKEN" ] && [ -n "$AGENT_FROM" ]; then
     as_owner "$DIR/venv/bin/python" "$DIR/backend/agent.py" allow "$AGENT_FROM" >/dev/null \
-        || { echo "❌ --from: keine gültige IP-Adresse oder Netz ($AGENT_FROM)."; exit 1; }
+        || { echo "❌ --from: keine gültige IP-Adresse, Netz oder Domain ($AGENT_FROM)."; exit 1; }
 fi
 # Agent behind an active ufw: open the dashboard port (only for the main dashboard with --from)
 if [ -n "$AGENT_TOKEN" ] && command -v ufw >/dev/null && ufw status | grep -q '^Status: active'; then
-    if [ -n "$AGENT_FROM" ]; then
+    if [ -n "$AGENT_FROM" ] && [[ "$AGENT_FROM" =~ ^[0-9a-fA-F:.]+(/[0-9]+)?$ ]]; then
         ufw allow from "$AGENT_FROM" to any port 8000 proto tcp comment "HostCore agent" >/dev/null
     else
+        # A domain (changing address): ufw only knows addresses - the agent itself checks the name
+        [ -n "$AGENT_FROM" ] && echo "   (--from ist eine Domain: die Firewall lässt Port 8000 offen, der Agent prüft die Adresse selbst)"
         ufw allow 8000/tcp comment "HostCore agent" >/dev/null
     fi
     echo "🧱 ufw: port 8000 open for ${AGENT_FROM:-every address}"
