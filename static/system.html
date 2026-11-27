@@ -418,6 +418,14 @@
             <h3 class="subhead">Empfohlene Regeln</h3>
             <div class="iface-list" id="fw-suggestions"></div>
           </div>
+          <div id="fw-ports-wrap" hidden>
+            <h3 class="subhead">Erkannte Dienste ohne Regel</h3>
+            <p class="field-hint" id="fw-ports-hint"></p>
+            <div class="iface-list" id="fw-ports"></div>
+            <p class="field-hint" id="fw-kube-hint" hidden>Kubernetes-Ports (NodePort, LoadBalancer, hostPort) leitet k3s per iptables an die Pods weiter. Je nach Netzwerk-Einrichtung lässt ufw sie auch ohne Regel durch – mit Regel sind sie in jedem Fall erreichbar, „Nur Heimnetz“ begrenzt sie aber nur, wenn ufw diesen Verkehr tatsächlich prüft.</p>
+            <span class="form-msg" id="fw-ports-msg" role="status"></span>
+          </div>
+          <p class="field-hint" id="fw-docker-ports" hidden></p>
           <h3 class="subhead">Regeln</h3>
           <div class="table-scroll">
             <table class="data-table" id="fw-rules"></table>

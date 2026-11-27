@@ -701,18 +701,23 @@
     } else {
       toggle.className = 'btn-primary';
       toggle.textContent = 'Firewall einschalten';
-      if (f.suggestions.length) {
+      // Presets and detected services that are fine for everyone would be blocked right away
+      const needed = [...f.suggestions.map(x => x.label),
+        ...((f.ports && f.ports.ports) || []).filter(p => p.advice === 'open').map(p => `${p.service} (${p.port}/${p.proto})`)];
+      if (needed.length) {
         confirmClick(toggle, 'Firewall einschalten', 'Trotzdem einschalten?', () => firewallAction('enable'));
         toggle.addEventListener('click', () => {
           if (toggle.classList.contains('confirming')) {
             $('fw-msg').className = 'form-msg warning';
-            $('fw-msg').textContent = `Erst die empfohlenen Regeln hinzufügen – sonst blockiert: ${f.suggestions.map(x => x.label).join(', ')}`;
+            $('fw-msg').textContent = `Erst die empfohlenen Regeln hinzufügen – sonst blockiert: ${needed.join(', ')}`;
           }
         });
       } else {
         toggle.addEventListener('click', () => firewallAction('enable'));
       }
     }
+
+    renderFirewallPorts(f);
 
     $('fw-suggestions-wrap').hidden = !f.suggestions.length;
     const sugg = $('fw-suggestions');
@@ -782,6 +787,53 @@
     });
     iface.value = [...iface.options].some(o => o.value === keep) ? keep : 'any';
     updateRulePreview();
+  }
+
+  // Services listening for the outside without a ufw rule: one-click rule for everyone / home network
+  const PORT_ADVICE = { open: ['good', 'Öffentlich ok'], lan: ['warning', 'Nur Heimnetz'], avoid: ['critical', 'Nicht öffentlich'] };
+
+  function renderFirewallPorts(f) {
+    const info = f.ports || { ports: [], docker: [], lan: '' };
+    const list = $('fw-ports');
+    list.innerHTML = '';
+    $('fw-ports-wrap').hidden = !info.ports.length;
+    $('fw-ports-msg').textContent = '';
+    $('fw-ports-hint').textContent = f.active
+      ? 'Programme auf diesem Server warten hier auf Verbindungen von außen – ufw lässt sie bisher nicht durch.'
+      : 'Programme auf diesem Server warten hier auf Verbindungen von außen – nach dem Einschalten würde ufw sie blockieren.';
+    const rule = (p, from) => ({ action: 'allow', direction: 'in', iface: 'any', proto: p.proto, from,
+      dport: String(p.port), position: 'end', log: false, comment: p.comment });
+    info.ports.forEach(p => {
+      const [level, label] = PORT_ADVICE[p.advice];
+      const tags = [[level, label, p.note]];
+      if (p.program) tags.push(['', p.program]);
+      if (p.kube) tags.push(['', 'Kubernetes', p.kube.join(', ')]);
+      p.addrs.forEach(a => tags.push(['', a === '*' ? 'alle Adressen' : a]));
+      const row = infoRow(`${p.service} · ${p.port}/${p.proto}`, p.note, tags);
+      const side = row.querySelector('.iface-tags');
+      const add = (text, cls, params, title) => {
+        const b = el('button', cls, text);
+        b.dataset.perm = 'firewall.manage';
+        if (title) b.title = title;
+        b.addEventListener('click', () => firewallAction('rule', params, 'fw-ports-msg'));
+        side.appendChild(b);
+      };
+      if (info.lan && p.advice !== 'open') add('Nur Heimnetz', 'btn-primary', rule(p, info.lan), info.lan);
+      if (p.advice !== 'avoid') add('Für alle freigeben', p.advice === 'open' ? 'btn-primary' : 'btn-secondary', rule(p, ''));
+      if (info.lan && p.advice === 'open') add('Nur Heimnetz', 'btn-secondary', rule(p, info.lan), info.lan);
+      const edit = el('button', 'btn-secondary', 'Anpassen');
+      edit.dataset.perm = 'firewall.manage';
+      edit.title = 'Ins Formular „Regel hinzufügen“ übernehmen';
+      edit.addEventListener('click', () => prepareRule({ proto: p.proto, port: String(p.port), from: p.advice === 'open' ? '' : (info.lan || ''), comment: p.comment }));
+      side.appendChild(edit);
+      list.appendChild(row);
+    });
+    $('fw-kube-hint').hidden = !info.ports.some(p => p.kube);
+    const docker = $('fw-docker-ports');
+    docker.hidden = !info.docker.length;
+    docker.textContent = info.docker.length
+      ? `Von Docker veröffentlicht, ufw greift hier nicht: ${info.docker.map(p => `${p.port}/${p.proto}`).join(', ')}`
+      : '';
   }
 
   function ruleParams() {

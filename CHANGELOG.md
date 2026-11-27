@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.14.0 – 2026-11-27
+
+### Added
+- **Firewall suggests rules for the services that run:** the firewall page reads which programs listen for connections from outside (`ss`: port, program, address) and offers a ready rule for every port no ufw rule mentions yet – "Für alle freigeben", "Nur Heimnetz" (the network of the network card) or "Anpassen" (fills the form). Each port gets advice: fine in public (web, mail, WireGuard …), better home network only (DNS, SMB, MQTT, unknown services) or never public (databases, Docker API, rpcbind, VNC – no "for everyone" button). Left out: sockets only on 127.0.0.1, container or VPN networks, DHCP/mDNS, random UDP client ports, and ports any rule already names (also deny rules and app profiles like "Nginx Full"). Ports published by Docker are listed apart, since they bypass ufw. Kubernetes ports that no program listens on are included too – NodePort and LoadBalancer services (k3s ServiceLB, e.g. Traefik on 80/443) and hostPorts of pods, named after their service or pod (read with kubectl, cached for a minute), with a note that k3s forwards them with iptables. Switching the firewall on warns when such a service would be blocked.
+
 ## v1.13.1 – 2026-11-27
 
 ### Fixed

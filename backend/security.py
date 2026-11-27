@@ -355,6 +355,278 @@ def _safe_connections():
         return []
 
 
+# ---------------------------------------------------------------------------
+# Ports that are in use: which ones listen for the outside, and which of them ufw would block
+# ---------------------------------------------------------------------------
+# advice: "open" = fine for everyone, "lan" = only the home network, "avoid" = never from the internet
+KNOWN_PORTS: Dict[tuple, tuple] = {
+    ("tcp", 22): ("SSH", "open"), ("tcp", 80): ("HTTP", "open"), ("tcp", 443): ("HTTPS", "open"),
+    ("udp", 443): ("HTTP/3", "open"), ("tcp", 25): ("SMTP", "open"), ("tcp", 465): ("SMTPS", "open"),
+    ("tcp", 587): ("Mail-Einlieferung", "open"), ("tcp", 993): ("IMAPS", "open"), ("tcp", 995): ("POP3S", "open"),
+    ("tcp", 143): ("IMAP", "lan"), ("tcp", 110): ("POP3", "lan"),
+    ("udp", 51820): ("WireGuard", "open"), ("udp", 41641): ("Tailscale", "open"), ("udp", 3478): ("STUN", "open"),
+    ("udp", 1194): ("OpenVPN", "open"), ("tcp", 1194): ("OpenVPN", "open"),
+    ("tcp", 32400): ("Plex", "open"), ("tcp", 8096): ("Jellyfin", "lan"), ("tcp", 8123): ("Home Assistant", "lan"),
+    ("tcp", 53): ("DNS", "lan"), ("udp", 53): ("DNS", "lan"), ("udp", 67): ("DHCP-Server", "lan"),
+    ("tcp", 445): ("SMB", "lan"), ("tcp", 139): ("SMB", "lan"), ("udp", 137): ("NetBIOS", "lan"), ("udp", 138): ("NetBIOS", "lan"),
+    ("tcp", 2049): ("NFS", "lan"), ("tcp", 631): ("Drucker (CUPS)", "lan"), ("udp", 1900): ("UPnP/DLNA", "lan"),
+    ("tcp", 1883): ("MQTT", "lan"), ("tcp", 8883): ("MQTT (TLS)", "lan"), ("udp", 123): ("NTP-Server", "lan"),
+    ("tcp", 9000): ("Portainer", "lan"), ("tcp", 9443): ("Portainer", "lan"), ("tcp", 3000): ("Web-App", "lan"),
+    ("tcp", 111): ("rpcbind", "avoid"), ("udp", 111): ("rpcbind", "avoid"),
+    ("tcp", 2375): ("Docker-API", "avoid"), ("tcp", 2376): ("Docker-API", "avoid"),
+    ("tcp", 3306): ("MySQL/MariaDB", "avoid"), ("tcp", 5432): ("PostgreSQL", "avoid"), ("tcp", 6379): ("Redis", "avoid"),
+    ("tcp", 27017): ("MongoDB", "avoid"), ("tcp", 9200): ("Elasticsearch", "avoid"), ("tcp", 11211): ("Memcached", "avoid"),
+    ("tcp", 5900): ("VNC", "avoid"), ("tcp", 5901): ("VNC", "avoid"), ("tcp", 3389): ("RDP", "avoid"),
+    ("tcp", 8086): ("InfluxDB", "avoid"), ("tcp", 9090): ("Prometheus", "avoid"), ("tcp", 9100): ("Node Exporter", "avoid"),
+}
+ADVICE_TEXT = {
+    "open": "Für alle unbedenklich – ufw blockiert ihn bisher.",
+    "lan": "Besser nur im Heimnetz freigeben.",
+    "avoid": "Sollte nie aus dem Internet erreichbar sein – höchstens im Heimnetz.",
+}
+# Programs whose sockets never need a rule: DHCP/mDNS clients, local resolvers, and what a preset covers
+QUIET_PROGRAMS = {"dhclient", "dhcpcd", "avahi-daemon", "systemd-resolve", "systemd-network", "NetworkManager",
+                  "wpa_supplicant", "chronyd", "ntpd", "systemd-timesyn", "k3s-server", "k3s-agent", "k3s",
+                  "containerd", "netbird", "tailscaled", "cupsd", "cups-browsed", "rpc.statd"}
+_VIRTUAL_IFACE = ("lo", "docker", "br-", "veth", "virbr", "cni", "flannel", "cali", "wt", "tailscale", "tun", "wg")
+
+
+def _listeners(ss_out: str) -> List[Dict[str, Any]]:
+    """Listening TCP sockets and bound UDP sockets from `ss -H -tunap`: proto, port, address, program."""
+    out, seen = [], set()
+    for line in ss_out.splitlines():
+        parts = line.split(None, 6)
+        if len(parts) < 6:
+            continue
+        proto, state, _, _, local, peer = parts[:6]
+        if not (state == "LISTEN" or (proto == "udp" and state == "UNCONN" and _split_addr(peer)[0] == "*")):
+            continue
+        addr, port = _split_addr(local)
+        if not port:
+            continue
+        procs = _RE_SS_USER.findall(parts[6]) if len(parts) > 6 else []
+        program = procs[0][0] if procs else ""
+        key = (proto, port, addr, program)
+        if key not in seen:
+            seen.add(key)
+            out.append({"proto": proto, "port": port, "addr": addr, "program": program})
+    return out
+
+
+def _app_profiles() -> Dict[str, List[tuple]]:
+    """ufw application profiles ("Nginx Full" -> [("tcp", "80"), ("tcp", "443")]) from /etc/ufw/applications.d."""
+    import configparser
+    profiles: Dict[str, List[tuple]] = {}
+    for path in glob.glob("/etc/ufw/applications.d/*"):
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(path, encoding="utf-8")
+        except (configparser.Error, OSError, UnicodeDecodeError):
+            continue
+        for name in cp.sections():
+            specs = []
+            for item in cp[name].get("ports", "").split("|"):
+                ports, _, proto = item.strip().partition("/")
+                for p in ports.split(","):
+                    if p:
+                        specs.extend([(pr, p.strip()) for pr in ((proto,) if proto else ("tcp", "udp"))])
+            profiles[name] = specs
+    return profiles
+
+
+def _port_in(spec: str, port: int) -> bool:
+    for part in spec.split(","):
+        a, _, b = part.partition(":")
+        if a.isdigit() and int(a) <= port <= int(b if b.isdigit() else a):
+            return True
+    return False
+
+
+_RE_TO_PORT = re.compile(r"(?:^|\s)(\d{1,5}(?:[:,]\d{1,5})*)(?:/(tcp|udp))?$")
+
+
+def _handled(proto: str, port: int, rules: List[Dict[str, Any]], profiles: Dict[str, List[tuple]]) -> bool:
+    """Does any incoming rule (allow, limit, deny, reject - the admin decided) name this port?"""
+    for r in rules:
+        if r.get("direction", "in") != "in":
+            continue
+        to = r["to"].replace(" (v6)", "").strip()
+        m = _RE_TO_PORT.search(to)
+        if m:
+            if (m.group(2) in (None, proto)) and _port_in(m.group(1), port):
+                return True
+            continue
+        for p_proto, spec in profiles.get(to, []):
+            if p_proto == proto and _port_in(spec, port):
+                return True
+    return False
+
+
+def _lan_network() -> str:
+    """The home network of this server (first private IPv4 network of a real interface), "" on a VPS."""
+    try:
+        addrs = psutil.net_if_addrs()
+    except OSError:
+        return ""
+    for name in sorted(addrs):
+        if name.startswith(_VIRTUAL_IFACE):
+            continue
+        for a in addrs[name]:
+            if a.family != socket.AF_INET or not a.netmask:
+                continue
+            try:
+                net = ipaddress.ip_network(f"{a.address}/{a.netmask}", strict=False)
+            except ValueError:
+                continue
+            # Virtual interfaces are skipped above, so a private network here is the LAN (not CGNAT/VPN)
+            if net.is_private and not net.is_loopback and not net.subnet_of(ipaddress.ip_network("100.64.0.0/10")):
+                return str(net)
+    return ""
+
+
+_kube_cache: Dict[str, Any] = {"at": 0.0, "data": None}
+KUBE_CACHE_TTL = 60
+
+
+def _kube_json() -> Optional[Dict[str, Any]]:
+    """Services and pods of the cluster (cached for a minute); None without Kubernetes."""
+    import homelab
+    if not homelab._kube_cmd():
+        return None
+    if time.time() - _kube_cache["at"] < KUBE_CACHE_TTL:
+        return _kube_cache["data"]
+    data = None
+    try:
+        import containers
+        res = containers._kubectl(["get", "services,pods", "-A", "-o", "json"], timeout=12)
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+    except Exception as e:   # no kubeconfig, cluster down, timeout: no Kubernetes ports this minute
+        logger.debug(f"Kubernetes ports: {e}")
+    _kube_cache.update(at=time.time(), data=data)
+    return data
+
+
+def _kube_ports(data: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Ports Kubernetes opens on this node without a listening program: NodePort, LoadBalancer
+    (k3s ServiceLB, e.g. Traefik on 80/443) and hostPort of pods. kube-proxy / the CNI forward
+    them with iptables, so `ss` does not show them."""
+    out = []
+    for item in (data or {}).get("items", []):
+        kind = item.get("kind")
+        meta = item.get("metadata", {}) or {}
+        name = f"{meta.get('namespace', '')}/{meta.get('name', '')}"
+        spec = item.get("spec", {}) or {}
+        if kind == "Service":
+            stype = spec.get("type", "")
+            if stype not in ("NodePort", "LoadBalancer"):
+                continue
+            has_lb = bool(((item.get("status", {}) or {}).get("loadBalancer", {}) or {}).get("ingress"))
+            for p in spec.get("ports", []) or []:
+                proto = str(p.get("protocol", "TCP")).lower()
+                if proto not in ("tcp", "udp"):
+                    continue
+                if stype == "LoadBalancer" and has_lb and p.get("port"):
+                    out.append({"proto": proto, "port": int(p["port"]), "name": name, "kind": "LoadBalancer"})
+                if p.get("nodePort"):
+                    out.append({"proto": proto, "port": int(p["nodePort"]), "name": name, "kind": "NodePort"})
+        elif kind == "Pod":
+            # ServiceLB's own svclb pods are the LoadBalancer services above
+            if "svccontroller.k3s.cattle.io/svcname" in (meta.get("labels") or {}):
+                continue
+            if (item.get("status", {}) or {}).get("phase") not in ("Running", "Pending"):
+                continue
+            for c in spec.get("containers", []) or []:
+                for p in c.get("ports", []) or []:
+                    proto = str(p.get("protocol", "TCP")).lower()
+                    if p.get("hostPort") and proto in ("tcp", "udp"):
+                        out.append({"proto": proto, "port": int(p["hostPort"]), "name": name, "kind": "hostPort"})
+    return out
+
+
+def _comment(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9 ._()-]", "", text)[:40].strip()
+
+
+def port_suggestions(rules: List[Dict[str, Any]], defaults: Dict[str, str], active: bool = True, ss_out: Optional[str] = None,
+                     profiles: Optional[Dict[str, List[tuple]]] = None, lan: Optional[str] = None,
+                     ssh: Optional[int] = None, kube: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Ports that services listen on for the outside and that no ufw rule mentions yet - with a
+    ready rule (for everyone / home network only) and advice. Docker's published ports are listed
+    apart: they bypass ufw. Parameters are for tests; normally everything is read here."""
+    if ss_out is None:
+        try:
+            ss_out = _helper("connections", timeout=15)
+        except (PermissionError, RuntimeError, subprocess.TimeoutExpired):
+            ss_out = ""
+    profiles = _app_profiles() if profiles is None else profiles
+    lan = _lan_network() if lan is None else lan
+    ssh = ssh_port() if ssh is None else ssh
+    kube = _kube_json() if kube is None else kube
+    if defaults.get("incoming", "deny") == "allow":
+        return {"ports": [], "docker": [], "lan": lan, "all_open": True}
+
+    known = {**KNOWN_PORTS, ("tcp", ssh): ("SSH", "open"), ("tcp", DASHBOARD_PORT): ("HostCore Dashboard", "open")}
+    ports: Dict[tuple, Dict[str, Any]] = {}
+    docker: Dict[tuple, Dict[str, Any]] = {}
+    for s in _listeners(ss_out):
+        proto, port, addr, program = s["proto"], s["port"], s["addr"], s["program"]
+        if addr != "*":
+            try:
+                ip = ipaddress.ip_address(addr)
+            except ValueError:
+                continue
+            # Only reachable from this machine, a container network or the VPN
+            if ip.is_loopback or ip.is_link_local or _internal(addr) or ip in ipaddress.ip_network("100.64.0.0/10"):
+                continue
+        if program in ("docker-proxy", "dockerd"):
+            docker.setdefault((proto, port), {"proto": proto, "port": port})
+            continue
+        if program in QUIET_PROGRAMS or proto == "udp" and port >= 32768 and (proto, port) not in known:
+            continue
+        if _handled(proto, port, rules, profiles):
+            continue
+        if not active and (proto, port) in (("tcp", ssh), ("tcp", DASHBOARD_PORT)):
+            continue   # "Firewall einschalten" allows both first
+        name, advice = known.get((proto, port), ("", ""))
+        if not name:
+            name = _service_name(port, proto) or program or "unbekannt"
+            advice = "lan"
+        if advice == "lan" and not lan:
+            advice = "open" if (proto, port) not in KNOWN_PORTS else advice   # a VPS has no home network
+        entry = ports.setdefault((proto, port), {
+            "proto": proto, "port": port, "service": name, "program": program, "addrs": [], "advice": advice,
+            "note": ADVICE_TEXT[advice],
+            "comment": _comment(f"{name} ({program})" if program and program.lower() not in name.lower() else name),
+        })
+        if addr not in entry["addrs"]:
+            entry["addrs"].append(addr)
+        if program and not entry["program"]:
+            entry["program"] = program
+    # Kubernetes: forwarded by iptables, no program listens - named after the service / pod
+    for k in _kube_ports(kube):
+        proto, port = k["proto"], k["port"]
+        if _handled(proto, port, rules, profiles):
+            continue
+        entry = ports.get((proto, port))
+        if entry:   # also a real listener (hostNetwork pod): just say where it comes from
+            entry.setdefault("kube", []).append(f"{k['kind']} {k['name']}")
+            continue
+        name, advice = known.get((proto, port), ("", "lan"))
+        if advice == "lan" and not lan and (proto, port) not in KNOWN_PORTS:
+            advice = "open"
+        svc = k["name"].split("/", 1)[-1]
+        ports[(proto, port)] = {
+            "proto": proto, "port": port, "service": name or svc, "program": k["kind"], "addrs": ["*"],
+            "advice": advice, "note": ADVICE_TEXT[advice], "kube": [f"{k['kind']} {k['name']}"],
+            "comment": _comment(f"k8s {svc} ({k['kind']})"),
+        }
+    order = {"open": 0, "lan": 1, "avoid": 2}
+    return {"ports": sorted(ports.values(), key=lambda p: (order[p["advice"]], p["port"], p["proto"])),
+            "docker": sorted(docker.values(), key=lambda p: (p["port"], p["proto"])),
+            "lan": lan, "all_open": False}
+
+
 def firewall_status() -> Dict[str, Any]:
     if not shutil.which("ufw") and not os.path.exists("/usr/sbin/ufw"):
         return {"installed": False, "hint": "ufw ist nicht installiert: sudo apt install ufw"}
@@ -364,9 +636,12 @@ def firewall_status() -> Dict[str, Any]:
         return {"installed": True, "error": str(e)}
     status.update(installed=True, ssh_port=ssh_port(), dashboard_port=DASHBOARD_PORT,
                   suggestions=_suggestions(status["rules"]),
+                  ports=port_suggestions(status["rules"], status["defaults"], status["active"]),
                   interfaces=sorted(i for i in psutil.net_if_addrs()
                                     if i != "lo" and not i.startswith(("veth", "cali", "flannel.", "cni", "br-"))),
                   docker=bool(shutil.which("docker")))
+    if any(x["id"] == "web" for x in status["suggestions"]):   # the preset already covers 80/443
+        status["ports"]["ports"] = [p for p in status["ports"]["ports"] if (p["proto"], p["port"]) not in (("tcp", 80), ("tcp", 443))]
     return status
 
 
