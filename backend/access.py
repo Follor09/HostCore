@@ -22,7 +22,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("GET", r"^/(nachweise|druck)$", "login"),
     ("GET", r"^/api/offsite(/[0-9a-f]+/snapshots|/fleet)?$", "system.view"),
     ("POST", r"^/api/offsite/[0-9a-f]+/(run|check)$", "settings.manage"),
-    ("POST", r"^/api/offsite/fleet/[0-9a-f]+/[0-9a-f]+/(run|check)$", "settings.manage"),
+    ("POST", r"^/api/offsite/fleet/(local|[0-9a-f]+)/[0-9a-f]+/(run|check)$", "settings.manage"),
     ("POST", r"^/api/offsite(/.*)?$", "users.manage"),     # targets, credentials, restore: reads every file as root
     ("GET", r"^/api/fim$", "security.view"),
     ("POST", r"^/api/fim/scan$", "security.view"),

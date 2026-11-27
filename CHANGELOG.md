@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.10 – 2026-11-27
+
+### Fixed
+- **Off-site backup with a remote server selected: every backup once.** The page asked whether a remote server was selected before the selection had loaded, so the agent's backups showed up twice – as "this server" under the main dashboard's name and again in the agent's own group. Now the main dashboard decides: first the server you look at, then all others – the main dashboard and the other agents – with *Back up now*, *Check* and *Open there*. *Copy to other servers* is offered only on the main dashboard, where copying runs.
+
 ## v1.9.9 – 2026-11-27
 
 ### Fixed

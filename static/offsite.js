@@ -98,7 +98,8 @@
         if (r) toast(t(r.message), 'success');
       }, 'users.manage'));
     }
-    const others = fleet ? fleet.servers.filter(s => !s.local) : [];
+    // First the server this page shows, then every other one - each backup exactly once
+    const others = fleet ? fleet.servers.filter(s => !s.current) : [];
     if (others.length) list.appendChild(el('h3', 'subhead os-server-head', `${t('Dieser Server')} · ${fleet.servers[0].name}`));
     if (!data.jobs.length) list.appendChild(el('p', 'field-hint', t('Noch keine externe Sicherung eingerichtet.')));
     data.jobs.forEach(j => list.appendChild(card(j)));
@@ -113,7 +114,7 @@
     const box = el('div', 'os-server');
     const head = el('div', 'os-server-head');
     head.append(raw('h3', 'subhead', s.name), s.online ? (s.error ? tag('warning', 'Hinweis') : tag('good', 'erreichbar')) : tag('critical', 'nicht erreichbar'));
-    if (s.online && window.PiHosts) head.appendChild(button('Dort öffnen', 'text-btn', () => window.PiHosts.select(s.id)));
+    if (s.online && window.PiHosts) head.appendChild(button('Dort öffnen', 'text-btn', () => window.PiHosts.select(s.local ? '' : s.id)));
     box.appendChild(head);
     if (s.error) box.appendChild(el('p', 'field-hint warn', t(s.error)));
     else if (!s.jobs.length) box.appendChild(el('p', 'field-hint', t('Keine externe Sicherung – mit „Auf andere Server übertragen“ bei einer Sicherung oben einrichten.')));
@@ -190,7 +191,8 @@
       c.appendChild(act);
       return c;
     }
-    if (fleet && fleet.servers.length > 1) act.appendChild(button('Auf andere Server übertragen', 'text-btn', () => copyPanel(j, c), 'users.manage'));
+    // Copying runs on this dashboard, from its own backups - not offered while a remote server is shown
+    if (fleet && fleet.servers.length > 1 && fleet.servers[0].local) act.appendChild(button('Auf andere Server übertragen', 'text-btn', () => copyPanel(j, c), 'users.manage'));
     act.append(
       button('Jetzt sichern', 'text-btn', async b => {
         b.disabled = true;
@@ -508,8 +510,8 @@
 
   async function load() {
     try {
-      const onRemote = window.PiHost && window.PiHost.isRemote();
-      const [d, f] = await Promise.all([api('/api/offsite'), onRemote ? null : api('/api/offsite/fleet').catch(() => null)]);
+      // The list of all servers comes from this dashboard, which knows the selected one (first entry)
+      const [d, f] = await Promise.all([api('/api/offsite'), api('/api/offsite/fleet').catch(() => null)]);
       data = d;
       fleet = f && f.servers && f.servers.length > 1 ? f : null;
       if (fleet) fleet.servers[0].jobs = data.jobs;

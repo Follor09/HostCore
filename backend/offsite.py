@@ -691,8 +691,13 @@ def auth_finish(address: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Several servers: the main dashboard sees the backups of all its agents and copies one to others
 # ---------------------------------------------------------------------------
-async def fleet() -> Dict[str, Any]:
-    """This server's backups and those of every remote server (through its agent), one group per server."""
+LOCAL_ID = "local"      # this dashboard in the list of servers (remote servers have hex ids)
+
+
+async def fleet(current: str = "") -> Dict[str, Any]:
+    """The backups of every server, one group per server: first the one the page shows ("current" -
+    this dashboard, or the remote server selected at the top), then all others (this dashboard and
+    the remote servers through their agents). So every backup appears exactly once."""
     import asyncio
     import platform
 
@@ -714,9 +719,13 @@ async def fleet() -> Dict[str, Any]:
             return {**base, "online": False, "jobs": [], "error": f"Nicht erreichbar ({type(e).__name__})"}
 
     local = await asyncio.to_thread(overview)
-    rows = await asyncio.gather(*(one(r) for r in remotes._all()))
-    return {"servers": [{"id": "", "name": platform.node() or "Dieser Server", "online": True, "local": True, "jobs": local["jobs"],
-                         "tools": local["tools"]}, *rows]}
+    rows = await asyncio.gather(*(one(r) for r in remotes.all_remotes()))
+    here = {"id": LOCAL_ID, "name": platform.node() or "Dieser Server", "online": True, "local": True, "jobs": local["jobs"],
+            "tools": local["tools"]}
+    shown = next((r for r in rows if r["id"] == current), None) if current else None
+    if shown:
+        return {"servers": [{**shown, "current": True}, here, *[r for r in rows if r is not shown]]}
+    return {"servers": [{**here, "current": True}, *rows]}
 
 
 def _copy_payload(j: Dict[str, Any]) -> Dict[str, Any]:
@@ -774,10 +783,14 @@ async def copy_to(jid: str, server_ids: List[str], user: str = "") -> Dict[str, 
 
 async def remote_action(server_id: str, jid: str, action: str, user: str = "") -> Dict[str, Any]:
     """Start a backup (or its check) of another server from here."""
+    import asyncio
+
     import fleet as fleet_mod
     import httpx
     if action not in ("run", "check") or not re.match(r"^[0-9a-f]{10}$", jid or ""):
         raise OffsiteError("Unbekannte Aktion.")
+    if server_id == LOCAL_ID:      # the page shows a remote server, the backup is this dashboard's
+        return await asyncio.to_thread(run if action == "run" else check, jid, user)
     try:
         return await fleet_mod._call(server_id, "POST", f"/api/offsite/{jid}/{action}", {}, user)
     except ValueError as e:

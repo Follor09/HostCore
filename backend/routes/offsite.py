@@ -6,6 +6,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Request
 
+import hostctx
 import offsite
 from webutil import heavy
 
@@ -41,8 +42,9 @@ async def api_offsite_auth_finish(payload: dict):
 
 
 @router.get("/api/offsite/fleet")
-async def api_offsite_fleet():
-    return await offsite.fleet()
+async def api_offsite_fleet(request: Request):
+    remote = hostctx.remote_for(request)          # the page shows this server first
+    return await offsite.fleet(remote["id"] if remote else "")
 
 
 @router.post("/api/offsite/copy")
