@@ -172,6 +172,7 @@ GET    /api/settings/sso  perm=users.manage  remote
 GET    /api/settings/status-page  perm=settings.manage  local
 GET    /api/settings/vms  perm=system.view  remote
 GET    /api/settings/webhooks  perm=settings.manage  local
+GET    /api/speedtest/fleet  perm=system.view  local
 GET    /api/stack-templates  perm=system.view  local
 GET    /api/status-summary  perm=public-view (default)  remote
 GET    /api/sudo-log  perm=security.view  remote
@@ -208,6 +209,7 @@ GET    /api/tools/logs  perm=logs.view  remote
 GET    /api/tools/network  perm=system.view  remote
 GET    /api/tools/ping-peers  perm=system.view  remote
 GET    /api/tools/ports  perm=system.view  remote
+GET    /api/tools/speedtest  perm=system.view  remote
 GET    /api/tools/ssh  perm=security.view  remote
 GET    /api/updates/apt  perm=public-view (default)  remote
 GET    /api/updates/changelog  perm=system.view  remote
@@ -489,6 +491,7 @@ POST   /api/settings/webhooks/{hook_id}/delete  perm=settings.manage  local  aud
 POST   /api/settings/wol  perm=settings.manage  local  audit=Wake-on-LAN-Gerät hinzugefügt
 POST   /api/settings/wol/{device_id}/delete  perm=settings.manage  local  audit=Wake-on-LAN-Gerät entfernt
 POST   /api/settings/wol/{device_id}/update  perm=settings.manage  local  audit=Wake-on-LAN-Gerät geändert
+POST   /api/speedtest/fleet  perm=network.tools  local  audit=Speedtest auf mehreren Servern ausgeführt
 POST   /api/stack-templates  perm=apps.install  local  audit=Stack-Vorlage gespeichert
 POST   /api/stack-templates/{template_id}  perm=apps.install  local  audit=Stack-Vorlage gespeichert
 POST   /api/stack-templates/{template_id}/delete  perm=apps.install  local  audit=Stack-Vorlage gelöscht
@@ -525,6 +528,7 @@ POST   /api/tools/lan/{mac}/monitor  perm=network.tools  remote  audit=Gerät wi
 POST   /api/tools/lan/{mac}/rename  perm=network.tools  remote  audit=Gerät umbenannt
 POST   /api/tools/lan/{mac}/wol  perm=network.tools  local  audit=Gerät zu Wake-on-LAN hinzugefügt
 POST   /api/tools/port-test  perm=network.tools  remote  audit=Port-Test
+POST   /api/tools/speedtest  perm=network.tools  remote  audit=Speedtest ausgeführt
 POST   /api/tools/traceroute  perm=network.tools  remote  audit=Traceroute
 POST   /api/updates/apply  perm=updates.install  remote  audit=Dashboard-Update installiert
 POST   /api/updates/apt  perm=updates.install  remote  audit=System-Update gestartet

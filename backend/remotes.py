@@ -27,7 +27,7 @@ _status: Dict[str, Dict[str, Any]] = {}
 # (each says which server sends its packet), so they stay here too.
 LOCAL_ONLY = re.compile(r"^/api/(service-catalog|nis2|policies|suppliers|internal-audits|vm-migration/|sudo-log/fleet|auth/|me$|users|groups|security|versions|permissions|remotes|webhook/|netbox/|boards|calendar|exchange|x/|search|fleet|wiki|costs|stack-templates|incidents|api-docs|about$|changelog$|links$|notes$|kanban|reminders|docs/|terminal/(ticket|share-users)$"
                         r"|settings/(public-view|logout-all|logout-others|account|links.*|language|status-page|netbox.*|mcp.*|webhooks.*|email.*)$|mcp/|files/shares?(/|$)|public/|offsite/(fleet|copy)(/|$)"
-                        r"|wol(/|$)|settings/wol(/|$)|agent/wol$|tools/lan/[^/]+/wol$)")
+                        r"|wol(/|$)|settings/wol(/|$)|agent/wol$|tools/lan/[^/]+/wol$|speedtest/fleet$)")
 
 
 class RemoteError(Exception):

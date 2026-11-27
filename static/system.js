@@ -2426,6 +2426,135 @@
     svg.onpointerleave = () => { svg.querySelectorAll('.bar.dim').forEach(b => b.classList.remove('dim')); tip.hidden = true; };
   }
 
+  // ---------------------------------------------------------------------------
+  // Speedtest
+  // ---------------------------------------------------------------------------
+  const mbit = v => (v == null ? '–' : (v >= 100 ? Math.round(v) : v).toLocaleString(LOCALE));
+
+  function renderSpeedtest(r) {
+    const last = r.results[0];
+    benchValues($('speedtest-stats'), [
+      ['Download', mbit(last && last.down), ' Mbit/s'], ['Upload', mbit(last && last.up), ' Mbit/s'],
+      ['Ping', last ? mbit(last.ping) : '–', ' ms'], ['Jitter', last ? mbit(last.jitter) : '–', ' ms']
+    ]);
+    // The page translates text as it is shown (i18n.js): German here, names in their own span
+    const status = $('speedtest-status');
+    status.innerHTML = '';
+    if (r.running) status.textContent = 'Ein Speedtest läuft gerade …';
+    else if (!last) status.textContent = `Noch kein Speedtest. Dauert etwa 20 Sekunden und überträgt je Richtung höchstens ${r.limits.mb} MB.`;
+    else {
+      status.append(el('span', '', `Zuletzt am ${fmtTime(last.ts)}`));
+      const where = [last.server, last.isp].filter(Boolean).join(' · ');
+      if (where) {
+        const w = el('span', '', ` · ${where}`);
+        w.setAttribute('data-no-i18n', '');
+        status.appendChild(w);
+      }
+    }
+    loadSpeedFleet();
+    const table = $('speedtest-history');
+    table.innerHTML = '';
+    if (!r.results.length) return;
+    const head = table.createTHead().insertRow();
+    ['Zeit', 'Download', 'Upload', 'Ping', 'Jitter', 'Gegenstelle', 'Daten'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    r.results.forEach(x => {
+      const row = body.insertRow();
+      row.insertCell().textContent = fmtTime(x.ts);
+      row.insertCell().textContent = `${mbit(x.down)} Mbit/s`;
+      row.insertCell().textContent = `${mbit(x.up)} Mbit/s`;
+      row.insertCell().textContent = `${mbit(x.ping)} ms`;
+      row.insertCell().textContent = `${mbit(x.jitter)} ms`;
+      const where = row.insertCell();
+      where.textContent = [x.server, x.isp].filter(Boolean).join(' · ') || '–';
+      where.setAttribute('data-no-i18n', '');
+      row.insertCell().textContent = `${Math.round((x.down_mb || 0) + (x.up_mb || 0))} MB`;
+    });
+  }
+
+  // Several servers: the main dashboard asks each one (agents measure their own line)
+  let speedFleet = null;
+
+  async function loadSpeedFleet() {
+    try { speedFleet = await api('/api/speedtest/fleet'); } catch (e) { speedFleet = null; }
+    renderSpeedFleet();
+  }
+
+  function renderSpeedFleet() {
+    const box = $('speedtest-fleet');
+    const servers = speedFleet ? speedFleet.servers : [];
+    box.hidden = servers.length < 2;
+    if (box.hidden) return;
+    const list = $('speedtest-servers');
+    const before = new Set([...list.querySelectorAll('input:checked')].map(i => i.value));
+    list.innerHTML = '';
+    servers.forEach(srv => {
+      const l = el('label', 'toggle-label');
+      const i = el('input');
+      i.type = 'checkbox';
+      i.value = srv.id;
+      i.disabled = !srv.online || !!srv.error;
+      i.checked = !i.disabled && (before.size ? before.has(srv.id) : true);
+      const name = el('span', '', srv.name);
+      name.setAttribute('data-no-i18n', '');
+      l.append(i, ' ', name);
+      if (srv.error) l.appendChild(el('span', 'field-hint', ` (${srv.error})`));
+      list.appendChild(l);
+    });
+    const table = $('speedtest-compare');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    ['Server', 'Download', 'Upload', 'Ping', 'Zuletzt'].forEach(h => head.appendChild(el('th', '', h)));
+    const body = table.createTBody();
+    servers.forEach(srv => {
+      const row = body.insertRow();
+      const n = row.insertCell();
+      n.textContent = srv.name;
+      n.setAttribute('data-no-i18n', '');
+      const x = srv.last;
+      row.insertCell().textContent = x ? `${mbit(x.down)} Mbit/s` : '–';
+      row.insertCell().textContent = x ? `${mbit(x.up)} Mbit/s` : '–';
+      row.insertCell().textContent = x ? `${mbit(x.ping)} ms` : '–';
+      row.insertCell().textContent = srv.running ? 'läuft …' : x ? fmtTime(x.ts) : srv.error || (srv.online ? 'noch nie' : 'nicht erreichbar');
+    });
+  }
+
+  async function runSpeedFleet() {
+    const ids = [...$('speedtest-servers').querySelectorAll('input:checked')].map(i => i.value);
+    if (!ids.length) { toast('Bitte mindestens einen Server wählen.', 'error'); return; }
+    const btn = $('speedtest-fleet-run');
+    btn.disabled = true;
+    $('speedtest-run').disabled = true;
+    $('speedtest-status').textContent = `Messe nacheinander auf ${ids.length} Servern … (etwa ${ids.length * 20} Sekunden)`;
+    try {
+      const r = await api('/api/speedtest/fleet', { servers: ids });
+      r.results.forEach(x => toast(x.ok ? `${x.name}: ↓ ${mbit(x.result.down)} · ↑ ${mbit(x.result.up)} Mbit/s · ${mbit(x.result.ping)} ms` : `${x.name}: ${x.message}`,
+        x.ok ? 'success' : 'error'));
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      $('speedtest-run').disabled = false;
+      load('speedtest');
+    }
+  }
+
+  async function runSpeedtest() {
+    const btn = $('speedtest-run');
+    btn.disabled = true;
+    $('speedtest-status').textContent = 'Messe Ping, Download und Upload … (etwa 20 Sekunden)';
+    try {
+      const r = await api('/api/tools/speedtest', {});
+      renderSpeedtest(r);
+      toast(`Speedtest: ↓ ${mbit(r.result.down)} · ↑ ${mbit(r.result.up)} Mbit/s · ${mbit(r.result.ping)} ms`, 'success');
+    } catch (err) {
+      $('speedtest-status').textContent = err.message;
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   function renderUsage(r) {
     const select = $('usage-iface');
     if (select.options.length === 1) {
@@ -2643,6 +2772,7 @@
     fan: ['/api/tools/fan-curve', renderFanCurve],
     hogs: ['/api/monitor/hogs?hours=24', renderHogs],
     usage: ['/api/monitor/usage', renderUsage],
+    speedtest: ['/api/tools/speedtest', renderSpeedtest],
     forecast: ['/api/disk-forecast', renderForecast]
   };
 
@@ -2698,6 +2828,8 @@
     $('err-sort').addEventListener('change', renderErrorList);
     $('err-filters').addEventListener('submit', e => e.preventDefault());
     $('pkg-search-form').addEventListener('submit', searchPackages);
+    $('speedtest-run').addEventListener('click', runSpeedtest);
+    $('speedtest-fleet-run').addEventListener('click', runSpeedFleet);
     document.querySelectorAll('#pkg-tabs button').forEach(b => b.addEventListener('click', () => {
       document.querySelectorAll('#pkg-tabs button').forEach(x => x.classList.toggle('active', x === b));
       $('pkg-search-tab').hidden = b.dataset.tab !== 'search';

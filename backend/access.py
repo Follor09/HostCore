@@ -239,7 +239,9 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/action/(reboot|shutdown)$", "system.power"),
 
     # --- Network
-    ("POST", r"^/api/tools/(lan/scan|lan/[^/]+/(rename|forget|wol|monitor)|port-test|dns|traceroute)$", "network.tools"),
+    ("POST", r"^/api/tools/(lan/scan|lan/[^/]+/(rename|forget|wol|monitor)|port-test|dns|traceroute|speedtest)$", "network.tools"),
+    ("POST", r"^/api/speedtest/fleet$", "network.tools"),
+    ("GET", r"^/api/speedtest/fleet$", "system.view"),
     ("POST", r"^/api/wol(/[^/]+/wake)?$", "network.tools"),
     ("POST", r"^/api/tools/(firewall|fail2ban/unban|geoblock|geoip/download|geoip/remove)$", "firewall.manage"),
 

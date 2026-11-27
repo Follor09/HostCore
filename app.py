@@ -72,6 +72,7 @@ from routes import terminal as terminal_routes
 from routes import vulns as vulns_routes
 from routes import settings_page as settings_page_routes
 from routes import autoupdate as autoupdate_routes
+from routes import speedtest as speedtest_routes
 from routes import wol as wol_routes
 from routes.wol import _wol_public, _lan_mark_wol
 import systools
@@ -141,7 +142,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.9.10", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.10.0", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -551,6 +552,7 @@ app.include_router(files_routes.router)   # backend/routes/files.py
 # System tools page
 # ---------------------------------------------------------------------------
 app.include_router(systools_routes.router)   # backend/routes/systools.py
+app.include_router(speedtest_routes.router)   # backend/routes/speedtest.py
 
 
 async def internal_call(user: str, method: str, path: str, params: Optional[dict] = None, json_body: Any = None,

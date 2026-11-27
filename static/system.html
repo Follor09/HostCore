@@ -47,6 +47,7 @@
       <a href="#ereignisse" class="active">Ereignisse</a>
       <a href="#netzwerk">Netzwerk</a>
       <a href="#datenverbrauch">Datenverbrauch</a>
+      <a href="#speedtest">Speedtest</a>
       <a data-perm="network.tools" href="#dns">DNS &amp; Traceroute</a>
       <a href="#geraete">Geräte im Netzwerk</a>
       <a href="#netbox">NetBox</a>
@@ -185,6 +186,32 @@
           <table class="data-table" id="usage-months"></table>
         </div>
         <p class="field-hint" id="usage-hint"></p>
+      </section>
+
+      <!-- Speedtest -->
+      <section class="glass-card settings-section" id="speedtest">
+        <div class="section-head">
+          <h2>Speedtest</h2>
+          <button class="btn-primary" data-perm="network.tools" id="speedtest-run" type="button">Speedtest starten</button>
+        </div>
+        <p class="section-desc">Misst die Internetverbindung dieses Servers: Ping, Jitter, Download und Upload – gegen Cloudflare (speed.cloudflare.com), mit mehreren Verbindungen gleichzeitig. Ist oben ein Remote-Server gewählt, misst dieser seine eigene Leitung.</p>
+        <div class="bench-values ssh-stats" id="speedtest-stats"></div>
+        <p class="field-hint" id="speedtest-status"></p>
+        <div id="speedtest-fleet" hidden>
+          <h3 class="subhead">Alle Server</h3>
+          <p class="field-hint">Von mehreren Servern aus messen – z.B. Server im Rechenzentrum und Pi zuhause. Jeder misst seine eigene Leitung, nacheinander (etwa 20 Sekunden je Server), damit sich Server am selben Anschluss nicht die Bandbreite teilen.</p>
+          <div class="inc-targets pb-checks" id="speedtest-servers"></div>
+          <div class="form-actions">
+            <button class="btn-secondary" data-perm="network.tools" id="speedtest-fleet-run" type="button">Auf gewählten Servern messen</button>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="speedtest-compare"></table>
+          </div>
+        </div>
+        <h3 class="subhead">Verlauf</h3>
+        <div class="table-scroll">
+          <table class="data-table" id="speedtest-history"></table>
+        </div>
       </section>
 
       <!-- DNS & Traceroute -->

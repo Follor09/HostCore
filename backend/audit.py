@@ -142,6 +142,8 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/tools/lan/[^/]+/rename$", "network", "Gerät umbenannt"),
     ("POST", r"^/api/tools/lan/[^/]+/forget$", "network", "Gerät vergessen"),
     ("POST", r"^/api/tools/lan/[^/]+/wol$", "network", "Gerät zu Wake-on-LAN hinzugefügt"),
+    ("POST", r"^/api/tools/speedtest$", "network", "Speedtest ausgeführt"),
+    ("POST", r"^/api/speedtest/fleet$", "network", "Speedtest auf mehreren Servern ausgeführt"),
     ("POST", r"^/api/tools/port-test$", "network", "Port-Test"),
     ("POST", r"^/api/tools/dns$", "network", "DNS-Abfrage"),
     ("POST", r"^/api/tools/traceroute$", "network", "Traceroute"),

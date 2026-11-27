@@ -113,7 +113,7 @@
     const section = (path, prefix, list) => list.forEach(([hash, label, keywords]) =>
       cmds.push({ id: `sec:${path}#${hash}`, label: `${t(prefix)} › ${t(label)}`, raw: true, group: 'Bereiche', keywords, href: `${path}#${hash}` }));
     section('/system', 'System-Werkzeuge', [
-      ['ereignisse', 'Ereignisse', 'events timeline ausfall feed'], ['netzwerk', 'Netzwerk', 'ip wlan gateway dns interfaces'], ['datenverbrauch', 'Datenverbrauch', 'traffic monat tag daten usage'],
+      ['ereignisse', 'Ereignisse', 'events timeline ausfall feed'], ['netzwerk', 'Netzwerk', 'ip wlan gateway dns interfaces'], ['datenverbrauch', 'Datenverbrauch', 'traffic monat tag daten usage'], ['speedtest', 'Speedtest', 'speedtest internet geschwindigkeit bandbreite download upload ping mbit'],
       ['dns', 'DNS & Traceroute', 'nslookup dig mx txt route hops'], ['geraete', 'Geräte im Netzwerk', 'lan scan netzwerk geräte mac'], ['netbox', 'NetBox', 'ipam präfix ip-adressen dokumentation abgleich frei'],
       ['port-check', 'Port-Check', 'ports offen erreichbar test'], ['firewall', 'Firewall', 'ufw regeln port blockieren'],
       ['ssh', 'SSH-Anmeldungen', 'login fail2ban angriffe gesperrt'], ['hardware', 'Hardware', 'modell seriennummer bootloader pcie usb'],

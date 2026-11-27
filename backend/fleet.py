@@ -76,12 +76,12 @@ def _pkg_status() -> Dict[str, Any]:
         return {}
 
 
-async def _call(pid: str, method: str, path: str, body: Any = None, user: str = "") -> Dict[str, Any]:
+async def _call(pid: str, method: str, path: str, body: Any = None, user: str = "", timeout: float = 30.0) -> Dict[str, Any]:
     """One request to a remote server's agent (the main server is handled by the caller)."""
     r = next((x for x in remotes._all() if x["id"] == pid), None)
     if not r:
         raise ValueError("Unbekannter Server.")
-    async with remotes.http_client(r, 30.0) as client:
+    async with remotes.http_client(r, timeout) as client:
         res = await client.request(method, f"{r['url']}{path}", json=body,
                                    headers={"Authorization": f"Bearer {r['token']}", "X-PiCore-User": user})
     data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}

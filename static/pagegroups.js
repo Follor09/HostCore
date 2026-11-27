@@ -41,7 +41,7 @@
               : c.warning ? { level: 'warning', text: `${n(c.warning, 'Warnung', 'Warnungen')} (24 Std.)` }
                 : { level: 'good', text: 'Keine Warnungen in 24 Std.' }];
           } },
-        { id: 'netzwerk', label: 'Netzwerk', desc: 'Schnittstellen, Geräte, Datenverbrauch, DNS und Ports', sections: ['netzwerk', 'geraete', 'datenverbrauch', 'dns', 'dns-ueberwachung', 'port-check', 'netbox'],
+        { id: 'netzwerk', label: 'Netzwerk', desc: 'Schnittstellen, Geräte, Datenverbrauch, Speedtest, DNS und Ports', sections: ['netzwerk', 'geraete', 'datenverbrauch', 'speedtest', 'dns', 'dns-ueberwachung', 'port-check', 'netbox'],
           facts: async () => {
             const lan = await get('/api/tools/lan');
             const devs = lan.devices || [];

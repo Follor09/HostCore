@@ -4,6 +4,12 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.10.0 – 2026-11-27
+
+### New
+- **Speed test** (*System → Network → Speed test*): ping, jitter, download and upload of the server's internet connection against Cloudflare (speed.cloudflare.com) – nothing to install. Several connections at once, each direction at most 8 seconds and 250 MB, the first second (TCP slow start) not counted; uploads count once Cloudflare confirmed them. Shows the Cloudflare site and the provider; the last 30 results stay as history. With a remote server selected, the agent measures its own line.
+- **Speed test from several servers:** on the main dashboard tick the servers – e.g. the one in the data centre and the Pi at home – and measure them one after the other (so servers on the same connection do not share it); a table compares the last result of every server.
+
 ## v1.9.10 – 2026-11-27
 
 ### Fixed
