@@ -242,8 +242,26 @@ def tidy(line: str) -> str:
     return re.sub(r"\s{2,}", " ", line).strip()
 
 
+LOCKED_RE = re.compile(r"unable to create lock|repository is already locked|failed to lock|`unlock` command", re.I)
+
+
+def locked_message(stderr: str) -> str:
+    """restic's 'repository is already locked' in plain words, with who holds the lock and since when."""
+    text = stderr or ""
+    who = re.search(r"locked (?:exclusively )?by PID (\d+) on (\S+)", text)
+    since = re.search(r"lock was created at ([0-9-]+ [0-9:]+)(?: \(([^)]+) ago\))?", text)
+    detail = ", ".join(filter(None, [f"von {who.group(2)} (Prozess {who.group(1)})" if who else "",
+                                     f"seit {since.group(1)}" + (f", vor {since.group(2)}" if since and since.group(2) else "") if since else ""]))
+    return ("Das Repository ist gesperrt – gerade arbeitet ein anderer Vorgang damit (Sicherung, Prüfung oder Aufräumen, "
+            "vielleicht auf einem anderen Server mit demselben Ziel)" + (f": Sperre {detail}" if detail else "") + ". "
+            "Sperren abgebrochener Läufe entfernt das Dashboard selbst; diese ist aktiv oder jünger als 30 Minuten. "
+            "In ein paar Minuten noch einmal versuchen.")
+
+
 def explain(stderr: str) -> str:
     """The useful part of a failure: restic's last line, plus rclone's own message (the real cause) if any."""
+    if LOCKED_RE.search(stderr or ""):
+        return locked_message(stderr)
     lines = [tidy(ln) for ln in (stderr or "").splitlines() if ln.strip()]
     if not lines:
         return "unbekannter Fehler"
@@ -308,10 +326,29 @@ class Restic:
         self.host = host if HOST_RE.match(host) else "server"
 
     def run(self, *args, check=True, timeout=None, capture=True):
-        res = subprocess.run(["restic", *self.opts, *args], env=self.env, capture_output=capture, text=True, timeout=timeout, errors="replace")
+        """capture=True: output kept; False: straight into the task log; "stderr": stdout into the log,
+        errors kept (and also shown) so a failure can be explained."""
+        if capture == "stderr":
+            res = subprocess.run(["restic", *self.opts, *args], env=self.env, stdout=None, stderr=subprocess.PIPE, text=True,
+                                 timeout=timeout, errors="replace")
+            for ln in (res.stderr or "").splitlines():
+                if ln.strip():
+                    say(f"   {tidy(ln)[:300]}")
+        else:
+            res = subprocess.run(["restic", *self.opts, *args], env=self.env, capture_output=capture, text=True, timeout=timeout, errors="replace")
         if check and res.returncode != 0:
+            if res.returncode == 11 and not LOCKED_RE.search(res.stderr or ""):    # restic >= 0.17: failed to lock
+                die(f"restic {args[0]}: {locked_message('')}")
             die(f"restic {args[0]}: {explain(res.stderr) if res.stderr else 'fehlgeschlagen'}")
         return res
+
+    def unlock_stale(self) -> None:
+        """Remove the locks of interrupted runs (their process is gone, or another host's lock is older than
+        30 minutes). Never --remove-all: a lock of a run that is still working stays."""
+        res = self.run("unlock", check=False, timeout=300)
+        m = re.search(r"successfully removed (\d+) locks?", (res.stdout or "") + (res.stderr or ""))
+        if m and int(m.group(1)):
+            say(f"   {m.group(1)} verwaiste Sperre(n) eines abgebrochenen Laufs entfernt")
 
     def preflight(self, attempts: int = 3) -> None:
         """rclone targets: one quick listing first, so a throttled or expired sign-in says so in plain words
@@ -355,7 +392,8 @@ class Restic:
 
     def snapshots(self):
         self.preflight(attempts=1)          # the page waits for this one: no waiting out
-        res = self.run("snapshots", "--json", "--host", self.host, "--tag", TAG, check=False, timeout=300)
+        # Only reads: no lock needed - so the list works during a backup and despite a stale lock
+        res = self.run("snapshots", "--no-lock", "--json", "--host", self.host, "--tag", TAG, check=False, timeout=300)
         if res.returncode != 0:
             err = res.stderr or ""
             if res.returncode == 10 or "does not exist" in err or "unable to open config file" in err.lower():
@@ -438,7 +476,7 @@ def backup(spec, r: Restic) -> None:
     except SystemExit:
         prog.write(phase="error")
         raise
-    r.run("unlock", check=False, timeout=300)          # stale locks of an interrupted run
+    r.unlock_stale()          # locks of an interrupted run
     say("▶ Sichern: " + ", ".join(paths))
     prog.write(phase="backup", percent=0)
     args = ["backup", "--json", "--host", r.host, "--tag", TAG, "--exclude-caches", "--one-file-system"]
@@ -512,7 +550,8 @@ def restore(spec, r: Restic, snap: str, path: str) -> None:
     args = ["restore", snap, "--host", r.host, "--target", dest]
     if path:
         args += ["--include", path]
-    r.run(*args, timeout=12 * 3600, capture=False)
+    r.unlock_stale()          # a backup or check that was interrupted must not block the restore
+    r.run(*args, timeout=12 * 3600, capture="stderr")
     say(f"✅ Wiederhergestellt nach {dest}")
     say("   Der Ordner gehört root. Dateien von dort an ihren Platz kopieren, z. B. im Terminal mit sudo cp -a.")
     say("HC-RESTORED " + json.dumps({"dir": dest}))
@@ -545,8 +584,9 @@ def main() -> None:
             if not (m and 1 <= int(m.group(1)) <= int(m.group(2)) <= 100):
                 subset = "2%"
             r.ensure_repo()
+            r.unlock_stale()
             say(f"▶ Repository prüfen: Struktur und Datenteil {subset}" if "/" in subset else "▶ Repository prüfen: Struktur und 2 % der Daten")
-            r.run("check", f"--read-data-subset={subset}", timeout=12 * 3600, capture=False)
+            r.run("check", f"--read-data-subset={subset}", timeout=12 * 3600, capture="stderr")
             say("✅ Repository in Ordnung")
         else:
             die("Unbekannter Befehl.")

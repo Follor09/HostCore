@@ -5066,6 +5066,8 @@
     [/^Log: (.+)$/, 'Log: $1'],
     [/^(.+) (hinzugefügt|entfernt)\.$/, (m, n, v) => `${n} ${v === 'hinzugefügt' ? 'added' : 'removed'}.`],
     [/^Weckruf an (.+) gesendet\.$/, 'Wake-up sent to $1.'],
+    [/^(restic \S+: )?Das Repository ist gesperrt – gerade arbeitet ein anderer Vorgang damit \(Sicherung, Prüfung oder Aufräumen, vielleicht auf einem anderen Server mit demselben Ziel\)(?:: Sperre von (\S+) \(Prozess (\d+)\)(?:, seit ([^,.]+(?:, vor [^.]+)?))?)?\. Sperren abgebrochener Läufe entfernt das Dashboard selbst; diese ist aktiv oder jünger als 30 Minuten\. In ein paar Minuten noch einmal versuchen\.$/,
+      (m, cmd, host, pid, since) => `${cmd || ''}The repository is locked – another run is working with it right now (backup, check or clean-up, perhaps on another server with the same target)${host ? `: lock by ${host} (process ${pid})${since ? `, since ${since.replace(', vor ', ', ')} ago` : ''}` : ''}. The dashboard removes locks of interrupted runs itself; this one is active or less than 30 minutes old. Try again in a few minutes.`],
     [/^Weckruf an (.+) gesendet \(über (.+)\)\.$/, 'Wake-up sent to $1 (via $2).'],
     [/^Unbekanntes Zertifikat – Fingerabdruck mit \.\/agent\.sh tls auf dem Server vergleichen: (.+)$/, 'Unknown certificate – compare the fingerprint with ./agent.sh tls on the server: $1'],
     [/^(.+) – Unverschlüsselt über das Internet: .*$/, '$1 – Unencrypted over the internet: token, terminal and files can be read on the way. Connect the agent through a VPN (WireGuard, NetBird, Tailscale) or via https behind a reverse proxy.'],

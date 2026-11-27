@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.9.9 – 2026-11-27
+
+### Fixed
+- **Off-site backup: restoring no longer fails on a stale lock** (“the `unlock` command can be used to remove stale locks”). A backup, check or clean-up that was interrupted (restart, power loss) left restic's lock in the repository; restoring and checking now remove such locks first – only locks whose process is gone, or another server's older than 30 minutes, never the lock of a run that is still working. Listing the states needs no lock at all any more, so it also works while a backup is running. A lock that is really active is explained in plain words: who holds it and since when.
+
 ## v1.9.8 – 2026-11-27
 
 ### Changed
