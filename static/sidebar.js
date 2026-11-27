@@ -29,6 +29,7 @@
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     collapse: '<path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/>',
     menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     chevron: '<path d="M9 18l6-6-6-6"/>'
   };
   // [href, icon, label, short label, permission, capability, where]: "ops" = in the bar, "docs" = in the
@@ -38,6 +39,7 @@
     ['/containers', 'box', 'Container', 'Container', 'system.view', '', 'ops'],
     ['/vms', 'vm', 'VMs', 'VMs', 'system.view', 'vms', 'ops'],
     ['/flotte', 'fleet', 'Flotte', 'Flotte', 'system.view', '', 'ops'],
+    ['/dateien', 'folder', 'Dateien', 'Dateien', 'cloud', '', 'ops'],
     ['/terminal', 'terminal', 'Terminal', 'Terminal', 'terminal', '', 'ops'],
     ['/doku', 'book', 'Dokumentation', 'Dokumentation', '', '', 'docs'],
     ['/nachweise', 'shield', 'Compliance', 'Compliance', '', '', 'docs'],

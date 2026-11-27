@@ -39,6 +39,7 @@ sessions.json.tmp
 db-dumps/
 tasks/
 recordings/
+cloud/
 gitops-env/
 .update-channel
 vms/

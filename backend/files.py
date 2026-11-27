@@ -68,9 +68,19 @@ def _roots() -> List[str]:
 TRASH_NAME = ".picore-trash"
 
 
+def _cloud_private() -> List[str]:
+    """The cloud's private folders (users' own files, its recycle bin): only through the files page."""
+    try:
+        import cloud
+        priv = cloud.private_root()
+        return [priv, os.path.join(os.path.dirname(priv), ".trash")]
+    except Exception:
+        return [os.path.join(BASE_DIR, "cloud")]
+
+
 def is_denied(real: str) -> bool:
     # The recycle bin is only reachable through the trash_* functions
-    return any(_inside(real, d) for d in DENIED) or TRASH_NAME in real.split("/")
+    return any(_inside(real, d) for d in DENIED + _cloud_private()) or TRASH_NAME in real.split("/")
 
 
 def resolve(path: str) -> str:

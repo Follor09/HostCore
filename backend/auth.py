@@ -70,6 +70,7 @@ PERMISSIONS = [
     ("files.read", "Dateien ansehen", "Datei-Browser, Vorschau, Herunterladen", "Dateien"),
     ("files.write", "Dateien hochladen", "Dateien in Ordner hochladen, in die der Server-Benutzer schreiben darf", "Dateien"),
     ("files.share", "Dateien teilen", "Freigabe-Links erstellen und beenden", "Dateien"),
+    ("cloud", "Eigene Dateien (Cloud)", "Seite Dateien: eigener Speicher, gemeinsamer Ordner und Freigabe-Links dafür – ohne Zugriff auf das übrige Dateisystem", "Dateien"),
     ("board.edit", "Dashboard gestalten", "Boards, Kategorien, Apps und Widgets der Startseite anlegen, verschieben und ändern", "Dashboard"),
     ("notes.edit", "Notizen & Doku bearbeiten", "Notizen, Aufgaben, Erinnerungen und die Dokumentation (Inventar, Betriebstagebuch, Runbooks, Steckbriefe) ändern", "Dashboard"),
     ("actions.run", "Schnellaktionen ausführen", "Eigene Skripte starten und stoppen", "Dashboard"),
@@ -91,14 +92,18 @@ PERMISSIONS = [
 ]
 ALL_PERMISSIONS = [p[0] for p in PERMISSIONS]
 
+# Permissions added after groups could be saved: a built-in group saved before gets them by
+# default (it never had the choice); saving the group records which permissions it has seen.
+ADDED_LATER = {"cloud": ("editor", "user")}
+
 BUILTIN_GROUPS: Dict[str, Dict[str, Any]] = {
     "admin": {"name": "Administrator", "description": "Darf alles – auch Benutzer und Rechte verwalten.",
               "perms": ALL_PERMISSIONS, "locked": True},
     "editor": {"name": "Bearbeiter", "description": "Kann Dienste steuern, Dateien verwalten und Einstellungen ändern – ohne Terminal, Neustart und Benutzerverwaltung.",
-               "perms": ["system.view", "logs.view", "files.read", "files.write", "files.share", "board.edit", "notes.edit",
+               "perms": ["system.view", "logs.view", "files.read", "files.write", "files.share", "cloud", "board.edit", "notes.edit",
                          "actions.run", "services.control", "vms.control", "network.tools", "netbox.write", "settings.manage"]},
     "user": {"name": "Benutzer", "description": "Sieht alles Wichtige, darf Dateien ansehen und Notizen bearbeiten.",
-             "perms": ["system.view", "files.read", "notes.edit"]},
+             "perms": ["system.view", "files.read", "cloud", "notes.edit"]},
     "viewer": {"name": "Betrachter", "description": "Nur das Dashboard ansehen.", "perms": []},
 }
 
@@ -397,8 +402,12 @@ def all_groups(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]
     out: Dict[str, Dict[str, Any]] = {}
     for gid, g in BUILTIN_GROUPS.items():
         stored = saved.get(gid, {}) if gid != "admin" else {}
+        perms = list(stored.get("perms", g["perms"]))
+        if "perms" in stored:
+            seen = set(stored.get("seen") or [])
+            perms += [p for p, groups in ADDED_LATER.items() if gid in groups and p not in seen and p not in perms]
         out[gid] = {"id": gid, "name": stored.get("name", g["name"]), "description": stored.get("description", g["description"]),
-                    "perms": ALL_PERMISSIONS if gid == "admin" else [p for p in stored.get("perms", g["perms"]) if p in ALL_PERMISSIONS],
+                    "perms": ALL_PERMISSIONS if gid == "admin" else [p for p in ALL_PERMISSIONS if p in perms],
                     "builtin": True, "locked": bool(g.get("locked"))}
     for gid, g in saved.items():
         if gid not in BUILTIN_GROUPS:
@@ -439,7 +448,8 @@ def save_group(group_id: Optional[str], name: str, description: str, perms: List
                 n += 1
         if any(g["name"].casefold() == name.casefold() and gid != group_id for gid, g in groups.items()):
             raise AuthError("Eine Gruppe mit diesem Namen gibt es schon.")
-        cfg["groups"][group_id] = {"name": name, "description": (description or "").strip()[:200], "perms": perms}
+        cfg["groups"][group_id] = {"name": name, "description": (description or "").strip()[:200], "perms": perms,
+                                   "seen": ALL_PERMISSIONS}
         _save_config(cfg)
     return next(g for g in list_groups() if g["id"] == group_id)
 

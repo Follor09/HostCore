@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HostCore">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+  <script src="/static/theme.js"></script>
+  <title>Dateien | HostCore Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="theme-cyber cloud-page">
+  <header class="app-header">
+    <div class="header-left">
+      <a class="back-link" href="/" title="Zurück zum Dashboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+        <span>Dashboard</span>
+      </a>
+      <h1 class="settings-title">Dateien</h1>
+    </div>
+    <div class="header-right">
+      <button class="icon-button" id="btn-palette" title="Suchen &amp; Befehle" aria-label="Suchen &amp; Befehle">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="cloud-layout">
+    <aside class="cloud-side glass-card" aria-label="Bereiche">
+      <nav class="cloud-nav" id="cloud-nav">
+        <button type="button" data-view="me" class="active"><span class="cloud-ico" data-icon="home"></span>Meine Dateien</button>
+        <button type="button" data-view="shared"><span class="cloud-ico" data-icon="users"></span>Gemeinsam</button>
+        <button type="button" data-view="recent"><span class="cloud-ico" data-icon="clock"></span>Zuletzt geändert</button>
+        <button type="button" data-view="favorites"><span class="cloud-ico" data-icon="star"></span>Favoriten</button>
+        <button type="button" data-view="shares"><span class="cloud-ico" data-icon="link"></span>Freigaben</button>
+        <button type="button" data-view="uploads"><span class="cloud-ico" data-icon="inbox"></span>Andere Uploads</button>
+        <button type="button" data-view="trash"><span class="cloud-ico" data-icon="trash"></span>Papierkorb</button>
+      </nav>
+      <div class="cloud-users" id="cloud-users" hidden>
+        <h3 class="subhead">Benutzer</h3>
+        <div id="cloud-users-list"></div>
+      </div>
+      <div class="cloud-usage" id="cloud-usage">
+        <div class="cloud-usage-bar"><span id="cloud-usage-fill"></span></div>
+        <p class="field-hint" id="cloud-usage-text"></p>
+      </div>
+      <button type="button" class="text-btn cloud-settings-btn" id="cloud-settings-open" data-perm="users.manage">Speicher einstellen</button>
+    </aside>
+
+    <section class="cloud-main glass-card" id="cloud-main">
+      <div class="cloud-toolbar">
+        <nav class="cloud-crumbs" id="cloud-crumbs" aria-label="Pfad"></nav>
+        <form class="cloud-search" id="cloud-search" role="search">
+          <input type="search" id="cloud-q" placeholder="In allen Dateien suchen…" autocomplete="off" aria-label="In allen Dateien suchen">
+        </form>
+        <div class="cloud-actions" id="cloud-actions">
+          <button type="button" class="btn-secondary" id="cloud-new-folder">Neuer Ordner</button>
+          <label class="btn-primary cloud-upload-btn">Hochladen<input type="file" id="cloud-file-input" multiple hidden></label>
+          <label class="btn-secondary cloud-upload-btn" title="Einen ganzen Ordner hochladen">Ordner<input type="file" id="cloud-dir-input" webkitdirectory multiple hidden></label>
+        </div>
+        <div class="cloud-view-toggle" role="group" aria-label="Ansicht">
+          <button type="button" class="mini-icon-btn" id="cloud-view-grid" title="Raster" aria-label="Raster"><span class="cloud-ico" data-icon="grid"></span></button>
+          <button type="button" class="mini-icon-btn" id="cloud-view-list" title="Liste" aria-label="Liste"><span class="cloud-ico" data-icon="list"></span></button>
+        </div>
+      </div>
+      <div class="cloud-selbar" id="cloud-selbar" hidden>
+        <span id="cloud-sel-count"></span>
+        <button type="button" class="btn-secondary" id="cloud-sel-zip">Herunterladen</button>
+        <button type="button" class="btn-secondary" id="cloud-sel-move">Verschieben</button>
+        <button type="button" class="btn-secondary" id="cloud-sel-copy">Kopieren</button>
+        <button type="button" class="btn-secondary" id="cloud-sel-delete">Löschen</button>
+        <button type="button" class="text-btn" id="cloud-sel-clear">Auswahl aufheben</button>
+      </div>
+      <p class="field-hint cloud-info" id="cloud-info" hidden></p>
+      <div class="cloud-content" id="cloud-content"></div>
+      <div class="cloud-drop" id="cloud-drop" hidden><div>Zum Hochladen loslassen</div></div>
+    </section>
+  </main>
+
+  <div class="cloud-uploads" id="cloud-uploads" hidden>
+    <div class="cloud-uploads-head"><b id="cloud-uploads-title">Hochladen</b><button type="button" class="text-btn" id="cloud-uploads-close">Schließen</button></div>
+    <div id="cloud-uploads-list"></div>
+  </div>
+
+  <div class="cloud-menu" id="cloud-menu" role="menu" hidden></div>
+
+  <!-- Preview -->
+  <div class="modal-backdrop cloud-preview" id="cloud-preview">
+    <div class="modal-card sheet-card cloud-preview-card" role="dialog" aria-modal="true" aria-labelledby="cloud-preview-name">
+      <div class="sheet-head">
+        <div><h3 id="cloud-preview-name" data-no-i18n></h3><p class="card-subtitle" id="cloud-preview-sub"></p></div>
+        <div class="cloud-preview-actions">
+          <button type="button" class="mini-icon-btn" id="cloud-preview-prev" title="Vorherige (←)" aria-label="Vorherige">‹</button>
+          <button type="button" class="mini-icon-btn" id="cloud-preview-next" title="Nächste (→)" aria-label="Nächste">›</button>
+          <a class="btn-secondary" id="cloud-preview-download" href="#">Herunterladen</a>
+          <button type="button" class="btn-secondary" id="cloud-preview-share">Teilen</button>
+          <button type="button" class="mini-icon-btn" id="cloud-preview-close" title="Schließen (Esc)" aria-label="Schließen">✕</button>
+        </div>
+      </div>
+      <div class="cloud-preview-body" id="cloud-preview-body"></div>
+    </div>
+  </div>
+
+  <!-- Share -->
+  <div class="modal-backdrop" id="cloud-share">
+    <div class="modal-card sheet-card cloud-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-share-title">
+      <div class="sheet-head"><h3 id="cloud-share-title">Freigabe-Link</h3><button type="button" class="mini-icon-btn" data-close title="Schließen" aria-label="Schließen">✕</button></div>
+      <p class="field-hint" id="cloud-share-what" data-no-i18n></p>
+      <p class="field-hint">Wer den Link hat, kann ohne Anmeldung herunterladen – Ordner als ZIP. Jeder Abruf steht im Aktivitätsprotokoll.</p>
+      <div class="inline-form">
+        <select id="cloud-share-hours" aria-label="Gültigkeit">
+          <option value="1">1 Stunde</option>
+          <option value="24">24 Stunden</option>
+          <option value="168" selected>7 Tage</option>
+          <option value="720">30 Tage</option>
+        </select>
+        <button type="button" class="btn-primary" id="cloud-share-create">Link erstellen</button>
+      </div>
+      <div class="cloud-share-result" id="cloud-share-result" hidden>
+        <input type="text" id="cloud-share-url" readonly aria-label="Link">
+        <button type="button" class="btn-secondary" id="cloud-share-copy">Kopieren</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Move / copy -->
+  <div class="modal-backdrop" id="cloud-move">
+    <div class="modal-card sheet-card cloud-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-move-title">
+      <div class="sheet-head"><h3 id="cloud-move-title">Verschieben nach</h3><button type="button" class="mini-icon-btn" data-close title="Schließen" aria-label="Schließen">✕</button></div>
+      <div class="inline-form"><select id="cloud-move-space" aria-label="Bereich"></select></div>
+      <nav class="cloud-crumbs" id="cloud-move-crumbs" aria-label="Zielordner"></nav>
+      <div class="cloud-move-list" id="cloud-move-list"></div>
+      <div class="form-actions"><button type="button" class="btn-primary" id="cloud-move-go">Hierher</button></div>
+    </div>
+  </div>
+
+  <!-- Settings (admins) -->
+  <div class="modal-backdrop" id="cloud-settings">
+    <div class="modal-card sheet-card cloud-dialog" role="dialog" aria-modal="true" aria-labelledby="cloud-settings-title">
+      <div class="sheet-head"><h3 id="cloud-settings-title">Speicher einstellen</h3><button type="button" class="mini-icon-btn" data-close title="Schließen" aria-label="Schließen">✕</button></div>
+      <form class="settings-form" id="cloud-settings-form">
+        <label class="login-field"><span>Speicherort</span><input type="text" id="cloud-set-root" spellcheck="false" autocomplete="off"></label>
+        <p class="field-hint" id="cloud-set-root-hint"></p>
+        <div class="form-grid">
+          <label class="login-field"><span>Kontingent pro Benutzer (MB, 0 = unbegrenzt)</span><input type="number" id="cloud-set-quota" min="0"></label>
+          <label class="login-field"><span>Papierkorb leeren nach (Tagen)</span><input type="number" id="cloud-set-trash" min="1" max="365"></label>
+        </div>
+        <p class="field-hint">Ein neuer Speicherort gilt sofort; vorhandene Dateien werden nicht mit verschoben – bei Bedarf vorher selbst kopieren.</p>
+        <div class="form-actions"><button type="submit" class="btn-primary">Speichern</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/perms.js"></script>
+  <script src="/static/caps.js"></script>
+  <script src="/static/cloud.js"></script>
+  <script src="/static/sidebar.js"></script>
+  <script src="/static/links.js"></script>
+  <script src="/static/palette.js"></script>
+  <script src="/static/mobilenav.js"></script>
+</body>
+</html>

@@ -74,6 +74,7 @@ from routes import settings_page as settings_page_routes
 from routes import autoupdate as autoupdate_routes
 from routes import speedtest as speedtest_routes
 from routes import wol as wol_routes
+from routes import cloud as cloud_routes
 from routes.wol import _wol_public, _lan_mark_wol
 import systools
 import security
@@ -142,7 +143,7 @@ async def lifespan(app: FastAPI):
 
 
 # No /docs, /redoc, /openapi.json: /api-doku (login) documents the API
-app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.10.2", lifespan=lifespan,
+app = FastAPI(title="Raspberry Pi Server Dashboard", version="1.11.0", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -546,6 +547,7 @@ app.include_router(processes_routes.router)   # backend/routes/processes.py
 # File explorer + storage analysis (read-only, always requires login)
 # ---------------------------------------------------------------------------
 app.include_router(files_routes.router)   # backend/routes/files.py
+app.include_router(cloud_routes.router)   # backend/routes/cloud.py
 
 
 # ---------------------------------------------------------------------------

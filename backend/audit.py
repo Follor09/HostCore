@@ -155,6 +155,17 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/settings/links/[^/]+/delete$", "settings", "Eigener Link entfernt"),
     ("POST", r"^/api/settings/links/[^/]+/move$", "settings", "Eigene Links sortiert"),
     ("POST", r"^/api/settings/links$", "settings", "Eigener Link hinzugefügt"),
+    ("PUT", r"^/api/cloud/upload$", "files", "Datei in die Cloud hochgeladen"),
+    ("POST", r"^/api/cloud/folder$", "files", "Cloud-Ordner angelegt"),
+    ("POST", r"^/api/cloud/rename$", "files", "Cloud-Datei umbenannt"),
+    ("POST", r"^/api/cloud/transfer$", "files", "Cloud-Dateien verschoben/kopiert"),
+    ("POST", r"^/api/cloud/delete$", "files", "Cloud-Datei in den Papierkorb"),
+    ("POST", r"^/api/cloud/trash/restore$", "files", "Cloud-Datei wiederhergestellt"),
+    ("POST", r"^/api/cloud/trash/delete$", "files", "Cloud-Datei endgültig gelöscht"),
+    ("POST", r"^/api/cloud/trash/empty$", "files", "Cloud-Papierkorb geleert"),
+    ("POST", r"^/api/cloud/shares$", "files", "Cloud-Freigabe-Link erstellt"),
+    ("POST", r"^/api/cloud/shares/[^/]+/delete$", "files", "Cloud-Freigabe-Link beendet"),
+    ("POST", r"^/api/settings/cloud$", "settings", "Cloud-Speicher eingestellt"),
     ("POST", r"^/api/terminal/ticket$", "security", "Terminal freigeschaltet"),
     ("POST", r"^/api/terminal/resume$", "security", "Terminal wieder verbunden"),
     ("POST", r"^/api/terminal/sessions/[^/]+/close$", "security", "Terminal-Sitzung beendet"),
@@ -313,7 +324,7 @@ ACTIONS: List[Tuple[str, str, str, str]] = [
     ("POST", r"^/api/vulns/scan$", "security", "Schwachstellen-Scan gestartet"),
 ]
 # Frequent, harmless requests that would flood the log
-IGNORE = [r"^/api/auth/passkey/(login|register)/options$", r"^/api/auth/2fa/setup$", r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$", r"^/api/appstore/refresh$", r"^/api/kanban", r"^/api/reminders", r"^/api/docs/"]
+IGNORE = [r"^/api/auth/passkey/(login|register)/options$", r"^/api/auth/2fa/setup$", r"^/api/diagnostics", r"^/api/processes/search", r"^/api/tools/logs", r"^/api/notes$", r"^/api/appstore/[^/]+/preview$", r"^/api/appstore/refresh$", r"^/api/kanban", r"^/api/reminders", r"^/api/docs/", r"^/api/cloud/(favorite|zip)$"]
 
 CATEGORIES = {"login": "Anmeldung", "settings": "Einstellungen", "system": "System",
               "security": "Sicherheit", "network": "Netzwerk", "files": "Dateien"}

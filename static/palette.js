@@ -99,6 +99,7 @@
     page('page:docs', 'Dokumentation', '/doku', 'doku inventar tagebuch runbook steckbrief anleitung');
     page('page:compliance', 'Compliance', '/nachweise', 'grundschutz bsi cis datenschutz dsgvo vvt tom nachweis prüfer audit nis2 meldefrist richtlinie policy dienstleister lieferant avv');
     page('page:terminal', 'Web-Terminal', '/terminal', 'shell ssh konsole bash');
+    page('page:files', 'Dateien', '/dateien', 'cloud nextcloud hochladen upload ordner teilen freigabe papierkorb favoriten anhänge briefkasten');
     page('page:wiki', 'Wissensdatenbank', '/wissen', 'wiki wissen seiten markdown notizen anleitung');
     page('page:fleet', 'Flotte', '/flotte', 'alle pis remote übersicht updates fleet');
     page('page:api', 'API-Dokumentation', '/api-doku', 'api schnittstellen rest skript curl endpunkte');

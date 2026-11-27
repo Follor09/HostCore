@@ -34,6 +34,17 @@ GET    /api/capacity/summary  perm=system.view  remote
 GET    /api/changelog  perm=login (default)  local
 GET    /api/changes  perm=login  remote
 GET    /api/changes/{change_id}/markdown  perm=login  remote
+GET    /api/cloud  perm=cloud  local
+GET    /api/cloud/favorites  perm=cloud  local
+GET    /api/cloud/file  perm=cloud  local
+GET    /api/cloud/list  perm=cloud  local
+GET    /api/cloud/recent  perm=cloud  local
+GET    /api/cloud/search  perm=cloud  local
+GET    /api/cloud/shares  perm=cloud  local
+GET    /api/cloud/text  perm=cloud  local
+GET    /api/cloud/trash  perm=cloud  local
+GET    /api/cloud/uploads  perm=cloud  local
+GET    /api/cloud/zip/{ticket}  perm=cloud  local
 GET    /api/compliance/baseline  perm=system.view  remote
 GET    /api/compliance/baseline/markdown  perm=system.view  remote
 GET    /api/compliance/evidence  perm=users.manage  remote
@@ -280,6 +291,17 @@ POST   /api/changes  perm=notes.edit  remote  audit=Änderungsantrag angelegt
 POST   /api/changes/{change_id}  perm=notes.edit  remote  audit=Änderungsantrag geändert
 POST   /api/changes/{change_id}/action  perm=notes.edit  remote  audit=Änderungsantrag bearbeitet
 POST   /api/changes/{change_id}/delete  perm=notes.edit  remote  audit=Änderungsantrag geändert
+POST   /api/cloud/delete  perm=cloud  local  audit=Cloud-Datei in den Papierkorb
+POST   /api/cloud/favorite  perm=cloud  local  audit=-
+POST   /api/cloud/folder  perm=cloud  local  audit=Cloud-Ordner angelegt
+POST   /api/cloud/rename  perm=cloud  local  audit=Cloud-Datei umbenannt
+POST   /api/cloud/shares  perm=cloud  local  audit=Cloud-Freigabe-Link erstellt
+POST   /api/cloud/shares/{token}/delete  perm=cloud  local  audit=Cloud-Freigabe-Link beendet
+POST   /api/cloud/transfer  perm=cloud  local  audit=Cloud-Dateien verschoben/kopiert
+POST   /api/cloud/trash/delete  perm=cloud  local  audit=Cloud-Datei endgültig gelöscht
+POST   /api/cloud/trash/empty  perm=cloud  local  audit=Cloud-Papierkorb geleert
+POST   /api/cloud/trash/restore  perm=cloud  local  audit=Cloud-Datei wiederhergestellt
+POST   /api/cloud/zip  perm=cloud  local  audit=-
 POST   /api/compliance/baseline/assess  perm=settings.manage  remote  audit=Grundschutz-Anforderung bewertet
 POST   /api/compliance/evidence  perm=users.manage  remote  audit=Nachweis-Paket erstellt
 POST   /api/compliance/privacy/activities  perm=notes.edit  remote  audit=Datenschutz-Dokumentation geändert
@@ -459,6 +481,7 @@ POST   /api/services/{service_id}/{action}  perm=services.control  remote  audit
 POST   /api/settings/account  perm=login  local  audit=Eigenes Passwort geändert
 POST   /api/settings/alerting  perm=settings.manage  remote  audit=Alarmierung eingestellt
 POST   /api/settings/alerting/test  perm=settings.manage  remote  audit=Test-Alarm gesendet
+POST   /api/settings/cloud  perm=users.manage  local  audit=Cloud-Speicher eingestellt
 POST   /api/settings/email  perm=settings.manage  local  audit=E-Mail-Benachrichtigungen eingestellt
 POST   /api/settings/email/test  perm=settings.manage  local  audit=Test-E-Mail gesendet
 POST   /api/settings/health  perm=settings.manage  remote  audit=Web-Dienst-Prüfung hinzugefügt
@@ -588,6 +611,7 @@ POST   /api/wiki/{page_id}  perm=notes.edit  local  audit=Wiki-Seite geändert
 POST   /api/wiki/{page_id}/delete  perm=notes.edit  local  audit=Wiki-Seite gelöscht
 POST   /api/wol/{device_id}/wake  perm=network.tools  local  audit=Gerät per Wake-on-LAN geweckt
 POST   /api/workloads/docker/{name}/{action}  perm=services.control  remote  audit=Docker-Container gesteuert
+PUT    /api/cloud/upload  perm=cloud  local  audit=Datei in die Cloud hochgeladen
 PUT    /api/docs/attachments/{kind}/{item_id}  perm=notes.edit  local  audit=-
 PUT    /api/files/upload  perm=files.write  remote  audit=Datei hochgeladen
 PUT    /api/x/{token}/upload  perm=public  local  audit=Datei über Austausch-Link hochgeladen

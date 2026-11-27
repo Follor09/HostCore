@@ -4,6 +4,11 @@ Releases are tags `vX.Y.Z`; installs on the stable update channel only follow th
 
 ## Unreleased
 
+## v1.11.0 – 2026-11-27
+
+### Added
+- **Files page – own cloud (/dateien, new in the navigation bar):** like Nextcloud inside the dashboard. *Meine Dateien* (private: only the user and admins), *Gemeinsam* (shared by everyone with the new permission *Eigene Dateien (Cloud)*), and for admins every user's files. Upload by button or drag & drop, also whole folders, with progress and overwrite prompt; grid with thumbnails or list; preview of images, video, audio, PDF and text with arrow keys; multi-select, rename, move/copy (also between spaces, by dragging onto a folder too), ZIP download, favorites, recently changed, search across all files, recycle bin (30 days by default) and share links without login (1 hour to 30 days, folders as ZIP, `/s/c/…`). *Andere Uploads* lists what came in through exchange links and as documentation attachments. Admins set the storage location, a quota per user and the recycle bin time on the page. The private folders are blocked in the server file explorer. The built-in groups *Bearbeiter* and *Benutzer* get the new permission (also when they were saved before); custom groups don't.
+
 ## v1.10.2 – 2026-11-27
 
 ### Added

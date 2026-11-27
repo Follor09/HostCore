@@ -147,6 +147,7 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("POST", r"^/api/mcp/approvals/[^/]+/(approve|deny)$", "login"),   # own requests; others need users.manage (checked there)
     ("*", r"^/api/settings/(email|email/test|retention|retention/cleanup)$", "settings.manage"),
     ("POST", r"^/api/settings/terminal-recording$", "users.manage"),
+    ("POST", r"^/api/settings/cloud$", "users.manage"),        # where the cloud lives, quota
     ("GET", r"^/api/backups$", "system.view"),
     ("POST", r"^/api/status-summary/(ack|unack)$", "system.view"),
     ("GET", r"^/api/alerts$", "system.view"),
@@ -209,6 +210,8 @@ RULES: List[Tuple[str, str, Optional[str]]] = [
     ("PUT", r"^/api/files/upload$", "files.write"),
     ("POST", r"^/api/files/(share|shares/[^/]+/delete)$", "files.share"),
     ("*", r"^/api/exchange(/.*)?$", "files.share"),
+    ("GET", r"^/dateien$", "cloud"),
+    ("*", r"^/api/cloud(/.*)?$", "cloud"),                   # own cloud: spaces checked in cloud.py
 
     # --- Dashboard cards
     ("POST", r"^/api/notes$", "notes.edit"),
